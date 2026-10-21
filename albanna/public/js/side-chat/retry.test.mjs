@@ -36,11 +36,7 @@ function answer(text) {
 // It is the *last* attempt at that question that is taken out, not an
 // older one that happens to read the same.
 {
-	const messages = [
-		asked("what is open?"),
-		answer("an old answer"),
-		asked("what is open?"),
-	];
+	const messages = [asked("what is open?"), answer("an old answer"), asked("what is open?")];
 	const question = takeRetryQuestion(messages, "what is open?");
 
 	assert.equal(question, "what is open?");

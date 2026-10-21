@@ -60,6 +60,7 @@ from albanna.services.conversation_service import (
     load_messages,
     load_transcript,
     name_after_question,
+    transcript_window,
 )
 from albanna.services.settings_service import get_settings
 from albanna.tools.backend import ErpnextBackend
@@ -1069,3 +1070,98 @@ class TestConversationOrder(FrappeTestCase):
         self.assertEqual(len(indexes), 2)
         self.assertEqual(indexes, sorted(indexes))
         self.assertEqual(len(set(indexes)), len(indexes))
+
+
+@pytest.mark.integration
+class TestTranscriptWindow(FrappeTestCase):
+    """A conversation is read in windows, not all at once.
+
+    A conversation of two hundred messages is twenty thousand nodes, and
+    the widget drew all of them.  So the server hands out windows — the
+    newest messages, and the page behind them on request — and says
+    whether there is more.
+    """
+
+    def _conversation(self, turns: int = 6):
+        """A conversation with *turns* questions and answers."""
+        conversation = ensure_conversation("Administrator", f"test|window|{self.id()}|")
+        frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
+        for turn in range(turns):
+            append_messages(
+                conversation,
+                [
+                    {"role": "user", "content": f"question {turn}"},
+                    {"role": "assistant", "content": f"answer {turn}"},
+                ],
+            )
+        return conversation
+
+    def test_the_window_is_the_newest_messages(self):
+        conversation = self._conversation()
+
+        transcript = load_transcript(conversation, limit=4)
+
+        self.assertEqual(
+            [message["content"] for message in transcript],
+            ["question 4", "answer 4", "question 5", "answer 5"],
+        )
+
+    def test_the_window_is_bounded_in_the_query(self):
+        """Not sliced in Python: the whole conversation is not read to
+        show a part of it."""
+        conversation = self._conversation()
+
+        transcript = load_transcript(conversation, limit=2)
+
+        self.assertEqual(len(transcript), 2)
+
+    def test_the_older_page_is_the_one_below_the_index(self):
+        conversation = self._conversation()
+
+        # The window is the newest four messages; the page behind it is
+        # the four below the oldest of those.
+        window = load_transcript(conversation, limit=4)
+        oldest = window[0]["idx"]
+
+        older = load_transcript(conversation, limit=4, before_idx=oldest)
+
+        self.assertEqual(
+            [message["content"] for message in older],
+            ["question 2", "answer 2", "question 3", "answer 3"],
+        )
+
+    def test_every_message_carries_the_index_it_is_stored_at(self):
+        conversation = self._conversation()
+
+        transcript = load_transcript(conversation, limit=100)
+
+        self.assertEqual([message["idx"] for message in transcript], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+
+    def test_the_window_says_how_many_the_conversation_holds(self):
+        conversation = self._conversation(turns=4)
+
+        window = transcript_window(conversation, limit=2)
+
+        self.assertEqual(window["total"], 8)
+        self.assertEqual(len(window["messages"]), 2)
+
+    def test_the_window_says_whether_there_is_more_behind_it(self):
+        conversation = self._conversation(turns=4)
+
+        window = transcript_window(conversation, limit=2)
+        self.assertTrue(window["has_more"], "there are older messages behind the window")
+
+    def test_a_whole_conversation_has_nothing_behind_it(self):
+        conversation = self._conversation(turns=4)
+
+        window = transcript_window(conversation, limit=100)
+        self.assertFalse(window["has_more"])
+
+    def test_an_empty_conversation_has_nothing_behind_it(self):
+        conversation = ensure_conversation("Administrator", f"test|window|empty|{self.id()}|")
+
+        window = transcript_window(conversation, limit=10)
+
+        self.assertEqual(window["messages"], [])
+        self.assertEqual(window["total"], 0)
+        self.assertFalse(window["has_more"])

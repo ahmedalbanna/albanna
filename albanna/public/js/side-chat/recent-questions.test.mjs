@@ -5,11 +5,7 @@
 // is capped so that it stays a convenience rather than a history.
 
 import assert from "node:assert";
-import {
-	MAX_RECENT_QUESTIONS,
-	addQuestion,
-	renderRecentQuestions,
-} from "./recent-questions.mjs";
+import { MAX_RECENT_QUESTIONS, addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
 
 // A question is added to the list.
 {

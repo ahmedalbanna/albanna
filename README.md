@@ -353,6 +353,7 @@ node albanna/public/js/side-chat/page.test.mjs      # the Desk's route event
 node albanna/public/js/side-chat/context.test.mjs   # what the widget thinks the page is
 node albanna/public/js/side-chat/recent-questions.test.mjs  # the questions asked lately
 node albanna/public/js/side-chat/retry.test.mjs    # the rule of a retry
+node albanna/public/js/side-chat/window.test.mjs  # the transcript window
 python3 scripts/check_translations.py              # the Arabic catalogue against the code
 ```
 

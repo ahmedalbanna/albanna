@@ -752,6 +752,36 @@ body.albanna-side-chat-docked-inline-start {
 	color: var(--albanna-danger, #c0392b);
 }
 
+/* The button that brings the earlier messages back.
+ *
+ * It is a text button and not an icon, because it says a thing: the
+ * reader is being offered the rest of their thread, and an icon would
+ * make them guess.  It sits at the top of the transcript, where the
+ * messages it brings will be. */
+.albanna-chat__earlier {
+	display: block;
+	width: calc(100% - 24px);
+	margin: 8px 12px;
+	padding: 6px 10px;
+	border: 1px solid var(--albanna-border, #e2e5e9);
+	border-radius: 6px;
+	background: var(--albanna-accent-soft, #f3f3f3);
+	color: var(--albanna-muted, #6c7680);
+	font-size: 12px;
+	line-height: 1.4;
+	cursor: pointer;
+}
+
+.albanna-chat__earlier:hover:not(:disabled) {
+	background: var(--albanna-hover, #f2f4f5);
+	color: var(--albanna-text, #1f272e);
+}
+
+.albanna-chat__earlier:disabled {
+	cursor: default;
+	opacity: 0.7;
+}
+
 /* The button that takes the table away as data.
  *
  * It is a text button and not another icon, because it is a different

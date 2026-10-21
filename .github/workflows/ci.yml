@@ -64,6 +64,9 @@ jobs:
       - name: The rule of a retry
         run: node albanna/public/js/side-chat/retry.test.mjs
 
+      - name: The transcript window
+        run: node albanna/public/js/side-chat/window.test.mjs
+
   server:
     name: Server tests
     runs-on: ubuntu-latest

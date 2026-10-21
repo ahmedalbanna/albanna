@@ -270,27 +270,58 @@ def load_messages(conversation: str, limit: int = 20) -> list[Message]:
     return messages
 
 
-def load_transcript(conversation: str, limit: int = 200) -> list[dict]:
-    """A conversation as the widget draws it.
+def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> list[dict]:
+    """A window of a conversation, as the widget draws it.
 
     The shape the browser wants: a flat list of turns, each with the text
     and the tool calls that produced it.  The domain's
     :func:`load_messages` is not it, because the domain wants the *model's*
     view of a conversation and the widget wants the *person's*.
-    """
-    rows = frappe.db.sql(
-        """
-        select name, role, content, tool_calls, creation
-        from `tabAlbanna Message`
-        where parent = %s and parentfield = %s
-        order by idx asc
-        """,
-        (conversation, PARENT_FIELD),
-        as_dict=True,
-    )
 
-    if len(rows) > limit:
-        rows = rows[-limit:]
+    The window is the newest *limit* messages, or the *limit* messages
+    whose stored index is below *before_idx* when the client is walking
+    back through the thread.
+
+    **The window is bounded in the query.**  The reader used to load every
+    message of a conversation and slice the list in Python, so the cost of
+    a long thread was paid on every open — and the widget drew all of
+    it.  A conversation of two hundred messages is twenty thousand nodes,
+    and laying them out costs the better part of a second.
+    """
+    # The numbers are turned into numbers here as well as at the
+    # endpoint: a caller that is not the endpoint — a job, a script —
+    # would otherwise have to know that they arrive as strings.
+    before_idx = int(before_idx or 0)
+    limit = max(1, int(limit or 1))
+
+    if before_idx > 0:
+        rows = frappe.db.sql(
+            """
+            select name, role, content, tool_calls, creation, idx
+            from `tabAlbanna Message`
+            where parent = %s and parentfield = %s and idx < %s
+            order by idx desc
+            limit %s
+            """,
+            (conversation, PARENT_FIELD, before_idx, limit),
+            as_dict=True,
+        )
+    else:
+        rows = frappe.db.sql(
+            """
+            select name, role, content, tool_calls, creation, idx
+            from `tabAlbanna Message`
+            where parent = %s and parentfield = %s
+            order by idx desc
+            limit %s
+            """,
+            (conversation, PARENT_FIELD, limit),
+            as_dict=True,
+        )
+
+    # The query reads backwards, because the tail is the window; the
+    # transcript is read forwards, because that is how it was said.
+    rows.reverse()
 
     transcript: list[dict] = []
     for row in rows:
@@ -319,6 +350,12 @@ def load_transcript(conversation: str, limit: int = 200) -> list[dict]:
                 # message: a turn is removed by naming it, and a name is
                 # stable where an index is not.
                 "name": row.name,
+                # The stored index, which is how the widget asks for the
+                # page of messages behind this one.  It is the index and
+                # not the position, because a transcript is spliced — a
+                # retry removes the failed turn — and a position moves
+                # when it is spliced.
+                "idx": int(row.idx or 0),
                 "role": role,
                 "content": row.content or "",
                 "tools": tools,
@@ -331,6 +368,46 @@ def load_transcript(conversation: str, limit: int = 200) -> list[dict]:
         )
 
     return transcript
+
+
+def transcript_window(conversation: str, limit: int = 50, before_idx: int = 0) -> dict:
+    """A window of a conversation, and what is behind it.
+
+    The window is what the widget draws.  ``has_more`` says whether older
+    messages are still behind it, and ``total`` says how many the
+    conversation holds — so the widget can offer "show the earlier
+    messages" and the reader can know there are more.
+
+    ``has_more`` is counted, not guessed: it is the number of messages
+    older than the oldest one in the window, which is the question the
+    button asks.
+    """
+    messages = load_transcript(conversation, limit, before_idx)
+
+    total = frappe.db.sql(
+        """
+        select count(*) from `tabAlbanna Message`
+        where parent = %s and parentfield = %s
+        """,
+        (conversation, PARENT_FIELD),
+    )[0][0]
+
+    oldest = min((int(message.get("idx") or 0) for message in messages), default=0)
+    behind = 0
+    if oldest > 0:
+        behind = frappe.db.sql(
+            """
+            select count(*) from `tabAlbanna Message`
+            where parent = %s and parentfield = %s and idx < %s
+            """,
+            (conversation, PARENT_FIELD, oldest),
+        )[0][0]
+
+    return {
+        "messages": messages,
+        "total": int(total),
+        "has_more": bool(behind),
+    }
 
 
 def _documents(raw) -> list[dict[str, str]]:

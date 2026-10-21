@@ -34,6 +34,7 @@ import { hasTable, renderMarkdown, tableAsTsv } from "./markdown.js";
 import { watchRoute } from "./page.mjs";
 import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
 import { takeRetryQuestion } from "./retry.mjs";
+import { mergeOlder, oldestIdx, olderRequest, windowRequest } from "./window.mjs";
 import {
 	beginTurn,
 	canSend,
@@ -90,6 +91,18 @@ const historyLoading = ref(false);
 let messageCounter = 0;
 /** The page's identity, as a ref so that the examples follow the page. */
 const currentPage = ref("");
+
+/**
+ * Whether older messages are behind the window on the screen.
+ *
+ * The panel draws a window of the conversation — the newest fifty
+ * messages — and the rest is one click away.  The reader's history is
+ * not hidden; it is simply not drawn until it is asked for.
+ */
+const hasOlder = ref(false);
+
+/** Whether the older page is being fetched. */
+const loadingOlder = ref(false);
 
 /** The controller of the turn in flight, so that it can be stopped. */
 const abortController = ref(null);
@@ -281,6 +294,10 @@ function messageFromServer(message) {
 	// is removed by naming it, and a name does not shift when the
 	// conversation grows.
 	item.name = message.name || "";
+	// The stored index, which is how the panel asks for the page of
+	// messages behind this one.  A message that has not been stored yet
+	// has no index, and it is the newest one.
+	item.idx = Number(message.idx) || 0;
 	item.tools = message.tools || [];
 
 	for (const tool of item.tools) {
@@ -629,6 +646,43 @@ async function send(question) {
 }
 
 /**
+ * Show the page of messages behind the window.
+ *
+ * The reader asked for the older messages, so the older messages are
+ * what they get to see — and the view stays where it was, because the
+ * content that was on screen has moved down by the height of the page
+ * that was added above it.
+ */
+async function loadEarlier() {
+	if (loadingOlder.value || !hasOlder.value || !conversationId.value) return;
+	loadingOlder.value = true;
+
+	const el = transcriptEl.value;
+	const before = el ? el.scrollHeight : 0;
+
+	try {
+		const result = await call("albanna.api.conversations.open_conversation", {
+			conversation: conversationId.value,
+			...olderRequest(oldestIdx(state.messages)),
+		});
+		const older = (result.messages || []).map((message) => messageFromServer(message));
+		state.messages = mergeOlder(state.messages, older);
+		hasOlder.value = !!(result && result.has_more);
+
+		// The messages that were on screen have moved down; the scroll
+		// moves with them, so the reader is looking at the same thing.
+		await nextTick();
+		if (el) el.scrollTop += el.scrollHeight - before;
+	} catch (failure) {
+		state.error = String(
+			(failure && failure.message) || failure || __("Could not load the earlier messages."),
+		);
+	} finally {
+		loadingOlder.value = false;
+	}
+}
+
+/**
  * Remember the questions of a thread that was just opened.
  *
  * They are the reader's recent questions — the ones that explain the
@@ -765,12 +819,14 @@ async function openConversation(conversation) {
 	try {
 		const result = await call("albanna.api.conversations.open_conversation", {
 			conversation: conversation.name,
+			...windowRequest(),
 		});
 		conversationId.value = conversation.name;
 		state.messages = (result.messages || []).map((message) => {
 			return messageFromServer(message);
 		});
 		rememberQuestions(state.messages);
+		hasOlder.value = !!(result && result.has_more);
 		view.value = "chat";
 		followBottom.value = true;
 		scrollToBottom(true);
@@ -841,6 +897,7 @@ async function deleteTurn(message) {
 		});
 		const rows = (result && result.messages) || [];
 		state.messages = rows.map(messageFromServer);
+		hasOlder.value = !!(result && result.has_more);
 		state.notice = "removed";
 	} catch (failure) {
 		state.error = String(
@@ -941,13 +998,17 @@ async function newConversation() {
 async function loadPageConversation() {
 	const page = currentPage.value;
 	try {
-		const result = await call("albanna.api.conversations.conversation_for_page", { page });
+		const result = await call("albanna.api.conversations.conversation_for_page", {
+			page,
+			...windowRequest(),
+		});
 		// The page may have changed while the answer was in flight.
 		if (!result || page !== currentPage.value) return;
 
 		if (!result.conversation) {
 			state.messages = [];
 			conversationId.value = "";
+			hasOlder.value = false;
 			return;
 		}
 
@@ -956,6 +1017,7 @@ async function loadPageConversation() {
 			return messageFromServer(message);
 		});
 		rememberQuestions(state.messages);
+		hasOlder.value = !!(result && result.has_more);
 		followBottom.value = true;
 		scrollToBottom(true);
 	} catch (failure) {
@@ -1142,6 +1204,20 @@ onBeforeUnmount(() => {
 		/>
 
 		<div v-else class="albanna-chat__body">
+			<!-- The older messages are behind the window, and they are one
+			     click away.  The button is *outside* the transcript on
+			     purpose: a button inside it would be scrolled into view
+			     when the reader clicked it, and the reader would lose
+			     their place in the thread they were reading. -->
+			<button
+				v-if="hasOlder"
+				type="button"
+				class="albanna-chat__earlier"
+				:disabled="loadingOlder"
+				@click="loadEarlier"
+			>
+				{{ loadingOlder ? __("Loading…") : __("Show the earlier messages") }}
+			</button>
 			<div
 				ref="transcriptEl"
 				class="albanna-chat__transcript"

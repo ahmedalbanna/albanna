@@ -335,3 +335,13 @@ msgstr "هذه الرسالة غير موجودة."
 
 msgid "The question and its answer were removed."
 msgstr "أُزيل السؤال وإجابته."
+
+
+msgid "Could not load the earlier messages."
+msgstr "تعذّر تحميل الرسائل السابقة."
+
+msgid "Show the earlier messages"
+msgstr "اعرض الرسائل السابقة"
+
+msgid "Loading…"
+msgstr "جارٍ التحميل…"

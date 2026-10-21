@@ -15,6 +15,8 @@ permission engine never sees them.
 
 from __future__ import annotations
 
+from typing import Any
+
 import frappe
 from frappe import _
 
@@ -22,6 +24,29 @@ from albanna.permissions import require_chat_access
 
 #: How many conversations one listing returns.
 PAGE_SIZE = 30
+
+#: How many messages one transcript window holds.
+#:
+#: The widget draws a window and asks for the page behind it when the
+#: reader wants more — a conversation of two hundred messages is twenty
+#: thousand nodes, and drawing them all costs the better part of a
+#: second every time the panel re-renders.
+TRANSCRIPT_WINDOW = 50
+
+
+def _as_int(value: Any, default: int = 0) -> int:
+    """A number from the request, or *default*.
+
+    The numbers in a request arrive as strings, and they have to be
+    turned into numbers here: this module uses ``from __future__ import
+    annotations``, so the framework's own type validation sees the
+    annotations as strings and leaves the values alone.  Every endpoint
+    that takes a number converts it for itself.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 @frappe.whitelist()
@@ -41,14 +66,24 @@ def list_conversations(limit: int = PAGE_SIZE, offset: int = 0) -> dict:
 
 
 @frappe.whitelist()
-def open_conversation(conversation: str = "") -> dict:
-    """A conversation's transcript."""
+def open_conversation(conversation: str = "", limit: int = 0, before_idx: int = 0) -> dict:
+    """A window of a conversation's transcript.
+
+    The window is the newest messages; the older ones are behind it, and
+    *before_idx* asks for the page of them that sits below the index
+    given.  The answer says how many messages the conversation holds and
+    whether there are more behind the window, so the widget can offer
+    them rather than hide them.
+    """
     require_chat_access()
 
-    from albanna.services.conversation_service import assert_owns, display_title, load_transcript
+    from albanna.services.conversation_service import assert_owns, display_title, transcript_window
 
     user = str(frappe.session.user or "")
     assert_owns(conversation, user)
+
+    limit = _as_int(limit)
+    before_idx = _as_int(before_idx)
 
     meta = frappe.db.get_value(
         "Albanna Conversation",
@@ -60,15 +95,19 @@ def open_conversation(conversation: str = "") -> dict:
     conversation_meta = dict(meta) if meta else {}
     conversation_meta["title"] = display_title(conversation_meta.get("title"))
 
+    window = transcript_window(conversation, limit or TRANSCRIPT_WINDOW, before_idx)
+
     return {
         "status": "ok",
         "conversation": conversation_meta,
-        "messages": load_transcript(conversation),
+        "messages": window["messages"],
+        "total": window["total"],
+        "has_more": window["has_more"],
     }
 
 
 @frappe.whitelist()
-def conversation_for_page(page: str = "") -> dict:
+def conversation_for_page(page: str = "", limit: int = 0, before_idx: int = 0) -> dict:
     """The caller's conversation on *page*, and its transcript.
 
     The panel asks this when it opens on a page.  The server resolves a
@@ -82,19 +121,31 @@ def conversation_for_page(page: str = "") -> dict:
     require_chat_access()
 
     from albanna.services.conversation_service import conversation_for_page as _for
-    from albanna.services.conversation_service import display_title, load_transcript
+    from albanna.services.conversation_service import display_title, transcript_window
 
     user = str(frappe.session.user or "")
+    limit = _as_int(limit)
+    before_idx = _as_int(before_idx)
     conversation = _for(user, page or "")
     if not conversation:
-        return {"status": "ok", "conversation": "", "title": "", "messages": []}
+        return {
+            "status": "ok",
+            "conversation": "",
+            "title": "",
+            "messages": [],
+            "total": 0,
+            "has_more": False,
+        }
 
     title = frappe.db.get_value("Albanna Conversation", conversation, "title") or ""
+    window = transcript_window(conversation, limit or TRANSCRIPT_WINDOW, before_idx)
     return {
         "status": "ok",
         "conversation": conversation,
         "title": display_title(title),
-        "messages": load_transcript(conversation),
+        "messages": window["messages"],
+        "total": window["total"],
+        "has_more": window["has_more"],
     }
 
 
@@ -157,7 +208,7 @@ def delete_turn(conversation: str = "", message: str = "") -> dict:
     """
     require_chat_access()
 
-    from albanna.services.conversation_service import assert_owns, load_transcript
+    from albanna.services.conversation_service import assert_owns, transcript_window
     from albanna.services.conversation_service import delete_turn as _delete
 
     user = str(frappe.session.user or "")
@@ -166,7 +217,18 @@ def delete_turn(conversation: str = "", message: str = "") -> dict:
     removed = _delete(conversation, message)
     frappe.db.commit()
 
-    return {"status": "ok", "removed": removed, "messages": load_transcript(conversation)}
+    # The window the removal leaves behind, and whether there is more
+    # behind it: the reader may have been reading further back, and the
+    # button that shows it has to come back with it.
+    window = transcript_window(conversation, TRANSCRIPT_WINDOW)
+
+    return {
+        "status": "ok",
+        "removed": removed,
+        "messages": window["messages"],
+        "total": window["total"],
+        "has_more": window["has_more"],
+    }
 
 
 @frappe.whitelist()
