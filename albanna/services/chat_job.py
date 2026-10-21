@@ -33,16 +33,34 @@ TURN_TTL_SECONDS = 1800
 
 def run_turn_job(
     stream_id: str,
-    question: str = "",
     conversation_id: str = "",
     page: str = "",
+    question: str = "",
     page_context: str = "",
 ) -> None:
-    """Run one turn and publish its progress."""
+    """Run one turn and publish its progress.
+
+    The question and the page description are read from the cache, where
+    the endpoint left them, and *not* from the job's arguments: a job's
+    arguments are logged, and the log is read by operators and copied off
+    the host.  The two parameters are kept only so that a turn queued
+    before the change still runs; nothing enqueues them any more.
+    """
     from albanna.services.chat_service import ChatService, TurnRequest
 
     user = frappe.session.user
     emit = _realtime_emit(stream_id, user)
+
+    if not question:
+        parked = (
+            frappe.cache().get_value(
+                TURN_CACHE_KEY.format(stream_id=stream_id),
+                user=user,
+            )
+            or {}
+        )
+        question = str(parked.get("question") or "")
+        page_context = str(parked.get("page_context") or "")
 
     try:
         outcome = ChatService().run(

@@ -33,6 +33,7 @@ from frappe import _
 
 from albanna.core.prompt import build_page_context
 from albanna.permissions import require_chat_access
+from albanna.privacy import redacted_request_text
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,7 @@ def _render_page_context(raw: Any) -> str:
 
 
 @frappe.whitelist()
+@redacted_request_text("question", "page_context")
 def ask(
     question: str = "",
     conversation_id: str = "",
@@ -137,6 +139,7 @@ def ask(
 
 
 @frappe.whitelist()
+@redacted_request_text("question", "page_context")
 def ask_stream(
     question: str = "",
     conversation_id: str = "",
@@ -163,9 +166,23 @@ def ask_stream(
     # that cannot import the app, a worker killed mid-turn — would
     # otherwise leave the client polling a turn that will never finish, for
     # ever.  The marker is what lets `status` notice that the turn is gone.
+    # The question and the page description travel in the cache, and the
+    # job is given the key.
+    #
+    # A job's arguments are logged: the queue writes them out when the
+    # job runs, so the question would end up in the bench's worker log,
+    # where it is read by operators and copied off the host.  The cache
+    # holds the answer already — the turn parks it there for the polling
+    # fallback — so the question belongs there too, and the log holds a
+    # stream id instead of a sentence.
     frappe.cache().set_value(
         TURN_CACHE_KEY.format(stream_id=stream_id),
-        {"status": "running", "started_at": time.time()},
+        {
+            "status": "running",
+            "started_at": time.time(),
+            "question": question or "",
+            "page_context": _render_page_context(page_context),
+        },
         user=frappe.session.user,
         expires_in_sec=settings.turn_timeout + STALE_GRACE_SECONDS,
     )
@@ -176,10 +193,8 @@ def ask_stream(
         timeout=settings.turn_timeout,
         job_id=f"albanna-turn-{stream_id}",
         stream_id=stream_id,
-        question=question or "",
         conversation_id=conversation_id or "",
         page=page or "",
-        page_context=_render_page_context(page_context),
     )
 
     return {"status": "queued", "stream_id": stream_id, "event": STREAM_EVENT}

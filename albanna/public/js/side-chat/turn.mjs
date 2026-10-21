@@ -204,10 +204,20 @@ export function subscribe(streamId, handler) {
  * @param {string} options.page the page identity
  * @param {object} options.pageContext the page description
  * @param {function} options.onEvent called with each progress event
+ * @param {function} [options.onQueued] called with the stream id, once
+ *   the turn is queued
  * @param {AbortSignal} [options.signal] aborts the *client's* wait
  * @returns {Promise<object>} the final payload
  */
-export async function runTurn({ question, conversationId, page, pageContext, onEvent, signal }) {
+export async function runTurn({
+	question,
+	conversationId,
+	page,
+	pageContext,
+	onEvent,
+	onQueued,
+	signal,
+}) {
 	// A turn that was stopped before it started is stopped, not queued.
 	if (signal && signal.aborted) {
 		return { status: "aborted" };
@@ -226,6 +236,28 @@ export async function runTurn({ question, conversationId, page, pageContext, onE
 
 	const streamId = queued.stream_id;
 
+	// The stream id is the turn's address on the server, and the panel
+	// writes it down: a reader who reloads the Desk during a turn can
+	// find the turn again.
+	if (onQueued) onQueued(streamId);
+
+	return waitForTurn(streamId, { onEvent, signal });
+}
+
+/**
+ * Wait for a turn that is already running.
+ *
+ * The same wait, for a turn that was queued before the page was
+ * reloaded: the socket subscription and the poll are all that is needed
+ * to pick a running turn up again.
+ *
+ * @param {string} streamId the turn's stream id
+ * @param {object} [options]
+ * @param {function} [options.onEvent] called with each progress event
+ * @param {AbortSignal} [options.signal] aborts the *client's* wait
+ * @returns {Promise<object>} the final payload
+ */
+export function waitForTurn(streamId, { onEvent, signal } = {}) {
 	return new Promise((resolve) => {
 		let settled = false;
 		let pollTimer = null;

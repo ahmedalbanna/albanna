@@ -67,6 +67,9 @@ jobs:
       - name: The transcript window
         run: node albanna/public/js/side-chat/window.test.mjs
 
+      - name: The turn that is in flight
+        run: node albanna/public/js/side-chat/inflight.test.mjs
+
   server:
     name: Server tests
     runs-on: ubuntu-latest

@@ -354,6 +354,7 @@ node albanna/public/js/side-chat/context.test.mjs   # what the widget thinks the
 node albanna/public/js/side-chat/recent-questions.test.mjs  # the questions asked lately
 node albanna/public/js/side-chat/retry.test.mjs    # the rule of a retry
 node albanna/public/js/side-chat/window.test.mjs  # the transcript window
+node albanna/public/js/side-chat/inflight.test.mjs # the turn in flight across a reload
 python3 scripts/check_translations.py              # the Arabic catalogue against the code
 ```
 

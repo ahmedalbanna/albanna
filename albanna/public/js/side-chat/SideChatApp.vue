@@ -34,6 +34,7 @@ import { hasTable, renderMarkdown, tableAsTsv } from "./markdown.js";
 import { watchRoute } from "./page.mjs";
 import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
 import { takeRetryQuestion } from "./retry.mjs";
+import { clearInflight, loadInflight, saveInflight } from "./inflight.mjs";
 import { mergeOlder, oldestIdx, olderRequest, windowRequest } from "./window.mjs";
 import {
 	beginTurn,
@@ -48,7 +49,7 @@ import {
 	setActivity,
 	stopTurn,
 } from "./state.mjs";
-import { call, runTurn } from "./turn.mjs";
+import { call, runTurn, waitForTurn } from "./turn.mjs";
 
 const props = defineProps({
 	/** The options payload, already resolved by the launcher. */
@@ -477,6 +478,155 @@ function noticeText(notice) {
 }
 
 /**
+ * Pick up a turn that was running when the page was reloaded.
+ *
+ * The worker is still working and the answer is parked in the cache;
+ * all that was lost is the browser's memory of the stream.  So the
+ * stream is read back and the turn is waited for again.
+ *
+ * The turn belongs to the thread of the page it was asked on, so it is
+ * only picked up on that page.
+ */
+async function resumeInflight() {
+	const entry = loadInflight();
+	if (!entry || !entry.stream_id) return;
+
+	if (entry.page && entry.page !== currentPage.value) {
+		// The turn belongs to another page's thread, and this panel is
+		// about this one.
+		clearInflight();
+		return;
+	}
+
+	const question = String(entry.question || "");
+	const asked = makeMessage("user", question);
+	const answer = makeMessage("assistant", "");
+	answer.pending = true;
+
+	beginTurn(state, question, asked, answer);
+	setActivity(state, __("Thinking"));
+	scrollToBottom(true);
+
+	const controller = new AbortController();
+	abortController.value = controller;
+
+	try {
+		const result = await waitForTurn(entry.stream_id, {
+			signal: controller.signal,
+			onEvent: (event) => handleTurnEvent(answer, event),
+		});
+		applyTurnResult(result, asked, answer);
+	} catch (failure) {
+		failTurn(state, answer, String((failure && failure.message) || failure));
+		removeMessage(answer);
+	} finally {
+		clearInflight();
+	}
+}
+
+/**
+ * Show what a turn is doing, as it does it.
+ *
+ * @param {object} answer the answer message
+ * @param {object} event the progress event
+ */
+function handleTurnEvent(answer, event) {
+	if (event.event === "token") {
+		setContent(answer, answer.content + event.text);
+		scrollToBottom();
+		return;
+	}
+	if (event.event === "tool_start") {
+		answer.tools.push({ name: event.name, ok: null, summary: "" });
+		refresh(answer);
+		setActivity(state, describeTool(event.name, event.arguments));
+		scrollToBottom();
+		return;
+	}
+	if (event.event === "tool_done") {
+		const pending = answer.tools.find((tool) => tool.ok === null && tool.name === event.name);
+		if (pending) {
+			pending.ok = event.ok !== false;
+			pending.summary = event.summary || "";
+		}
+		refresh(answer);
+
+		// The documents the call looked at.  They become links in the
+		// answer, so that the answer is a doorway into the Desk and not
+		// only a description of it.
+		const documents = (event.documents || []).map(documentLink).filter(Boolean);
+		if (documents.length) {
+			const known = new Set(answer.documents.map((entry) => entry.name));
+			const fresh = documents.filter((entry) => !known.has(entry.name));
+			if (fresh.length) {
+				answer.documents.push(...fresh);
+				// The answer may already have streamed past a name that
+				// is only now known, so the text is rendered again.
+				setContent(answer, answer.content);
+			}
+		}
+		scrollToBottom();
+		return;
+	}
+	if (event.event === "status") {
+		setActivity(state, statusLabel(event.code) || event.text || state.activity);
+	}
+}
+
+/**
+ * Show how a turn ended.
+ *
+ * @param {object} result the turn's final payload
+ * @param {object} asked the question message
+ * @param {object} answer the answer message
+ */
+function applyTurnResult(result, asked, answer) {
+	if (result && result.conversation_id) {
+		conversationId.value = result.conversation_id;
+	}
+
+	// The server says which rows it wrote, so that the question and the
+	// answer can be addressed later — a turn the reader wants gone is
+	// removed by naming it.
+	if (result && result.written && result.written.length) {
+		for (const row of result.written) {
+			if (row.role === "user") asked.name = row.name;
+			if (row.role === "assistant") answer.name = row.name;
+		}
+	}
+
+	if (result && result.status === "aborted") {
+		// The turn was stopped at the reader's request.  Whatever
+		// arrived is kept — it is the truth so far — and the worker
+		// finishes on its own, so the answer is in the conversation
+		// when they come back to it.
+		stopTurn(state, answer);
+		// A notice that is already there is more specific than this one
+		// — "you moved to another page" says more than "stopped".
+		if (!state.notice) state.notice = "stopped";
+	} else if (result && result.status === "error") {
+		failTurn(state, answer, result.error || __("Something went wrong."));
+		if (!answer.content) {
+			removeMessage(answer);
+		}
+	} else if (result && result.reply) {
+		// The server's answer is the truth.  The streamed text was the
+		// live preview, and a preview that lost a fragment is worse than
+		// no preview: it is a wrong answer that looks complete.
+		setContent(answer, result.reply);
+		endTurn(state, answer);
+	} else {
+		// A turn that ended without an answer and without an error is
+		// still over.
+		failTurn(state, answer, __("Something went wrong."));
+	}
+
+	if (answer.content) {
+		announcement.value = answer.content;
+	}
+}
+
+/**
  * Ask a question, starting a turn.
  *
  * @param {string} question the question
@@ -541,96 +691,20 @@ async function send(question) {
 				recent_questions: recent,
 			},
 			signal: controller.signal,
-			onEvent: (event) => {
-				if (event.event === "token") {
-					setContent(answer, answer.content + event.text);
-					scrollToBottom();
-					return;
-				}
-				if (event.event === "tool_start") {
-					answer.tools.push({ name: event.name, ok: null, summary: "" });
-					refresh(answer);
-					setActivity(state, describeTool(event.name, event.arguments));
-					scrollToBottom();
-					return;
-				}
-				if (event.event === "tool_done") {
-					const pending = answer.tools.find(
-						(tool) => tool.ok === null && tool.name === event.name,
-					);
-					if (pending) {
-						pending.ok = event.ok !== false;
-						pending.summary = event.summary || "";
-					}
-					refresh(answer);
-
-					// The documents the call looked at.  They become links
-					// in the answer, so that the answer is a doorway into
-					// the Desk and not only a description of it.
-					const documents = (event.documents || []).map(documentLink).filter(Boolean);
-					if (documents.length) {
-						const known = new Set(answer.documents.map((entry) => entry.name));
-						const fresh = documents.filter((entry) => !known.has(entry.name));
-						if (fresh.length) {
-							answer.documents.push(...fresh);
-							// The answer may already have streamed past a
-							// name that is only now known, so the text is
-							// rendered again.
-							setContent(answer, answer.content);
-						}
-					}
-					scrollToBottom();
-					return;
-				}
-				if (event.event === "status") {
-					setActivity(state, statusLabel(event.code) || event.text || state.activity);
-				}
+			onEvent: (event) => handleTurnEvent(answer, event),
+			// The turn's address on the server, written down so that a
+			// reader who reloads during the turn finds it again.
+			onQueued: (streamId) => {
+				saveInflight({
+					stream_id: streamId,
+					conversation_id: conversationId.value,
+					page,
+					question: text,
+				});
 			},
 		});
 
-		if (result && result.conversation_id) {
-			conversationId.value = result.conversation_id;
-		}
-
-		// The server says which rows it wrote, so that the question and
-		// the answer can be addressed later — a turn the reader wants
-		// gone is removed by naming it.
-		if (result && result.written && result.written.length) {
-			for (const row of result.written) {
-				if (row.role === "user") asked.name = row.name;
-				if (row.role === "assistant") answer.name = row.name;
-			}
-		}
-
-		if (result && result.status === "aborted") {
-			// The turn was stopped at the reader's request.  Whatever
-			// arrived is kept — it is the truth so far — and the worker
-			// finishes on its own, so the answer is in the conversation
-			// when they come back to it.
-			stopTurn(state, answer);
-			// A notice that is already there is more specific than this
-			// one — "you moved to another page" says more than "stopped".
-			if (!state.notice) state.notice = "stopped";
-		} else if (result && result.status === "error") {
-			failTurn(state, answer, result.error || __("Something went wrong."));
-			if (!answer.content) {
-				removeMessage(answer);
-			}
-		} else if (result && result.reply) {
-			// The server's answer is the truth.  The streamed text was the
-			// live preview, and a preview that lost a fragment is worse
-			// than no preview: it is a wrong answer that looks complete.
-			setContent(answer, result.reply);
-			endTurn(state, answer);
-		} else {
-			// A turn that ended without an answer and without an error
-			// is still over.
-			failTurn(state, answer, __("Something went wrong."));
-		}
-
-		if (answer.content) {
-			announcement.value = answer.content;
-		}
+		applyTurnResult(result, asked, answer);
 	} catch (failure) {
 		failTurn(
 			state,
@@ -641,6 +715,7 @@ async function send(question) {
 	} finally {
 		answer.pending = false;
 		abortController.value = null;
+		clearInflight();
 		scrollToBottom();
 	}
 }
@@ -1057,7 +1132,12 @@ function onRouteChange() {
 onMounted(() => {
 	const context = resolveContext();
 	onContextChanged(context);
-	loadPageConversation();
+
+	// The page's thread first, and then any turn that was running when
+	// this page was last loaded: the question of a turn that is still in
+	// flight is not stored yet, so it has to be put back on top of the
+	// thread it belongs to.
+	loadPageConversation().then(() => resumeInflight());
 
 	// The Desk says the page changed with "change".  It does not say it
 	// with "route-change" — that event does not exist — and a listener

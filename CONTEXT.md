@@ -541,7 +541,39 @@ and the wrong one: an index shifts as the conversation grows, and the
 transcript is a window of the conversation, not all of it.  A name does
 not shift.
 
-### 36. The reader is shown an error they can read
+### 36. A turn in flight survives a reload
+
+The worker is working, and the answer is parked in the cache; what a
+reload loses is the browser's memory of the stream it was waiting for.
+So the stream is written down — in the session's storage, which a reload
+keeps and a closed tab does not — and the panel picks the turn up again
+when the page comes back.
+
+The entry is per **page**: a turn belongs to the thread of the page it
+was asked on, and re-attaching it on another page would put the answer
+in the wrong thread.
+
+### 37. The user's own words stay in the conversation
+
+A question is the user's words, and the conversation is where they
+belong: a place the user owns and can erase.  Two things used to carry
+them out of it.
+
+**The request.** Frappe's request logger appends the request's parsed
+parameters to every log record the request emits, so a question that
+arrives as a request parameter is copied into the site log — outside the
+conversation, where deleting the conversation does not remove it, and
+where the text is read by operators and copied off the host.  The
+endpoints that take the user's words now redact them before the request
+can log anything, and before the access gate can refuse: a refused turn
+is exactly the one that ends up in the log with the question in it.
+
+**The job.** A job's arguments are logged too, when the job runs.  So
+the question and the page description travel in the cache — where the
+answer is parked already — and the job is given the key.  The log holds
+a stream id instead of a sentence.
+
+### 38. The reader is shown an error they can read
 
 A provider that answers in anything but Latin-1 — a Chinese error, an em
 dash — used to arrive as mojibake, because the error path read the body

@@ -1165,3 +1165,72 @@ class TestTranscriptWindow(FrappeTestCase):
         self.assertEqual(window["messages"], [])
         self.assertEqual(window["total"], 0)
         self.assertFalse(window["has_more"])
+
+
+@pytest.mark.integration
+class TestRequestPrivacy(FrappeTestCase):
+    """The user's own words stay in the conversation.
+
+    Frappe's request logger appends the request's parsed parameters to
+    every log record the request emits, so a question that arrives as a
+    request parameter is copied into the site log — outside the
+    conversation, where deleting the conversation does not remove it.
+    """
+
+    def test_the_decorator_redacts_before_the_body_runs(self):
+        from albanna.privacy import redacted_request_text
+
+        @redacted_request_text("question")
+        def endpoint(question=""):
+            return question
+
+        frappe.local.form_dict = {"question": "a secret question", "cmd": "x"}
+
+        # The endpoint still receives the real value: the redaction is
+        # of the log, not of the request.
+        self.assertEqual(endpoint(question="a secret question"), "a secret question")
+        self.assertEqual(frappe.local.form_dict["question"], "[redacted]")
+        self.assertEqual(frappe.local.form_dict["cmd"], "x", "other parameters are untouched")
+
+    def test_a_page_description_is_redacted_too(self):
+        from albanna.privacy import redacted_request_text
+
+        @redacted_request_text("question", "page_context")
+        def endpoint(question="", page_context=""):
+            return question
+
+        frappe.local.form_dict = {"question": "q", "page_context": '{"selection": "private"}'}
+
+        endpoint(question="q", page_context='{"selection": "private"}')
+
+        self.assertEqual(frappe.local.form_dict["page_context"], "[redacted]")
+
+    def test_the_chat_endpoints_are_decorated(self):
+        """Every endpoint that takes the user's words redacts them.
+
+        A gate that some endpoints remember and others forget is a gate
+        that fails open, and so is a redaction.
+        """
+        from albanna.api.chat import ask, ask_stream
+
+        for endpoint in (ask, ask_stream):
+            self.assertTrue(
+                getattr(endpoint, "__wrapped__", None) is not None,
+                f"{endpoint.__name__} does not redact the request",
+            )
+
+    def test_a_refused_turn_leaves_no_question_in_the_log(self):
+        """A refused turn is exactly the one that ends up in the log with
+        the question in it, so the redaction happens before the gate."""
+        from albanna.api.chat import ask
+
+        # A user with no chat access: the gate refuses, and the turn
+        # never runs.
+        frappe.set_user("albanna.test.nobody@albanna.dev")
+        frappe.local.session.user = "albanna.test.nobody@albanna.dev"
+        frappe.local.form_dict = {"question": "a secret question"}
+
+        with self.assertRaises(frappe.PermissionError):
+            ask(question="a secret question")
+
+        self.assertEqual(frappe.local.form_dict["question"], "[redacted]")
