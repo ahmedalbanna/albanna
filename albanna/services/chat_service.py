@@ -107,6 +107,14 @@ class TurnOutcome:
     error: str = ""
     capped: bool = False
     diagnosis: dict[str, Any] = field(default_factory=dict)
+    #: The rows this turn wrote, as ``(name, role)`` pairs.
+    #:
+    #: The browser is told what was written, because a row that can be
+    #: named is a row that can be addressed later: the reader can remove
+    #: this turn, and the browser has to know which row to ask for.  The
+    #: names are the rows' own, so they do not shift when the
+    #: conversation grows.
+    written: list[tuple[str, str]] = field(default_factory=list)
 
 
 class ChatService:
@@ -225,7 +233,7 @@ class ChatService:
                 reply = (answer.content or "").strip()
                 if not reply:
                     reply = "I could not produce an answer to that."
-                append_messages(
+                written = append_messages(
                     conversation,
                     [
                         {"role": "user", "content": question, "round_no": 0},
@@ -270,6 +278,7 @@ class ChatService:
                     rounds=rounds,
                     tool_calls=tool_calls_made,
                     usage=usage,
+                    written=written,
                 )
 
             # The model asked for tools.  Record the request, run them, and
@@ -311,7 +320,7 @@ class ChatService:
         diagnosis = self._diagnose(tool_calls_made, rounds)
         reply = self._answer_from_findings(llm_config, messages, visible, diagnosis)
 
-        append_messages(
+        written = append_messages(
             conversation,
             [
                 {"role": "user", "content": question, "round_no": 0},
@@ -342,6 +351,7 @@ class ChatService:
             usage=usage,
             capped=True,
             diagnosis=diagnosis,
+            written=written,
         )
 
     # -- the model --------------------------------------------------------

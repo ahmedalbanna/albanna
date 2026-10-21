@@ -116,6 +116,10 @@ def ask(
         "tool_calls": outcome.tool_calls,
         "capped": outcome.capped,
         "error": outcome.error,
+        # The rows the turn wrote, so that the browser can address this
+        # turn later — a row that can be named is a row that can be
+        # removed.
+        "written": [{"name": name, "role": role} for name, role in outcome.written],
     }
 
 

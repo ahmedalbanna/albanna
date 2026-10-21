@@ -145,6 +145,31 @@ def rename_conversation(conversation: str = "", title: str = "") -> dict:
 
 
 @frappe.whitelist()
+def delete_turn(conversation: str = "", message: str = "") -> dict:
+    """Remove a turn from a conversation: the question asked and the answer given.
+
+    A turn is two rows, and they go together — an answer with no question is
+    not a conversation.  Either row may be named.
+
+    The transcript comes back with it, because a deletion moves everything
+    after it: the caller should not have to ask twice to find out what the
+    thread looks like now.
+    """
+    require_chat_access()
+
+    from albanna.services.conversation_service import assert_owns, load_transcript
+    from albanna.services.conversation_service import delete_turn as _delete
+
+    user = str(frappe.session.user or "")
+    assert_owns(conversation, user)
+
+    removed = _delete(conversation, message)
+    frappe.db.commit()
+
+    return {"status": "ok", "removed": removed, "messages": load_transcript(conversation)}
+
+
+@frappe.whitelist()
 def delete_conversation(conversation: str = "") -> dict:
     """Delete a conversation and its messages."""
     require_chat_access()

@@ -492,7 +492,25 @@ is needed.  So a route event that was missed costs the panel its label
 and not the assistant its question.  The two can disagree; they are not
 allowed to *pretend* they are the same thing.
 
-### 33. The turn's state is a state machine, and it is written down
+### 33. The route says what the page is, and `cur_frm` does not
+
+The Desk sets `cur_frm` when a form opens and never clears it when the
+reader walks away from that form — only a *page* view clears it.  So on
+the list the reader walked to, `cur_frm` still points at the form they
+walked away from.
+
+A widget that trusts it answers about a page the reader has already
+left, and looks perfectly correct while doing it.  So the route is the
+authority: it is the Desk's own statement of what is on the screen, and
+it is the only statement that is always true.  The open document is
+consulted only for the details the route does not carry — the title —
+and only when it is the document the route names.
+
+The shape of a page's identity is unchanged by this: a form is
+`form|<doctype>|<name>` and everything else is the route itself, so the
+conversations already on a site are still found.
+
+### 34. The turn's state is a state machine, and it is written down
 
 The states of a turn are the part of this widget a reader can see being
 wrong: a turn that is "running" and has already finished, a stop button
@@ -504,7 +522,26 @@ rather than a flag and a per-message flag that can disagree; the error
 and the notice are separate channels rather than one slot; and the
 transitions are tested with no Vue, no browser and no site.
 
-### 34. The reader is shown an error they can read
+### 35. A turn can be taken out of the reader's own thread
+
+The data a person asked about is theirs to erase, and a question that was
+asked wrongly is a thing they should be able to remove rather than scroll
+past.  So a turn can be removed from the caller's own conversation.
+
+The `Albanna Message` doctype deliberately has no permissions of its own,
+so the only way in is the app's own endpoint — chat access and ownership,
+the same two gates every other conversation endpoint has.  A turn is
+removed whole: an answer with no question is not a conversation, so
+naming either row of the turn removes both.
+
+**A row that can be named is a row that can be addressed.**  The server
+tells the browser which rows a turn wrote, and the transcript carries the
+name of every stored row.  An index would have been the obvious address
+and the wrong one: an index shifts as the conversation grows, and the
+transcript is a window of the conversation, not all of it.  A name does
+not shift.
+
+### 36. The reader is shown an error they can read
 
 A provider that answers in anything but Latin-1 — a Chinese error, an em
 dash — used to arrive as mojibake, because the error path read the body

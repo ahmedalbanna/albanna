@@ -46,6 +46,8 @@
 	--albanna-focus-ring: rgba(23, 23, 23, 0.08);
 	/* The button that stops a turn. */
 	--albanna-stop: var(--red-700, #a1231f);
+	/* The button that takes a turn away. */
+	--albanna-danger: var(--red-600, #d13b34);
 	/* What is drawn *on* the filled buttons.
 	 *
 	 * The accent is near-black in the light theme and a dark grey in the
@@ -73,6 +75,7 @@
 	/* In the dark theme the stop is a *light* red, so the square on it
 	 * has to be dark. */
 	--albanna-stop: var(--red-300, #f0a8a5);
+	--albanna-danger: var(--red-300, #f0a8a5);
 	--albanna-on-accent: #f8f8f8;
 	--albanna-on-stop: #171717;
 	--albanna-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
@@ -726,6 +729,27 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__copy:hover {
 	background: var(--albanna-hover, #f2f4f5);
 	color: var(--albanna-text, #1f272e);
+}
+
+/* The button that takes a turn away.
+ *
+ * It is the same quiet icon as the copy button, because it is the same
+ * kind of thing: a small action on a message, not a form.  It is only on
+ * a question, because a turn is removed whole and the question is what
+ * the reader points at. */
+.albanna-chat__remove {
+	border: 0;
+	background: transparent;
+	color: var(--albanna-muted, #6c7680);
+	cursor: pointer;
+	padding: 3px;
+	border-radius: 4px;
+	line-height: 0;
+}
+
+.albanna-chat__remove:hover {
+	background: var(--albanna-hover, #f2f4f5);
+	color: var(--albanna-danger, #c0392b);
 }
 
 /* The button that takes the table away as data.

@@ -78,6 +78,9 @@ Anthropic.  It has no other runtime dependency.
   gives up the space.  The width is remembered.
 * **A history.** The panel lists the caller's conversations, and any of them
   can be reopened, renamed or deleted.  "New" starts a real new thread.
+* **A turn you can take back.** The data a person asked about is theirs to
+  erase, so a question that was asked wrongly can be removed from the
+  thread — the question and the answer that followed it, together.
 * **Private history.** A conversation belongs to the page it was started on
   and to the user who started it.
 * **The panel follows the page.** Open it on a page you have used before
@@ -268,6 +271,23 @@ these two fields — OpenRouter, OpenAI, Groq, vLLM, LM Studio.
   fails with `ModuleNotFoundError` — silently, from the user's side.  If a
   turn never answers, check the worker first.  This bench runs workers under
   *both* systemd and supervisor; both sets have to be restarted.
+* **So does any change to the app's Python.**  A worker imports the app's
+  modules once, and a process that started before the change keeps the old
+  code.  A *web* worker that has not been restarted will answer a request
+  with the old code while a worker that restarted answers with the new one,
+  and the two behave differently — which reads as a bug in the app and is
+  not one.  It was found the hard way: a transcript that carried a new
+  field on one request and not on the next, and an endpoint that said "that
+  message does not exist" for a message the caller had just been given.
+
+  ```bash
+  sudo systemctl restart frappe-bench-frappe-web \
+    frappe-bench-frappe-default-worker@1 \
+    frappe-bench-frappe-long-worker@1 \
+    frappe-bench-frappe-short-worker@1
+  ```
+
+  `bench build` is not enough: it builds the assets, not the Python.
 * **The site is asserted, never guessed.**  The tool adapter checks the
   Frappe context's site against the one the request was resolved for before
   every call.  `sites/currentsite.txt` names the production site on this
@@ -330,6 +350,7 @@ node albanna/public/js/side-chat/markdown.test.mjs  # the markdown renderer
 node albanna/public/js/side-chat/turn.test.mjs      # the turn transport
 node albanna/public/js/side-chat/state.test.mjs     # the turn's state machine
 node albanna/public/js/side-chat/page.test.mjs      # the Desk's route event
+node albanna/public/js/side-chat/context.test.mjs   # what the widget thinks the page is
 python3 scripts/check_translations.py              # the Arabic catalogue against the code
 ```
 

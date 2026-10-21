@@ -261,6 +261,10 @@ function refresh(message) {
  */
 function messageFromServer(message) {
 	const item = makeMessage(message.role, message.content, message.creation_ts);
+	// The row's own name, so that this message can be addressed: a turn
+	// is removed by naming it, and a name does not shift when the
+	// conversation grows.
+	item.name = message.name || "";
 	item.tools = message.tools || [];
 
 	for (const tool of item.tools) {
@@ -432,6 +436,8 @@ function noticeText(notice) {
 			return __("The conversation was deleted.");
 		case "started":
 			return __("A new conversation was started.");
+		case "removed":
+			return __("The question and its answer were removed.");
 		default:
 			return "";
 	}
@@ -534,6 +540,16 @@ async function send(question) {
 
 		if (result && result.conversation_id) {
 			conversationId.value = result.conversation_id;
+		}
+
+		// The server says which rows it wrote, so that the question and
+		// the answer can be addressed later — a turn the reader wants
+		// gone is removed by naming it.
+		if (result && result.written && result.written.length) {
+			for (const row of result.written) {
+				if (row.role === "user") asked.name = row.name;
+				if (row.role === "assistant") answer.name = row.name;
+			}
 		}
 
 		if (result && result.status === "aborted") {
@@ -723,6 +739,56 @@ async function renameConversation(name, title) {
 	} catch (failure) {
 		state.error = String(
 			(failure && failure.message) || failure || __("Could not rename that conversation."),
+		);
+	}
+}
+
+/**
+ * Remove a turn: the question asked, and the answer that followed it.
+ *
+ * A turn is two rows and they go together — an answer with no question is
+ * not a conversation — so the question is what the reader points at.
+ *
+ * The reader is asked first.  A thread cannot be recovered, and one click
+ * is not a decision.
+ *
+ * @param {object} message the question
+ */
+function removeTurn(message) {
+	if (!message || !message.name) return;
+
+	const question = __("Remove this question and the answer it brought?");
+	const confirm = window.frappe && window.frappe.confirm;
+	if (typeof confirm === "function") {
+		confirm(question, () => deleteTurn(message));
+		return;
+	}
+	if (window.confirm(question)) {
+		deleteTurn(message);
+	}
+}
+
+/**
+ * Remove a turn from the conversation.
+ *
+ * The server answers with the transcript as it is now, because a removal
+ * moves everything after it: the reader should not have to ask twice to
+ * find out what the thread looks like.
+ *
+ * @param {object} message the question
+ */
+async function deleteTurn(message) {
+	try {
+		const result = await call("albanna.api.conversations.delete_turn", {
+			conversation: conversationId.value,
+			message: message.name,
+		});
+		const rows = (result && result.messages) || [];
+		state.messages = rows.map(messageFromServer);
+		state.notice = "removed";
+	} catch (failure) {
+		state.error = String(
+			(failure && failure.message) || failure || __("Something went wrong."),
 		);
 	}
 }
@@ -1162,6 +1228,29 @@ onBeforeUnmount(() => {
 							@click="copyTable(message)"
 						>
 							{{ copiedTableId === message.id ? __("Copied") : __("Copy table") }}
+						</button>
+						<button
+							v-if="message.role === 'user' && message.name"
+							type="button"
+							class="albanna-chat__remove"
+							:aria-label="__('Remove this turn')"
+							:title="__('Remove this turn')"
+							@click="removeTurn(message)"
+						>
+							<svg
+								width="13"
+								height="13"
+								viewBox="0 0 24 24"
+								fill="none"
+								aria-hidden="true"
+							>
+								<path
+									d="M18 6 6 18M6 6l12 12"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+								/>
+							</svg>
 						</button>
 						<span class="albanna-chat__time">{{ message.time }}</span>
 					</div>

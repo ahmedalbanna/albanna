@@ -45,6 +45,7 @@ from frappe.tests.utils import FrappeTestCase
 from albanna.api.conversations import (
     conversation_for_page,
     delete_conversation,
+    delete_turn,
     list_conversations,
     new_conversation,
     open_conversation,
@@ -281,6 +282,173 @@ class TestRateLimit(FrappeTestCase):
         finally:
             for key_user in (first, second):
                 frappe.cache().delete_value(f"albanna:turns:{SURFACE_ASK}:{key_user}")
+
+
+@pytest.mark.integration
+class TestRemovingATurn(FrappeTestCase):
+    """A reader can take a turn out of their own thread.
+
+    The data a person asked about is theirs to erase, and a question that
+    was asked wrongly is a thing they should be able to remove rather than
+    scroll past.  The endpoint is the caller's own: chat access and
+    ownership, the same two gates every other conversation endpoint has.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.owner = "albanna.test.turn.owner@albanna.dev"
+        self.other = "albanna.test.turn.other@albanna.dev"
+        for email in (self.owner, self.other):
+            if not frappe.db.exists("User", email):
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Albanna"
+                user.last_name = "Test"
+                user.flags.ignore_permissions = True
+                user.insert()
+                user.add_roles("Sales User")
+        frappe.db.commit()
+
+        self._original_chat_roles = frappe.db.get_single_value("Albanna Settings", "chat_roles")
+        self._allow_chat()
+
+    def tearDown(self):
+        frappe.db.set_single_value("Albanna Settings", "chat_roles", self._original_chat_roles or "")
+        frappe.db.commit()
+        get_settings(refresh=True)
+        super().tearDown()
+
+    def _allow_chat(self):
+        doc = frappe.get_single("Albanna Settings")
+        doc.chat_roles = "Desk User"
+        doc.flags.ignore_permissions = True
+        doc.save(ignore_permissions=True)
+        frappe.db.commit()
+        get_settings(refresh=True)
+
+    def _as(self, email):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _fresh(self, page: str, user: str = "") -> str:
+        """A conversation on *page*, with nothing in it.
+
+        Each test gets its own page, because a conversation is found by
+        page: a shared page would mean every test appends to the one
+        before it.  And the page is emptied first, because a test that
+        has run before left its turns behind, and a test must not depend
+        on what the last run left.
+        """
+        conversation = ensure_conversation(user or self.owner, page)
+        frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
+        return conversation
+
+    def _thread(self, page: str = ""):
+        """A conversation with two turns."""
+        conversation = self._fresh(page or f"test|turn|{self.id()}|")
+        append_messages(
+            conversation,
+            [
+                {"role": "user", "content": "first question"},
+                {"role": "assistant", "content": "first answer"},
+            ],
+        )
+        append_messages(
+            conversation,
+            [
+                {"role": "user", "content": "second question"},
+                {"role": "assistant", "content": "second answer"},
+            ],
+        )
+        return conversation
+
+    def test_a_turn_is_the_question_and_the_answer_it_brought(self):
+        self._as(self.owner)
+        conversation = self._thread()
+
+        transcript = load_transcript(conversation)
+        names = [row["name"] for row in transcript]
+        self.assertTrue(all(names), "every stored message can be named")
+
+        result = delete_turn(conversation=conversation, message=names[0])
+
+        self.assertEqual(result["removed"], 2)
+        self.assertEqual(
+            [row["content"] for row in result["messages"]],
+            ["second question", "second answer"],
+        )
+
+    def test_naming_the_answer_removes_the_question_too(self):
+        self._as(self.owner)
+        conversation = self._thread()
+
+        transcript = load_transcript(conversation)
+        result = delete_turn(conversation=conversation, message=transcript[1]["name"])
+
+        self.assertEqual(result["removed"], 2)
+        self.assertEqual(
+            [row["content"] for row in result["messages"]],
+            ["second question", "second answer"],
+        )
+
+    def test_the_turn_that_is_left_is_still_a_whole_thread(self):
+        self._as(self.owner)
+        conversation = self._thread()
+
+        transcript = load_transcript(conversation)
+        delete_turn(conversation=conversation, message=transcript[2]["name"])
+
+        remaining = load_transcript(conversation)
+        self.assertEqual(
+            [row["content"] for row in remaining],
+            ["first question", "first answer"],
+        )
+
+    def test_another_user_may_not_remove_a_turn(self):
+        conversation = self._thread()
+        transcript = load_transcript(conversation)
+
+        self._as(self.other)
+        with self.assertRaises(frappe.PermissionError):
+            delete_turn(conversation=conversation, message=transcript[0]["name"])
+
+    def test_a_message_that_is_not_there_is_refused(self):
+        self._as(self.owner)
+        conversation = self._thread()
+
+        with self.assertRaises(frappe.DoesNotExistError):
+            delete_turn(conversation=conversation, message="nothing-at-all")
+
+    def test_a_message_from_another_conversation_is_refused(self):
+        self._as(self.owner)
+        first = self._thread()
+        second = self._fresh(f"test|turn|{self.id()}|other|")
+        append_messages(second, [{"role": "user", "content": "elsewhere"}])
+
+        names = [row["name"] for row in load_transcript(second)]
+
+        with self.assertRaises(frappe.DoesNotExistError):
+            delete_turn(conversation=first, message=names[0])
+
+    def test_the_rows_that_were_written_can_be_named(self):
+        """The turn is told what it wrote, so that it can be addressed."""
+        conversation = self._fresh(f"test|turn|{self.id()}|written|", user="Administrator")
+        written = append_messages(
+            conversation,
+            [
+                {"role": "user", "content": "a question"},
+                {"role": "assistant", "content": "an answer"},
+            ],
+        )
+
+        self.assertEqual(len(written), 2)
+        names = [name for name, _role in written]
+        self.assertEqual(len(set(names)), 2, "the rows have distinct names")
+
+        stored = [row["name"] for row in load_transcript(conversation)]
+        self.assertEqual(stored, names)
 
 
 @pytest.mark.integration

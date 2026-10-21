@@ -130,8 +130,12 @@ def name_after_question(conversation: str, question: str) -> None:
     frappe.db.set_value("Albanna Conversation", conversation, "title", name)
 
 
-def append_messages(conversation: str, rows: list[dict]) -> None:
+def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]]:
     """Append message rows to a conversation.
+
+    Returns the rows it wrote, as ``(name, role)`` pairs, so that the
+    caller can tell the browser what was stored.  A row that can be named
+    is a row that can be addressed later.
 
     Each row is a dict with ``role``, ``content`` and optionally
     ``tool_name``, ``round_no`` and ``tool_calls``.
@@ -144,13 +148,16 @@ def append_messages(conversation: str, rows: list[dict]) -> None:
     contradicts itself.
     """
     if not rows:
-        return
+        return []
 
     now = frappe.utils.now()
     owner = frappe.session.user
     index = _next_index(conversation)
+    written: list[tuple[str, str]] = []
 
     for row in rows:
+        name = frappe.generate_hash(length=10)
+        written.append((name, str(row.get("role") or "assistant")))
         frappe.db.sql(
             """
             insert into `tabAlbanna Message`
@@ -163,7 +170,7 @@ def append_messages(conversation: str, rows: list[dict]) -> None:
                  %s, %s, %s, %s, %s)
             """,
             (
-                frappe.generate_hash(length=10),
+                name,
                 owner,
                 now,
                 now,
@@ -187,6 +194,8 @@ def append_messages(conversation: str, rows: list[dict]) -> None:
         {"last_activity": frappe.utils.now_datetime()},
         update_modified=False,
     )
+
+    return written
 
 
 def _next_index(conversation: str) -> int:
@@ -271,7 +280,7 @@ def load_transcript(conversation: str, limit: int = 200) -> list[dict]:
     """
     rows = frappe.db.sql(
         """
-        select role, content, tool_calls, creation
+        select name, role, content, tool_calls, creation
         from `tabAlbanna Message`
         where parent = %s and parentfield = %s
         order by idx asc
@@ -306,6 +315,10 @@ def load_transcript(conversation: str, limit: int = 200) -> list[dict]:
 
         transcript.append(
             {
+                # The row's own name, so that the widget can address this
+                # message: a turn is removed by naming it, and a name is
+                # stable where an index is not.
+                "name": row.name,
                 "role": role,
                 "content": row.content or "",
                 "tools": tools,
@@ -443,6 +456,68 @@ def assert_owns(conversation: str, user: str) -> str:
             frappe.PermissionError,
         )
     return conversation
+
+
+def delete_turn(conversation: str, message: str) -> int:
+    """Delete a turn: the question asked, and the answer that followed it.
+
+    A turn is two rows — the question and the answer — and a reader who has
+    been told something wrong, or who asked the wrong question, wants it
+    gone rather than buried under the turns that came after it.  Asking
+    the assistant to forget is not a thing it can do: the thread is what
+    the model reads, so the row has to go.
+
+    Either row of the turn may be named.  Naming the answer removes the
+    question that led to it, because a turn is removed whole — an answer
+    with no question is not a conversation.
+
+    Returns the number of rows removed.
+    """
+    row = frappe.db.sql(
+        """
+        select name, role from `tabAlbanna Message`
+        where name = %s and parent = %s and parentfield = %s
+        """,
+        (message, conversation, PARENT_FIELD),
+        as_dict=True,
+    )
+    if not row:
+        frappe.throw(_("That message does not exist."), frappe.DoesNotExistError)
+
+    row = row[0]
+    if row.role == "user":
+        # The answer is the assistant row that came after it.
+        partner = frappe.db.sql(
+            """
+            select name from `tabAlbanna Message`
+            where parent = %s and parentfield = %s and role = 'assistant'
+              and idx > (
+                select idx from `tabAlbanna Message` where name = %s
+              )
+            order by idx asc limit 1
+            """,
+            (conversation, PARENT_FIELD, row.name),
+        )
+    else:
+        # The question is the user row that came before it.
+        partner = frappe.db.sql(
+            """
+            select name from `tabAlbanna Message`
+            where parent = %s and parentfield = %s and role = 'user'
+              and idx < (
+                select idx from `tabAlbanna Message` where name = %s
+              )
+            order by idx desc limit 1
+            """,
+            (conversation, PARENT_FIELD, row.name),
+        )
+
+    names = [row.name] + [item[0] for item in partner]
+    frappe.db.sql(
+        "delete from `tabAlbanna Message` where name in %(names)s",
+        {"names": tuple(names)},
+    )
+    return len(names)
 
 
 def rename_conversation(conversation: str, title: str) -> None:

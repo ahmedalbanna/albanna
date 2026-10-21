@@ -322,3 +322,16 @@ msgstr "تعذّر نسخ الجدول."
 
 msgid "You moved to another page, so the turn was stopped."
 msgstr "انتقلت إلى صفحة أخرى، لذلك أُوقف الدور."
+
+
+msgid "Remove this question and the answer it brought?"
+msgstr "هل تريد إزالة هذا السؤال والإجابة التي جاء بها؟"
+
+msgid "Remove this turn"
+msgstr "إزالة هذه المحادثة"
+
+msgid "That message does not exist."
+msgstr "هذه الرسالة غير موجودة."
+
+msgid "The question and its answer were removed."
+msgstr "أُزيل السؤال وإجابته."
