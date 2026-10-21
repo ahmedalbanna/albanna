@@ -11,6 +11,7 @@
   "provider_kind",
   "base_url",
   "model",
+  "extra_options",
   "api_key",
   "test_provider",
   "column_break_provider",
@@ -77,6 +78,12 @@
    "fieldtype": "Data",
    "label": "Model",
    "default": "MiniMax-M3.1-Flash"
+  },
+  {
+   "fieldname": "extra_options",
+   "fieldtype": "Small Text",
+   "label": "Extra Options",
+   "description": "Options for the provider that the app has no field for, as a JSON object — for example {\"setCacheKey\": \"True\"}. They are added to the request the app sends. A string that spells true or false becomes the boolean it means; the app's own settings are never overwritten by them."
   },
   {
    "description": "The provider's API key. Stored encrypted; it is never sent to the browser and never written to a log.",

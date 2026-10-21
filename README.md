@@ -92,6 +92,9 @@ Anthropic.  It has no other runtime dependency.
   direction, and the whole Desk in Arabic is a first-class case rather than
   an afterthought — the widget sits on the reading end of the screen, so it
   never covers the text being read.
+* **The provider's own options, in the operator's hands.** Options the
+  app has no field for — a cache key, a vendor's own flag — are written
+  as JSON in the settings and added to the request the app sends.
 * **A ledger the operator can read.** Every turn is recorded — the model,
   the tokens, the cost, whether it worked — and the settings page sums
   the month: the turns, the tokens, the cost, and where they went, by

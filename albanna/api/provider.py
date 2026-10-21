@@ -65,6 +65,11 @@ def test_provider(
         # timeout that is not a number.
         timeout=_seconds(timeout, settings.timeout),
         temperature=0.0,
+        # The operator's extra options travel with the test, so that the
+        # test is the request the app would really send — an option that
+        # the provider refuses has to be found by the button and not by
+        # the reader.
+        extra_options=settings.extra_options,
     )
 
     if not config.kind:

@@ -47,7 +47,7 @@ def test_a_402_naming_a_budget_is_a_budget_error(monkeypatch):
             status_code=402,
         )
 
-    monkeypatch.setattr("albanna.providers.openai.requests.post", fake_post)
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
 
     import pytest
 
@@ -64,7 +64,7 @@ def test_a_402_without_a_number_is_an_ordinary_refusal(monkeypatch):
     def fake_post(*args, **kwargs):
         return FakeResponse(payload={"error": {"message": "Payment required"}}, status_code=402)
 
-    monkeypatch.setattr("albanna.providers.openai.requests.post", fake_post)
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
 
     import pytest
 

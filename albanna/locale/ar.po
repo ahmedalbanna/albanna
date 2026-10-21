@@ -745,3 +745,16 @@ msgstr "ما أبلغ عنه المزوّد، بعملة المزوّد نفسه
 
 msgid "What the turn cost, in this site's currency: the tokens it used, priced with the site's own price per million tokens."
 msgstr "ما كلّفه الدور، بعملة هذا الموقع: الرموز التي استعملها، مسعّرة بسعر المليون رمز في الموقع."
+
+
+msgid "Extra Options"
+msgstr "خيارات إضافية"
+
+msgid "Options for the provider that the app has no field for, as a JSON object — for example {"setCacheKey": "True"}. They are added to the request the app sends. A string that spells true or false becomes the boolean it means; the app's own settings are never overwritten by them."
+msgstr "خيارات المزوّد التي لا يملك التطبيق لها حقلاً، على صورة كائن JSON — مثل {"setCacheKey": "True"}. تُضاف إلى الطلب الذي يرسله التطبيق. والنصّ الذي يرمز إلى صح أو خطأ يتحوّل إلى المنطقي الذي يعنيه؛ وإعدادات التطبيق الخاصة لا تُستبدل بها أبداً."
+
+msgid "These are not valid options: {0}"
+msgstr "هذه ليست خيارات صالحة: {0}"
+
+msgid "The options must be a JSON object, such as {"setCacheKey": "True"}."
+msgstr "يجب أن تكون الخيارات كائن JSON، مثل {"setCacheKey": "True"}."

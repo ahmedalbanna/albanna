@@ -12,7 +12,7 @@ the shape and tested against a stub.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from albanna.core.messages import Message
@@ -38,6 +38,9 @@ class ProviderConfig:
     timeout: int = 120
     temperature: float = 0.2
     supports_tools: bool = True
+    #: The operator's extra options — the ones the app has no field for.
+    #: They are added to the request body; see :mod:`albanna.core.options`.
+    extra_options: dict[str, Any] = field(default_factory=dict)
 
     @property
     def usable(self) -> bool:

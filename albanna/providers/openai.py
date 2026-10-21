@@ -32,6 +32,7 @@ from albanna.core.errors import (
     ProviderUnreachable,
 )
 from albanna.core.messages import Message, ToolCall
+from albanna.core.options import merge_options
 from albanna.core.tools import ToolSpec
 from albanna.providers.base import (
     Completion,
@@ -40,6 +41,7 @@ from albanna.providers.base import (
     StreamDone,
     Usage,
 )
+from albanna.providers.http import post
 
 logger = logging.getLogger(__name__)
 
@@ -108,54 +110,62 @@ class OpenAIProvider:
         payload = self._payload(config, messages, tools, stream=True)
         response = self._open_stream(config, payload)
 
-        chunks: list[str] = []
-        tool_calls: dict[int, dict[str, Any]] = {}
-        model = config.model
-        usage: Usage | None = None
+        try:
+            chunks: list[str] = []
+            tool_calls: dict[int, dict[str, Any]] = {}
+            model = config.model
+            usage: Usage | None = None
 
-        for event in self._read_events(response):
-            model = str(event.get("model") or model)
+            for event in self._read_events(response):
+                model = str(event.get("model") or model)
 
-            # The final chunk carries the usage, but only when the request
-            # asked for it.  Without this the ledger records a turn that
-            # cost nothing, which is worse than no ledger at all.
-            chunk_usage = self._parse_usage(event.get("usage"))
-            if chunk_usage is not None:
-                usage = chunk_usage
+                # The final chunk carries the usage, but only when the request
+                # asked for it.  Without this the ledger records a turn that
+                # cost nothing, which is worse than no ledger at all.
+                chunk_usage = self._parse_usage(event.get("usage"))
+                if chunk_usage is not None:
+                    usage = chunk_usage
 
-            for choice in event.get("choices") or []:
-                delta = choice.get("delta") or {}
-                text = delta.get("content")
-                if isinstance(text, str) and text:
-                    chunks.append(text)
-                    yield StreamDelta(text=text)
-                for call in delta.get("tool_calls") or []:
-                    self._merge_tool_call(tool_calls, call)
+                for choice in event.get("choices") or []:
+                    delta = choice.get("delta") or {}
+                    text = delta.get("content")
+                    if isinstance(text, str) and text:
+                        chunks.append(text)
+                        yield StreamDelta(text=text)
+                    for call in delta.get("tool_calls") or []:
+                        self._merge_tool_call(tool_calls, call)
 
-        calls = tuple(
-            ToolCall.from_wire({"id": data.get("id"), "function": data.get("function") or {}})
-            for _, data in sorted(tool_calls.items())
-            if (data.get("function") or {}).get("name")
-        )
-        content = "".join(chunks)
-        message = Message(role="assistant", content=content, tool_calls=calls)
-
-        if usage is None:
-            usage = self._estimate_usage(messages, content)
-
-        yield StreamDone(
-            completion=Completion(
-                message=message,
-                provider=config.kind,
-                model=model,
-                usage=usage,
+            calls = tuple(
+                ToolCall.from_wire({"id": data.get("id"), "function": data.get("function") or {}})
+                for _, data in sorted(tool_calls.items())
+                if (data.get("function") or {}).get("name")
             )
-        )
+            content = "".join(chunks)
+            message = Message(role="assistant", content=content, tool_calls=calls)
 
+            if usage is None:
+                usage = self._estimate_usage(messages, content)
+
+            yield StreamDone(
+                completion=Completion(
+                    message=message,
+                    provider=config.kind,
+                    model=model,
+                    usage=usage,
+                )
+            )
+        finally:
+            # The connection belongs to the pool only once the
+            # response is closed.  A streamed response that is
+            # not closed holds its socket, and the next call
+            # opens another one — and the reader may walk away
+            # at any moment, so the closing cannot be left to a
+            # generator that nobody collects.
+            response.close()
     def _open_stream(self, config: ProviderConfig, payload: dict[str, Any]) -> requests.Response:
         """Open the streaming request, mapping transport failures to errors."""
         try:
-            response = requests.post(
+            response = post(
                 self._url(config),
                 headers=self._headers(config),
                 json=payload,
@@ -224,7 +234,11 @@ class OpenAIProvider:
             payload["stream_options"] = {"include_usage": True}
         if tools and config.supports_tools:
             payload["tools"] = [spec.to_wire() for spec in tools]
-        return payload
+
+        # The operator's extra options — the ones the app has no field
+        # for — go in the body, where the provider reads them.  The app's
+        # own keys win, so they cannot be overwritten from here.
+        return merge_options(payload, config.extra_options)
 
     def _url(self, config: ProviderConfig) -> str:
         base = (config.base_url or DEFAULT_BASE_URL).rstrip("/")
@@ -240,7 +254,7 @@ class OpenAIProvider:
 
     def _post(self, config: ProviderConfig, payload: dict[str, Any]) -> dict[str, Any]:
         try:
-            response = requests.post(
+            response = post(
                 self._url(config),
                 headers=self._headers(config),
                 json=payload,

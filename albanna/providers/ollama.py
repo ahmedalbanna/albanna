@@ -32,6 +32,7 @@ from albanna.core.errors import (
     ProviderUnreachable,
 )
 from albanna.core.messages import Message, ToolCall
+from albanna.core.options import merge_options
 from albanna.core.tools import ToolSpec
 from albanna.providers.base import (
     Completion,
@@ -40,6 +41,7 @@ from albanna.providers.base import (
     StreamDone,
     Usage,
 )
+from albanna.providers.http import post
 
 logger = logging.getLogger(__name__)
 
@@ -80,41 +82,49 @@ class OllamaProvider:
         payload = self._payload(config, messages, tools, stream=True)
         response = self._open_stream(config, payload)
 
-        chunks: list[str] = []
-        calls: list[ToolCall] = []
-        model = config.model
-        usage: Usage | None = None
+        try:
+            chunks: list[str] = []
+            calls: list[ToolCall] = []
+            model = config.model
+            usage: Usage | None = None
 
-        for event in self._read_events(response):
-            model = str(event.get("model") or model)
-            parsed_usage = self._parse_usage(event)
-            if parsed_usage is not None:
-                usage = parsed_usage
+            for event in self._read_events(response):
+                model = str(event.get("model") or model)
+                parsed_usage = self._parse_usage(event)
+                if parsed_usage is not None:
+                    usage = parsed_usage
 
-            message = event.get("message") or {}
-            text = message.get("content")
-            if isinstance(text, str) and text:
-                chunks.append(text)
-                yield StreamDelta(text=text)
+                message = event.get("message") or {}
+                text = message.get("content")
+                if isinstance(text, str) and text:
+                    chunks.append(text)
+                    yield StreamDelta(text=text)
 
-            for call in message.get("tool_calls") or []:
-                parsed = self._parse_tool_call(call)
-                if parsed is not None:
-                    calls.append(parsed)
+                for call in message.get("tool_calls") or []:
+                    parsed = self._parse_tool_call(call)
+                    if parsed is not None:
+                        calls.append(parsed)
 
-        yield StreamDone(
-            completion=Completion(
-                message=Message(role="assistant", content="".join(chunks), tool_calls=tuple(calls)),
-                provider=config.kind,
-                model=model,
-                usage=usage,
+            yield StreamDone(
+                completion=Completion(
+                    message=Message(role="assistant", content="".join(chunks), tool_calls=tuple(calls)),
+                    provider=config.kind,
+                    model=model,
+                    usage=usage,
+                )
             )
-        )
-
+        finally:
+            # The connection belongs to the pool only once the
+            # response is closed.  A streamed response that is
+            # not closed holds its socket, and the next call
+            # opens another one — and the reader may walk away
+            # at any moment, so the closing cannot be left to a
+            # generator that nobody collects.
+            response.close()
     def _open_stream(self, config: ProviderConfig, payload: dict[str, Any]) -> requests.Response:
         """Open the streaming request, mapping transport failures to errors."""
         try:
-            response = requests.post(
+            response = post(
                 self._url(config),
                 json=payload,
                 timeout=config.timeout,
@@ -178,7 +188,11 @@ class OllamaProvider:
                 }
                 for spec in tools
             ]
-        return payload
+
+        # The operator's extra options — the ones the app has no field
+        # for — go in the body, where the provider reads them.  The app's
+        # own keys win, so they cannot be overwritten from here.
+        return merge_options(payload, config.extra_options)
 
     def _to_ollama(self, message: Message) -> dict[str, Any]:
         payload: dict[str, Any] = {"role": message.role, "content": message.content}
@@ -202,7 +216,7 @@ class OllamaProvider:
 
     def _post(self, config: ProviderConfig, payload: dict[str, Any]) -> dict[str, Any]:
         try:
-            response = requests.post(self._url(config), json=payload, timeout=config.timeout)
+            response = post(self._url(config), json=payload, timeout=config.timeout)
         except requests.exceptions.Timeout as exc:
             raise ProviderTimeout(f"{config.label} timed out.", provider=config.label) from exc
         except requests.exceptions.RequestException as exc:

@@ -22,6 +22,7 @@ class AlbannaSettings(Document):
     def validate(self):
         self._enforce_one_key()
         self._enforce_real_roles()
+        self._enforce_valid_options()
 
     def on_update(self):
         self._store_secret("api_key", self.api_key)
@@ -87,7 +88,41 @@ class AlbannaSettings(Document):
             frappe.throw(
                 frappe._("These are not roles: {0}").format(", ".join(missing)),
                 frappe.ValidationError,
-                title=label,
+                title=frappe._(label),
+            )
+
+    def _enforce_valid_options(self):
+        """Refuse options that are not a JSON object.
+
+        The field is free text and the operator types JSON into it.  A
+        typo — a missing comma, a trailing comma — would be ignored
+        silently, and the option the operator wanted would simply not be
+        there, with nothing anywhere saying why.
+
+        So the save is where it is caught, and the error says what is
+        wrong with the text rather than that the text is wrong.
+        """
+        import json
+
+        raw = str(self.get("extra_options") or "").strip()
+        if not raw:
+            return
+
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, ValueError) as exc:
+            frappe.throw(
+                frappe._("These are not valid options: {0}").format(str(exc)),
+                frappe.ValidationError,
+                title=frappe._("Extra Options"),
+            )
+            return
+
+        if not isinstance(parsed, dict):
+            frappe.throw(
+                frappe._('The options must be a JSON object, such as {"setCacheKey": "True"}.'),
+                frappe.ValidationError,
+                title=frappe._("Extra Options"),
             )
 
     def _store_secret(self, fieldname: str, value: str | None):

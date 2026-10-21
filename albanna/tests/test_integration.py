@@ -1419,3 +1419,40 @@ class TestTheCostOfATurn(FrappeTestCase):
         self.assertEqual(row.cost, 3.0, "a million tokens at three riyals")
         self.assertEqual(row.provider_cost, 0.25, "and the provider's number beside it")
         self.assertEqual(row.input_tokens, 500_000)
+
+
+@pytest.mark.integration
+class TestTheSettingsRefuseNonsense(FrappeTestCase):
+    """The settings are free text, and a typo in them is caught.
+
+    The role fields and the extra options are typed by hand.  A name
+    that is not a role is ignored silently, and JSON that is not JSON
+    would be ignored silently too — leaving the operator with an option
+    that is simply not there, and nothing anywhere saying why.
+    """
+
+    def _validate(self, options):
+        doc = frappe.get_single("Albanna Settings")
+        doc.extra_options = options
+        doc.validate()
+
+    def test_options_that_are_not_json_are_refused(self):
+        with self.assertRaises(frappe.ValidationError):
+            self._validate('{"setCacheKey": "True",}')
+
+    def test_options_that_are_not_an_object_are_refused(self):
+        with self.assertRaises(frappe.ValidationError):
+            self._validate('["setCacheKey"]')
+
+    def test_options_that_are_json_are_accepted(self):
+        self._validate('{"setCacheKey": "True"}')
+        self._validate("")
+
+    def test_the_parsed_options_reach_the_provider(self):
+        from albanna.core.options import parse_options
+
+        self.assertEqual(
+            parse_options('{"setCacheKey": "True"}'),
+            {"setCacheKey": True},
+            "a string that spells a boolean is the boolean it means",
+        )

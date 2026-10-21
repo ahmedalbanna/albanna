@@ -637,7 +637,68 @@ that reads as "free" is a lie the ledger would tell.
 The provider's own number is not thrown away: it is recorded beside the
 site's, in its own column, for whoever reconciles the two.
 
-### 41. The reader is shown an error they can read
+### 41. The providers share one connection
+
+Every call to a provider used to open its own connection: a new socket, a
+new TLS handshake, and a connection thrown away as soon as the answer had
+been read.  A turn asks the provider several times — once per tool round —
+so one turn paid for several handshakes to say the same thing to the same
+host.
+
+So the providers share one session, and the session keeps its connections
+alive between calls.  The provider sees one connection from this host for
+a whole turn instead of one per call.
+
+**The session is per thread, not per process.**  `requests` does not
+promise that a session may be used from two threads at once, and a
+gunicorn worker runs many requests at the same time.  One session per
+thread keeps each thread's connections to itself — and a thread's calls
+to the provider, which is what a turn is, are the calls that reuse the
+connection.
+
+**The retry policy is unchanged.**  urllib3 discards a connection that
+broke and fails the request; with a shared session that can happen where
+it could not before, because the provider closed an idle connection and
+the client did not notice.  The chat service already retries a transient
+provider failure once, on a fresh connection, so the turn recovers — and
+the adapter keeps urllib3's default of *no* retries, so a request that
+cannot connect still fails at once, as it does now, and a connect timeout
+is still one timeout rather than two.
+
+**A streamed response is closed by the generator that owns it.**  A
+connection belongs to the pool only once the response is closed, and a
+streamed response that is not closed holds its socket — so the next call
+opens another one, and the sharing is undone.  The closing cannot be left
+to a nested generator either: its `finally` runs when the garbage
+collector gets to it, which is not soon enough for a socket that should
+be back in the pool now.
+
+### 43. The operator's extra options go in the request
+
+Some providers take options the app knows nothing about — a cache key, a
+vendor's own flag.  The operator writes them as JSON, and they are added
+to the request body, where the provider reads them.  The app has no field
+for them, and it does not need one: they are the provider's, not the
+app's.
+
+Two rules, and both of them are about not surprising the operator.
+
+**A value that spells a boolean is a boolean.**  A provider's own
+configuration for an OpenAI-compatible endpoint writes `"True"` — a
+string — where it means the boolean, and the SDK that reads it parses it
+into one.  So the app parses it too.
+
+**The app's own keys win.**  The extra options are *extra*: they fill the
+gaps the app has no field for.  What the app has a field for — the
+model, the temperature, the token ceiling — is the operator's too, and
+was written with a purpose.
+
+And the options are refused at save time when they are not a JSON
+object, because a typo in them would otherwise be ignored silently: the
+option the operator wanted would simply not be there, with nothing
+anywhere saying why.
+
+### 44. The reader is shown an error they can read
 
 A provider that answers in anything but Latin-1 — a Chinese error, an em
 dash — used to arrive as mojibake, because the error path read the body

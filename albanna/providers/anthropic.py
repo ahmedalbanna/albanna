@@ -35,6 +35,7 @@ from albanna.core.errors import (
     ProviderUnreachable,
 )
 from albanna.core.messages import Message, ToolCall
+from albanna.core.options import merge_options
 from albanna.core.tools import ToolSpec
 from albanna.providers.base import (
     Completion,
@@ -43,6 +44,7 @@ from albanna.providers.base import (
     StreamDone,
     Usage,
 )
+from albanna.providers.http import post
 
 logger = logging.getLogger(__name__)
 
@@ -84,44 +86,52 @@ class AnthropicProvider:
         payload = self._payload(config, messages, tools, stream=True)
         response = self._open_stream(config, payload)
 
-        chunks: list[str] = []
-        partial_calls: dict[int, dict[str, Any]] = {}
-        usage: Usage | None = None
-        model = config.model
+        try:
+            chunks: list[str] = []
+            partial_calls: dict[int, dict[str, Any]] = {}
+            usage: Usage | None = None
+            model = config.model
 
-        for event in self._read_events(response):
-            kind = event.get("type")
-            if kind == "message_start":
-                model, usage = self._on_message_start(event, model, usage)
-            elif kind == "content_block_start":
-                self._on_block_start(event, partial_calls)
-            elif kind == "content_block_delta":
-                text = self._on_block_delta(event, partial_calls)
-                if text:
-                    chunks.append(text)
-                    yield StreamDelta(text=text)
-            elif kind == "message_delta":
-                usage = self._parse_usage(event.get("usage")) or usage
+            for event in self._read_events(response):
+                kind = event.get("type")
+                if kind == "message_start":
+                    model, usage = self._on_message_start(event, model, usage)
+                elif kind == "content_block_start":
+                    self._on_block_start(event, partial_calls)
+                elif kind == "content_block_delta":
+                    text = self._on_block_delta(event, partial_calls)
+                    if text:
+                        chunks.append(text)
+                        yield StreamDelta(text=text)
+                elif kind == "message_delta":
+                    usage = self._parse_usage(event.get("usage")) or usage
 
-        calls = self._build_calls(partial_calls)
-        content = "".join(chunks)
-        message = Message(role="assistant", content=content, tool_calls=calls)
+            calls = self._build_calls(partial_calls)
+            content = "".join(chunks)
+            message = Message(role="assistant", content=content, tool_calls=calls)
 
-        yield StreamDone(
-            completion=Completion(
-                message=message,
-                provider=config.kind,
-                model=model,
-                usage=usage,
+            yield StreamDone(
+                completion=Completion(
+                    message=message,
+                    provider=config.kind,
+                    model=model,
+                    usage=usage,
+                )
             )
-        )
 
-    # -- the stream, in pieces -------------------------------------------
-
+        # -- the stream, in pieces -------------------------------------------
+        finally:
+            # The connection belongs to the pool only once the
+            # response is closed.  A streamed response that is
+            # not closed holds its socket, and the next call
+            # opens another one — and the reader may walk away
+            # at any moment, so the closing cannot be left to a
+            # generator that nobody collects.
+            response.close()
     def _open_stream(self, config: ProviderConfig, payload: dict[str, Any]) -> requests.Response:
         """Open the streaming request, mapping transport failures to errors."""
         try:
-            response = requests.post(
+            response = post(
                 self._url(config),
                 headers=self._headers(config),
                 json=payload,
@@ -249,7 +259,11 @@ class AnthropicProvider:
                 }
                 for spec in tools
             ]
-        return payload
+
+        # The operator's extra options — the ones the app has no field
+        # for — go in the body, where the provider reads them.  The app's
+        # own keys win, so they cannot be overwritten from here.
+        return merge_options(payload, config.extra_options)
 
     def _split_system(self, messages: list[Message]) -> tuple[str, list[dict[str, Any]]]:
         """Split the system prompt out and build Anthropic's turn list."""
@@ -337,7 +351,7 @@ class AnthropicProvider:
 
     def _post(self, config: ProviderConfig, payload: dict[str, Any]) -> dict[str, Any]:
         try:
-            response = requests.post(
+            response = post(
                 self._url(config),
                 headers=self._headers(config),
                 json=payload,

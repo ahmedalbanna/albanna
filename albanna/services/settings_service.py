@@ -14,10 +14,12 @@ document and the audit trail that records the *provider*, never the key.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 import frappe
 
+from albanna.core.options import parse_options
 from albanna.providers.base import ProviderConfig, default_base_url
 
 #: Where the memoised settings live between calls in one request.
@@ -45,6 +47,9 @@ class AppSettings:
     #: What a million tokens cost, in this site's currency.  Zero means
     #: the cost is not known — see :mod:`albanna.core.cost`.
     price_per_million: float = 0.0
+    #: The operator's extra options for the provider — the ones the app
+    #: has no field for.  See :mod:`albanna.core.options`.
+    extra_options: dict[str, Any] = field(default_factory=dict)
 
 
 def get_settings(refresh: bool = False) -> AppSettings:
@@ -62,6 +67,12 @@ def get_settings(refresh: bool = False) -> AppSettings:
 def _build() -> AppSettings:
     doc = frappe.get_single("Albanna Settings")
 
+    # The two fields that were added last are read through `getattr`, and
+    # not directly.  The settings are read on *every* request — the chat
+    # gate reads them — so a column that has not been migrated yet would
+    # take the whole site down rather than one feature.  A missing
+    # optional setting is worth no more than its default.
+
     kind = str(doc.provider_kind or "openai").strip() or "openai"
     provider = ProviderConfig(
         kind=kind,
@@ -76,6 +87,7 @@ def _build() -> AppSettings:
         max_tokens=_int(doc.max_tokens, 8192),
         timeout=_int(doc.timeout, 120),
         temperature=_float(doc.temperature, 0.2),
+        extra_options=parse_options(getattr(doc, "extra_options", "")),
     )
 
     fallback: ProviderConfig | None = None
@@ -109,7 +121,10 @@ def _build() -> AppSettings:
         # What a million tokens cost the operator, in their own currency.
         # Zero means the cost is not known, and a zero that reads as
         # "free" is a lie the ledger would tell.
-        price_per_million=_float(doc.price_per_million, 0.0),
+        price_per_million=_float(getattr(doc, "price_per_million", 0), 0.0),
+        # The operator's extra options: the ones the app has no field
+        # for, which are added to the request the provider receives.
+        extra_options=parse_options(getattr(doc, "extra_options", "")),
     )
 
 

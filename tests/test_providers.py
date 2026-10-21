@@ -40,6 +40,9 @@ class FakeResponse:
         # `requests` sets this on a real response; the fake needs it too, so
         # that the code under test has something to set.
         self.encoding = None
+        # Whether the provider closed it — a streamed response that is not
+        # closed holds its connection.
+        self.closed = False
 
     def json(self):
         if self._payload is None:
@@ -48,6 +51,10 @@ class FakeResponse:
 
     def iter_lines(self, decode_unicode=False):
         return iter(self._lines)
+
+    def close(self):
+        """A real response releases its connection when it is closed."""
+        self.closed = True
 
 
 @pytest.fixture
@@ -86,7 +93,7 @@ def test_an_error_body_is_decoded_as_utf_8(tools, monkeypatch):
         captured.update(kwargs)
         return response
 
-    monkeypatch.setattr("albanna.providers.openai.requests.post", fake_post)
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
 
     with pytest.raises(Exception) as caught:
         provider.complete(OPENAI_CONFIG, [user("hello")], tools)
@@ -107,7 +114,7 @@ def test_the_openai_payload_is_the_canonical_format(tools, monkeypatch):
             payload={"choices": [{"message": {"role": "assistant", "content": "hi"}}], "model": "m"}
         )
 
-    monkeypatch.setattr("albanna.providers.openai.requests.post", fake_post)
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
 
     OpenAIProvider().complete(
         OPENAI_CONFIG,
@@ -150,7 +157,7 @@ def test_the_openai_response_is_parsed_into_the_canonical_format(monkeypatch):
             }
         )
 
-    monkeypatch.setattr("albanna.providers.openai.requests.post", fake_post)
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
 
     completion = OpenAIProvider().complete(OPENAI_CONFIG, [user("u")], [])
     assert completion.message.tool_calls[0].name == "list_docs"
@@ -163,7 +170,7 @@ def test_a_rate_limit_is_transient_and_a_refused_key_is_not(monkeypatch):
     def rate_limited(*args, **kwargs):
         return FakeResponse(payload={"error": {"message": "slow down"}}, status_code=429)
 
-    monkeypatch.setattr("albanna.providers.openai.requests.post", rate_limited)
+    monkeypatch.setattr("albanna.providers.openai.post", rate_limited)
     with pytest.raises(ProviderRejected) as caught:
         OpenAIProvider().complete(OPENAI_CONFIG, [user("u")], [])
     assert caught.value.transient is True
@@ -172,7 +179,7 @@ def test_a_rate_limit_is_transient_and_a_refused_key_is_not(monkeypatch):
     def refused(*args, **kwargs):
         return FakeResponse(payload={"error": {"message": "no key"}}, status_code=401)
 
-    monkeypatch.setattr("albanna.providers.openai.requests.post", refused)
+    monkeypatch.setattr("albanna.providers.openai.post", refused)
     with pytest.raises(ProviderRejected) as caught:
         OpenAIProvider().complete(OPENAI_CONFIG, [user("u")], [])
     assert caught.value.transient is False
@@ -184,14 +191,14 @@ def test_a_timeout_is_a_timeout_and_an_unreachable_host_is_not_a_timeout(monkeyp
     def timed_out(*args, **kwargs):
         raise requests.exceptions.Timeout("too slow")
 
-    monkeypatch.setattr("albanna.providers.openai.requests.post", timed_out)
+    monkeypatch.setattr("albanna.providers.openai.post", timed_out)
     with pytest.raises(ProviderTimeout):
         OpenAIProvider().complete(OPENAI_CONFIG, [user("u")], [])
 
     def refused(*args, **kwargs):
         raise requests.exceptions.ConnectionError("no route")
 
-    monkeypatch.setattr("albanna.providers.openai.requests.post", refused)
+    monkeypatch.setattr("albanna.providers.openai.post", refused)
     with pytest.raises(ProviderUnreachable):
         OpenAIProvider().complete(OPENAI_CONFIG, [user("u")], [])
 
@@ -208,7 +215,7 @@ def test_the_openai_stream_assembles_a_tool_call(monkeypatch):
     def fake_post(*args, **kwargs):
         return FakeResponse(lines=lines)
 
-    monkeypatch.setattr("albanna.providers.openai.requests.post", fake_post)
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
 
     events = list(OpenAIProvider().stream(OPENAI_CONFIG, [user("u")], []))
     deltas = [event for event in events if hasattr(event, "text")]
@@ -233,7 +240,7 @@ def test_a_stream_without_usage_is_estimated_rather_than_recorded_as_zero(monkey
     def fake_post(*args, **kwargs):
         return FakeResponse(lines=lines)
 
-    monkeypatch.setattr("albanna.providers.openai.requests.post", fake_post)
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
 
     events = list(OpenAIProvider().stream(OPENAI_CONFIG, [user("u")], []))
     usage = events[-1].completion.usage
@@ -317,3 +324,102 @@ def test_the_fallback_chain_only_includes_usable_providers():
 
     config = LLMConfig(primary=unusable, fallback=unusable)
     assert config.chain() == []
+
+
+def test_a_streamed_response_is_closed(monkeypatch):
+    """A connection belongs to the pool only once the response is closed.
+
+    A streamed response that is not closed holds its socket, and the next
+    call to the provider opens another one — which would undo the point
+    of the shared session.
+    """
+    lines = [
+        'data: {"model":"m","choices":[{"delta":{"content":"done"}}]}',
+        "data: [DONE]",
+    ]
+    response = FakeResponse(lines=lines)
+
+    def fake_post(*args, **kwargs):
+        return response
+
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
+
+    list(OpenAIProvider().stream(OPENAI_CONFIG, [user("u")], []))
+
+    assert response.closed, "the streamed response must be closed"
+
+
+def test_a_stream_the_reader_walks_away_from_is_closed(monkeypatch):
+    """The reader may stop reading — the turn is aborted, the provider
+    misbehaves — and the socket must not be left open for it."""
+    lines = [
+        'data: {"model":"m","choices":[{"delta":{"content":"one"}}]}',
+        'data: {"model":"m","choices":[{"delta":{"content":"two"}}]}',
+    ]
+    response = FakeResponse(lines=lines)
+
+    def fake_post(*args, **kwargs):
+        return response
+
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
+
+    stream = OpenAIProvider().stream(OPENAI_CONFIG, [user("u")], [])
+    next(stream)
+    stream.close()
+
+    assert response.closed, "a response nobody reads to the end must still be closed"
+
+
+def test_the_operators_extra_options_go_in_the_request(tools, monkeypatch):
+    """Options the app has no field for are added to the body, where the
+    provider reads them — a cache key, a vendor's own flag."""
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None, stream=False):
+        captured.update({"payload": json})
+        return FakeResponse(
+            payload={"choices": [{"message": {"role": "assistant", "content": "hi"}}], "model": "m"}
+        )
+
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
+
+    config = ProviderConfig(
+        kind="openai",
+        base_url="https://example.test/api/v1",
+        model="test-model",
+        api_key="sk-test",
+        extra_options={"setCacheKey": True},
+    )
+
+    OpenAIProvider().complete(config, [user("u")], tools)
+
+    assert captured["payload"]["setCacheKey"] is True
+
+
+def test_the_apps_own_settings_are_not_overwritten_by_the_options(tools, monkeypatch):
+    """The options are *extra*: what the app has a field for was written
+    on purpose."""
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None, stream=False):
+        captured.update({"payload": json})
+        return FakeResponse(
+            payload={"choices": [{"message": {"role": "assistant", "content": "hi"}}], "model": "m"}
+        )
+
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
+
+    config = ProviderConfig(
+        kind="openai",
+        base_url="https://example.test/api/v1",
+        model="test-model",
+        api_key="sk-test",
+        temperature=0.2,
+        extra_options={"model": "another-model", "temperature": 1.5},
+    )
+
+    OpenAIProvider().complete(config, [user("u")], tools)
+
+    payload = captured["payload"]
+    assert payload["model"] == "test-model"
+    assert payload["temperature"] == 0.2
