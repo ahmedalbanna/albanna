@@ -22,6 +22,7 @@
   "input_tokens",
   "output_tokens",
   "cost",
+  "provider_cost",
   "estimated",
   "column_break_tokens",
   "error_class",
@@ -124,11 +125,19 @@
    "read_only": 1
   },
   {
-   "description": "What the turn cost, in the provider's own currency.",
+   "description": "What the turn cost, in this site's currency: the tokens it used, priced with the site's own price per million tokens.",
    "fieldname": "cost",
    "fieldtype": "Currency",
    "label": "Cost",
    "read_only": 1
+  },
+  {
+   "fieldname": "provider_cost",
+   "fieldtype": "Float",
+   "label": "Provider Cost",
+   "description": "What the provider reported, in the provider's own currency. Zero when the provider reported no price, which is most of them.",
+   "read_only": 1,
+   "precision": "8"
   },
   {
    "description": "Set when the token counts are an estimate rather than a number the provider reported.",

@@ -48,6 +48,7 @@ import frappe
 from frappe import _
 
 from albanna.core.authority import Authority
+from albanna.core.cost import cost_of_turn
 from albanna.core.errors import AllProvidersFailed, ProviderBudgetExceeded, ProviderError
 from albanna.core.messages import (
     Message,
@@ -213,6 +214,7 @@ class ChatService:
                     "error",
                     "provider_error",
                     str(exc),
+                    price_per_million=settings.price_per_million,
                 )
                 return TurnOutcome(
                     ok=False,
@@ -268,6 +270,7 @@ class ChatService:
                     "ok",
                     "",
                     "",
+                    price_per_million=settings.price_per_million,
                 )
                 return TurnOutcome(
                     ok=True,
@@ -339,6 +342,7 @@ class ChatService:
             "capped",
             "round_limit",
             f"reached {settings.max_tool_rounds} rounds",
+            price_per_million=settings.price_per_million,
         )
         return TurnOutcome(
             ok=True,
@@ -693,6 +697,7 @@ class ChatService:
         status: str,
         error_class: str,
         error_message: str,
+        price_per_million: float = 0.0,
     ) -> None:
         """Write the turn's audit row.
 
@@ -723,7 +728,17 @@ class ChatService:
             if usage is not None:
                 doc.input_tokens = usage.input_tokens
                 doc.output_tokens = usage.output_tokens
-                doc.cost = usage.cost
+                # The cost in the *site's* currency: the tokens the turn
+                # used, priced with the price the operator set.  The
+                # provider's own number is in the provider's own currency
+                # — a dollar in a riyals ledger — so it is recorded
+                # beside it, in its own column, and never mixed with it.
+                doc.cost = cost_of_turn(
+                    usage.input_tokens,
+                    usage.output_tokens,
+                    price_per_million,
+                )
+                doc.provider_cost = usage.cost
                 doc.estimated = 1 if usage.estimated else 0
             if error_class:
                 doc.error_class = error_class

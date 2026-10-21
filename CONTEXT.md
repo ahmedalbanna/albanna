@@ -616,7 +616,28 @@ and not the site's.  A provider that bills in dollars and a site that
 keeps its books in riyals are two currencies, and the ledger records
 the number the provider sent because that is the number there is.
 
-### 40. The reader is shown an error they can read
+### 40. The cost in the ledger is the site's own
+
+A provider reports **tokens** — exactly, when it reports them at all — and
+money only when its API happens to carry a price.  And that price is in
+the *provider's* currency: a price in dollars in a ledger kept in riyals
+is a number nobody can read, and a Currency field that holds it says
+something false about it.
+
+So the site prices the turn itself.  The operator says what a million
+tokens cost *them*, in *their* currency, and the cost in the ledger is
+computed from the tokens and that price.  It is an estimate — the
+operator's price is an estimate too, and prices move — and it is in the
+currency the ledger is for.
+
+**A turn with no price has no *known* cost, not no cost.**  The total is
+zero and the turns that have no price are counted apart, because a zero
+that reads as "free" is a lie the ledger would tell.
+
+The provider's own number is not thrown away: it is recorded beside the
+site's, in its own column, for whoever reconciles the two.
+
+### 41. The reader is shown an error they can read
 
 A provider that answers in anything but Latin-1 — a Chinese error, an em
 dash — used to arrive as mojibake, because the error path read the body

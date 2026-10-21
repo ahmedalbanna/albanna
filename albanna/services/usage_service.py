@@ -41,7 +41,8 @@ def usage_summary() -> dict[str, Any]:
     rows = frappe.db.sql(
         f"""
         select provider, model, `user`, status,
-               input_tokens, output_tokens, cost, estimated, duration_ms
+               input_tokens, output_tokens, cost, provider_cost,
+               estimated, duration_ms
         from `tab{LOG_DOCTYPE}`
         where creation >= %s
         """,
@@ -50,7 +51,11 @@ def usage_summary() -> dict[str, Any]:
     )
 
     tokens = sum(_as_int(row.get("input_tokens")) + _as_int(row.get("output_tokens")) for row in rows)
+    # The site's own figure: the cost in the site's currency.
     cost = sum(_as_float(row.get("cost")) for row in rows)
+    # The provider's own figure, in the provider's own currency.  It is
+    # beside the site's and never mixed with it.
+    provider_cost = sum(_as_float(row.get("provider_cost")) for row in rows)
     errors = sum(1 for row in rows if row.get("status") == "error")
 
     # A cost of zero with tokens recorded is a cost the provider did not
@@ -69,6 +74,10 @@ def usage_summary() -> dict[str, Any]:
         "turns": len(rows),
         "tokens": tokens,
         "cost": round(cost, 4),
+        "provider_cost": round(provider_cost, 8),
+        # The price the site prices a turn with, so that a total of zero
+        # can be read as "no price was set" rather than "it was free".
+        "priced": any(_as_float(row.get("cost")) for row in rows),
         # True when any of the token counts is an estimate rather than a
         # number the provider reported.
         "estimated": any(_as_int(row.get("estimated")) for row in rows),

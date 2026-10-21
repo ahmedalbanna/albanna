@@ -95,7 +95,9 @@ Anthropic.  It has no other runtime dependency.
 * **A ledger the operator can read.** Every turn is recorded — the model,
   the tokens, the cost, whether it worked — and the settings page sums
   the month: the turns, the tokens, the cost, and where they went, by
-  model and by user.
+  model and by user.  The cost is in the site's own currency: the site
+  prices a turn from its tokens, with the price per million tokens the
+  settings carry.
 * **An audit trail.** Every turn is recorded: who, which model, how many
   rounds, how many tool calls, what it cost. No question text, no answer
   text.

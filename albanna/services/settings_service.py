@@ -42,6 +42,9 @@ class AppSettings:
     allow_writes: bool
     system_prompt: str
     disabled_tools: frozenset[str]
+    #: What a million tokens cost, in this site's currency.  Zero means
+    #: the cost is not known — see :mod:`albanna.core.cost`.
+    price_per_million: float = 0.0
 
 
 def get_settings(refresh: bool = False) -> AppSettings:
@@ -103,6 +106,10 @@ def _build() -> AppSettings:
         allow_writes=bool(doc.allow_writes),
         system_prompt=str(doc.system_prompt or ""),
         disabled_tools=frozenset(split_names(doc.disabled_tools)),
+        # What a million tokens cost the operator, in their own currency.
+        # Zero means the cost is not known, and a zero that reads as
+        # "free" is a lie the ledger would tell.
+        price_per_million=_float(doc.price_per_million, 0.0),
     )
 
 

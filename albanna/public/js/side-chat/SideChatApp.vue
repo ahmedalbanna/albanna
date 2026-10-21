@@ -478,6 +478,37 @@ function noticeText(notice) {
 }
 
 /**
+ * Open a link in the answer in a new tab.
+ *
+ * The Desk's router captures every click on a link and routes it in the
+ * page, so a document the answer names would take the reader *away* from
+ * the conversation they were having — and the panel, which follows the
+ * page, would show a different thread when they came back.  The Desk
+ * makes an exception for a link that says so, but the exception is the
+ * Desk's courtesy, and a courtesy is not a contract.
+ *
+ * So the widget opens its own links: the click is stopped before it
+ * reaches the Desk, and the document is opened in a new tab.  The reader
+ * keeps the conversation, and the document is still one click away.
+ *
+ * @param {object} event the click
+ */
+function onTranscriptClick(event) {
+	const link = event.target.closest && event.target.closest("a[href]");
+	if (!link) return;
+
+	const href = link.getAttribute("href");
+	if (!href || href === "#") return;
+
+	// The Desk's router listens on the body, so the click must not
+	// reach it: it would route in the page and open the document here.
+	event.preventDefault();
+	event.stopPropagation();
+
+	window.open(href, "_blank", "noopener,noreferrer");
+}
+
+/**
  * Put the focus in the composer's field.
  */
 function focusComposer() {
@@ -1383,6 +1414,7 @@ onBeforeUnmount(() => {
 				role="log"
 				aria-live="off"
 				@scroll="onTranscriptScroll"
+				@click="onTranscriptClick"
 			>
 				<div v-if="!state.messages.length" class="albanna-chat__empty">
 					<p class="albanna-chat__empty-title">

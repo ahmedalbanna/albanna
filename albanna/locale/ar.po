@@ -400,9 +400,348 @@ msgstr "الرموز"
 msgid "Turns"
 msgstr "الأدوار"
 
-msgid "{0} turn(s) had no cost reported by the provider."
-msgstr "لم يُبلّغ المزوّد عن تكلفة {0} دور."
+
+msgid "No price is set, so {0} turn(s) have no known cost."
+msgstr "لم يُحدَّد سعر، فـ {0} دور بلا تكلفة معروفة."
 
 
-msgid "The cost is what the provider reported, in the provider's own currency."
-msgstr "التكلفة هي ما أبلغ عنه المزوّد، بعملة المزوّد."
+
+
+msgid "API Key"
+msgstr "مفتاح الـ API"
+
+msgid "Access"
+msgstr "الوصول"
+
+msgid "Albanna Settings"
+msgstr "إعدادات ألبانا"
+
+msgid "Allow Writes"
+msgstr "السماح بالكتابة"
+
+msgid "Base URL"
+msgstr "عنوان الأساس"
+
+msgid "Calls the provider with the smallest question that means anything, and says what happened. The values in this form are used, so a provider can be tested before it is saved."
+msgstr "يستدعي المزوّد بأصغر سؤال له معنى، ويقول ما الذي حدث. تُستعمل القيم الموجودة في هذه الاستمارة، فيمكن اختبار المزوّد قبل حفظه."
+
+msgid "Chat Roles"
+msgstr "أدوار المحادثة"
+
+msgid "Disabled Tools"
+msgstr "الأدوات المعطّلة"
+
+msgid "Enable Fallback"
+msgstr "تفعيل المزوّد الاحتياطي"
+
+msgid "Enable Widget"
+msgstr "تفعيل الأداة"
+
+msgid "Enabled"
+msgstr "مُفعَّل"
+
+msgid "Fallback API Key"
+msgstr "مفتاح API المزوّد الاحتياطي"
+
+msgid "Fallback Base URL"
+msgstr "عنوان أساس المزوّد الاحتياطي"
+
+msgid "Fallback Model"
+msgstr "نموذج المزوّد الاحتياطي"
+
+msgid "Fallback Provider"
+msgstr "المزوّد الاحتياطي"
+
+msgid "History Limit"
+msgstr "حد السجل"
+
+msgid "How long a single provider call may take, in seconds."
+msgstr "كم من الثانية قد يستغرق نداء واحد للمزوّد."
+
+msgid "How long one turn may run, in seconds."
+msgstr "كم من الثانية قد يستغرق دور واحد."
+
+msgid "How many past messages are replayed to the model as context. Generous, so a long conversation does not make the assistant forget what it was told."
+msgstr "كم رسالة سابقة تُعاد إلى النموذج كسياق. سخيٌ كي لا تنسى المحادثةُ الطويلة المساعدَ ما قيل له."
+
+msgid "How many questions one person may ask per minute, per surface. 0 means no limit."
+msgstr "كم سؤالاً قد يطرحه شخص في الدقيقة، لكل واجهة. صفر يعني بلا حدّ."
+
+msgid "How many tool rounds one question may take. A backstop against a runaway loop, not a budget: the assistant answers with what it has found when it is reached, rather than apologising for stopping."
+msgstr "كم جولة من الأدوات قد يأخذها سؤال واحد. حدّ أمان ضدّ حلقة لا تنتهي، لا ميزانية: يجيب المساعد بما وجده حين يُبلَغ، بدل أن يعتذر عن التوقّف."
+
+msgid "Let the assistant create documents. When this is off, the write tool is not in the tool set at all — the model is never told it exists — so nothing can be created through the chat. Switch it on when you want the assistant to be able to write."
+msgstr "السماح للمساعد بإنشاء المستندات. حين يكون هذا مطفأً لا تكون أداة الكتابة في مجموعة الأدوات أصلاً — ولا يُقال للنموذج إنها موجودة — فلا يمكن إنشاء شيء عبر المحادثة. شغّله حين تريد للمساعد أن يكتب."
+
+msgid "Limits"
+msgstr "الحدود"
+
+msgid "Lower is more literal. Keep it low for a tool-using assistant: a high temperature turns a schema into a guess."
+msgstr "كلما انخفضت كانت الإجابة أم حرفية. أبقِها منخفضة لمساعد يستعمل الأدوات: الدرجة العالية تحوّل المخطّط إلى تخمين."
+
+msgid "Max Tokens"
+msgstr "أقصى عدد رموز"
+
+msgid "Max Tool Rounds"
+msgstr "أقصى جولات الأدوات"
+
+msgid "Model"
+msgstr "النموذج"
+
+msgid "Model Provider"
+msgstr "مزوّد النموذج"
+
+msgid "Provider"
+msgstr "المزوّد"
+
+msgid "Replaces the built-in instructions. Leave empty to use the defaults."
+msgstr "يستبدل التعليمات المدمجة. اتركه فارغاً لاستعمال الافتراضيات."
+
+msgid "Roles allowed to see the side-chat widget, one per line. Leave empty to allow every user who may chat. A name that is not a role is refused when you save."
+msgstr "الأدوار المسموح لها رؤية أداة المحادثة الجانبية، دور في كل سطر. اتركه فارغاً ليسمح لكل من يقدر على المحادثة. أي اسم ليس دوراً يُرفض عند الحفظ."
+
+msgid "Roles allowed to use the chat, one per line. Leave empty to allow only System Managers. A name that is not a role is refused when you save."
+msgstr "الأدوار المسموح لها استعمال المحادثة، دور في كل سطر. اتركه فارغاً ليسمح فقط لمدراء النظام. أي اسم ليس دوراً يُرفض عند الحفظ."
+
+msgid "Show the side-chat widget on every Desk page."
+msgstr "إظهار أداة المحادثة الجانبية في كل صفحة من صفحات الـ Desk."
+
+msgid "System Prompt"
+msgstr "تعليمات النظام"
+
+msgid "Temperature"
+msgstr "درجة الحرارة"
+
+msgid "Test the connection"
+msgstr "اختبار الاتصال"
+
+msgid "The API's base URL, without the trailing path."
+msgstr "عنوان أساس الواجهة، بدون المسار الأخير."
+
+msgid "The fallback's base URL, without the trailing path."
+msgstr "عنوان أساس المزوّد الاحتياطي، بدون المسار الأخير."
+
+msgid "The fallback's model id, exactly as the provider knows it."
+msgstr "معرّف نموذج المزوّد الاحتياطي، كما يعرفه المزوّد تماماً."
+
+msgid "The largest answer the model may produce, in tokens. Generous on purpose: a ceiling that cuts an answer off mid-sentence makes the assistant look as though it has run out of words. Lower it only if a provider refuses a request as too expensive."
+msgstr "أكبر إجابة قد ينتجها النموذج، بالرموز. سخيٌ عن قصد: حدّ يقطع الإجابة في منتصف الجملة يجعل المساعد يبدو كأنه نفدت كلماته. لا تُنقصه إلا إذا رفض المزوّد الطلب لأنّه مكلف."
+
+msgid "The model id, exactly as the provider knows it."
+msgstr "معرّف النموذج، كما يعرفه المزوّد تماماً."
+
+msgid "The provider's API key. Stored encrypted; it is never sent to the browser and never written to a log."
+msgstr "مفتاح API الخاص بالمزوّد. يُخزَّن مشفَّراً، ولا يُرسَل إلى المتصفح أبداً ولا يُكتب في سجلّ أبداً."
+
+msgid "Timeout (s)"
+msgstr "المهلة (ثانية)"
+
+msgid "Tool names to switch off, one per line. A tool that is off is never mentioned to the model, so it is never called."
+msgstr "أسماء الأدوات التي تُعطَّل، اسم في كل سطر. الأداة المعطّلة لا تُذكر للنموذج أبداً، فلا تُنادى أبداً."
+
+msgid "Turn Timeout (s)"
+msgstr "مهلة الدور (ثانية)"
+
+msgid "Turn the side chat off site-wide. The widget still renders in its locked state so the reason is visible rather than mysterious."
+msgstr "إيقاف المحادثة الجانبية في الموقع كله. تبقى الأداة ظاهرة في حالتها المغلقة، فيكون السبب مرئياً لا غامضاً."
+
+msgid "Turns / Minute"
+msgstr "الأدوار / الدقيقة"
+
+msgid "When the primary provider fails, try this one before giving up. A fallback on a different vendor is worth much more than one on the same vendor."
+msgstr "حين يفشل المزوّد الأساسي، جرّب هذا قبل الاستسلام. الاحتياطي على مزوّد مختلف يساوي أكثر بكثير من احتياطي على المزوّد نفسه."
+
+msgid "Which API the model is called through. `openai` covers every OpenAI-compatible endpoint — OpenRouter, OpenAI, Groq, vLLM, LM Studio."
+msgstr "الواجهة التي يُنادى النموذج عبرها. `openai` تغطي كل نقطة نهاية متوافقة مع OpenAI — OpenRouter وOpenAI وGroq وvLLM وLM Studio."
+
+msgid "Which corner the widget sits in. On an Arabic interface it mirrors automatically."
+msgstr "الركن الذي تجلس فيه الأداة. على واجهة عربية تنعكس تلقائياً."
+
+msgid "Widget Position"
+msgstr "موضع الأداة"
+
+msgid "Widget Roles"
+msgstr "أدوار الأداة"
+
+msgid "anthropic"
+msgstr "Anthropic"
+
+msgid "bottom-left"
+msgstr "أسفل اليسار"
+
+msgid "bottom-right"
+msgstr "أسفل اليمين"
+
+msgid "ollama"
+msgstr "Ollama"
+
+msgid "openai"
+msgstr "متوافق مع OpenAI"
+
+
+msgid "Albanna Chat Log"
+msgstr "سجلّ محادثات ألبانا"
+
+msgid "Albanna Conversation"
+msgstr "محادثة ألبانا"
+
+msgid "Albanna Message"
+msgstr "رسالة ألبانا"
+
+msgid "Content"
+msgstr "المحتوى"
+
+msgid "Conversation"
+msgstr "المحادثة"
+
+msgid "Cost"
+msgstr "التكلفة"
+
+msgid "Derived from the first question in the conversation."
+msgstr "مشتق من أول سؤال في المحادثة."
+
+msgid "Duration (ms)"
+msgstr "المدة (مللي ثانية)"
+
+msgid "Error Class"
+msgstr "صنف الخطأ"
+
+msgid "Error Message"
+msgstr "رسالة الخطأ"
+
+msgid "Estimated"
+msgstr "مُقدَّر"
+
+msgid "How long the turn took, in milliseconds."
+msgstr "كم استغرق الدور، بالمللي ثانية."
+
+msgid "How many model calls the turn took."
+msgstr "كم نداء للنموذج أخذ الدور."
+
+msgid "How many tool calls the turn made."
+msgstr "كم نداءً للأدوات أجرى الدور."
+
+msgid "Input Tokens"
+msgstr "رموز الإدخال"
+
+msgid "Last Activity"
+msgstr "آخر نشاط"
+
+msgid "Messages"
+msgstr "الرسائل"
+
+msgid "Model"
+msgstr "النموذج"
+
+msgid "Output Tokens"
+msgstr "رموز الإخراج"
+
+msgid "Page"
+msgstr "الصفحة"
+
+msgid "Provider"
+msgstr "المزوّد"
+
+msgid "Role"
+msgstr "الدور"
+
+msgid "Round"
+msgstr "الجولة"
+
+msgid "Rounds"
+msgstr "الجولات"
+
+msgid "Set when the token counts are an estimate rather than a number the provider reported."
+msgstr "يُضبط حين تكون أعداد الرموز تقديراً لا رقماً أبلغ عنه المزوّد."
+
+msgid "Status"
+msgstr "الحالة"
+
+msgid "The message text, exactly as it is replayed to the model."
+msgstr "نص الرسالة، كما يُعاد إلى النموذج تماماً."
+
+msgid "The model that produced the most recent answer."
+msgstr "النموذج الذي أنتج آخر إجابة."
+
+msgid "The page this conversation belongs to, as `view|doctype|name`. A different page starts a different thread."
+msgstr "الصفحة التي تنتمي إليها هذه المحادثة، بصيغة `view|doctype|name`. وصفحة مختلفة تبدأ محادثة مختلفة."
+
+msgid "The tool calls the model asked for, as a JSON array."
+msgstr "نداءات الأدوات التي طلبها النموذج، كمصفوفة JSON."
+
+msgid "The tool this turn's result belongs to. Set on `tool` rows only."
+msgstr "الأداة التي ينتمي إليها نتيجة هذا الدور. يُملأ في صفوف `tool` وحدها."
+
+msgid "The tools the turn called, as a JSON array: the name of each, whether it worked, and the name of any document a write created. No question text and no answer text."
+msgstr "الأدوات التي نادى بها الدور، كمصفوفة JSON: اسم كل أداة، وهل نجحت، واسم أي مستند أنشأته كتابة. لا نص سؤال ولا نص إجابة."
+
+msgid "Title"
+msgstr "العنوان"
+
+msgid "Tool"
+msgstr "الأداة"
+
+msgid "Tool Calls"
+msgstr "نداءات الأدوات"
+
+msgid "Tools"
+msgstr "الأدوات"
+
+msgid "Turn"
+msgstr "الدور"
+
+msgid "User"
+msgstr "المستخدم"
+
+
+msgid "Which tool round this turn belongs to. Round 0 is the first."
+msgstr "جولة الأدوات التي ينتمي إليها هذا الدور. الجولة صفر هي الأولى."
+
+msgid "Who owns this conversation. Only this user, and a System Manager, can read it."
+msgstr "من يملك هذه المحادثة. لا يقرؤها إلا هذا المستخدم ومدير النظام."
+
+msgid "Who produced this turn."
+msgstr "من أنتج هذا الدور."
+
+msgid "assistant"
+msgstr "المساعد"
+
+msgid "capped"
+msgstr "بلغت الحدّ"
+
+msgid "denied"
+msgstr "مُنِعت"
+
+msgid "error"
+msgstr "أخفقت"
+
+msgid "ok"
+msgstr "نجحت"
+
+msgid "tool"
+msgstr "أداة"
+
+msgid "user"
+msgstr "المستخدم"
+
+
+msgid "Provider cost"
+msgstr "تكلفة المزوّد"
+
+msgid "The cost is the site's own: the tokens the turn used, priced with the price per million tokens in the settings."
+msgstr "التكلفة تخصّ الموقع: الرموز التي استعملها الدور، مسعّرة بسعر المليون رمز في الإعدادات."
+
+msgid "Price per Million Tokens"
+msgstr "سعر المليون رمز"
+
+msgid "What a million tokens cost, in this site's currency. The chat prices a turn with it, so the ledger is in your currency and not in the provider's. Leave it at 0 and the cost is not known."
+msgstr "ما كلّفه مليون رمز، بعملة هذا الموقع. يسعّر المحادثة الدور به، فيكون السجلّ بعملتك أنت لا بعملة المزوّد. اتركه صفراً فالتكلفة غير معروفة."
+
+msgid "Provider Cost"
+msgstr "تكلفة المزوّد"
+
+msgid "What the provider reported, in the provider's own currency. Zero when the provider reported no price, which is most of them."
+msgstr "ما أبلغ عنه المزوّد، بعملة المزوّد نفسها. صفر حين لم يُبلّغ المزوّد عن سعر، وهو الأغلب."
+
+msgid "What the turn cost, in this site's currency: the tokens it used, priced with the site's own price per million tokens."
+msgstr "ما كلّفه الدور، بعملة هذا الموقع: الرموز التي استعملها، مسعّرة بسعر المليون رمز في الموقع."

@@ -25,6 +25,7 @@ because that is what the model reads best.
 from __future__ import annotations
 
 import ast
+import json
 import pathlib
 import re
 import sys
@@ -88,6 +89,42 @@ def front_end_strings(path: pathlib.Path) -> set[str]:
     return {unquote(match.group(1)) for match in CALL.finditer(text)}
 
 
+def doctype_strings(path: pathlib.Path) -> set[str]:
+    """The translatable strings in a DocType's definition.
+
+    A DocType's labels, descriptions and options are shown to the reader
+    and the Desk translates them — but they are not written as ``__()``
+    calls, they are *metadata*.  So they have to be read from the JSON,
+    or the catalogue cannot know about them and every one of them is
+    reported as a translation the app no longer uses.
+    """
+    found: set[str] = set()
+    try:
+        definition = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return found
+
+    # The DocType's own name is its title in the Desk, and the Desk
+    # translates it.  A one-word name is left out: it is the same word in
+    # every language, and the framework's own catalogue carries it.
+    name = definition.get("name")
+    if isinstance(name, str) and " " in name:
+        found.add(name)
+
+    for field in definition.get("fields") or []:
+        for key in ("label", "description"):
+            value = field.get(key)
+            if isinstance(value, str) and value.strip():
+                found.add(value)
+        options = field.get("options")
+        if isinstance(options, str) and field.get("fieldtype") == "Select":
+            # The options of a select are shown to the reader, one per
+            # line.  A blank line is the "not set" marker, not a label.
+            found |= {line.strip() for line in options.splitlines() if line.strip()}
+
+    return found
+
+
 def catalogue_entries(po_path: pathlib.Path) -> set[str]:
     """The msgids in a ``.po`` file."""
     if not po_path.exists():
@@ -132,6 +169,12 @@ def used_strings() -> set[str]:
             # The maintenance scripts are not part of the app's interface.
             continue
         used |= python_strings(path)
+
+    for path in APP.rglob("*.json"):
+        if "__pycache__" in path.parts or "node_modules" in path.parts:
+            continue
+        if path.parent.parent.name == "doctype" and path.name.endswith(".json"):
+            used |= doctype_strings(path)
 
     for pattern in ("*.vue", "*.mjs", "*.js"):
         for path in APP.rglob(pattern):

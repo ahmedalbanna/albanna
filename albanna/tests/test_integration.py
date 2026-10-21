@@ -1351,3 +1351,71 @@ class TestUsageSummary(FrappeTestCase):
 
         with self.assertRaises(frappe.PermissionError):
             api_summary()
+
+
+@pytest.mark.integration
+class TestTheCostOfATurn(FrappeTestCase):
+    """The cost in the ledger is the site's own.
+
+    A provider reports tokens, and money only when its API happens to
+    carry a price — and that price is in the provider's currency.  So the
+    site prices the turn itself, in its own currency, and the provider's
+    own number is kept beside it.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.conversation = ensure_conversation("Administrator", "test|cost|turn|")
+        frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (self.conversation,))
+        frappe.db.sql("delete from `tabAlbanna Chat Log`")
+
+    def tearDown(self):
+        frappe.db.sql("delete from `tabAlbanna Chat Log`")
+        frappe.db.commit()
+        super().tearDown()
+
+    def _log(self, usage, price_per_million=0.0):
+        from albanna.providers.base import Usage
+        from albanna.services.chat_service import ChatService
+
+        ChatService()._log(
+            self.conversation,
+            "Administrator",
+            "a-provider",
+            "a-model",
+            1,
+            [],
+            usage,
+            0.0,
+            "ok",
+            "",
+            "",
+            price_per_million=price_per_million,
+        )
+        frappe.db.commit()
+        return frappe.db.get_value(
+            "Albanna Chat Log",
+            {"conversation": self.conversation},
+            ["cost", "provider_cost", "input_tokens", "output_tokens"],
+            as_dict=True,
+        )
+
+    def test_a_turn_with_no_price_costs_nothing_known(self):
+        from albanna.providers.base import Usage
+
+        row = self._log(Usage(input_tokens=1000, output_tokens=500, cost=0.25))
+
+        self.assertEqual(row.cost, 0, "a turn with no price has no known cost")
+        self.assertEqual(row.provider_cost, 0.25, "but the provider's own number is kept")
+
+    def test_a_turn_is_priced_in_the_sites_own_currency(self):
+        from albanna.providers.base import Usage
+
+        row = self._log(
+            Usage(input_tokens=500_000, output_tokens=500_000, cost=0.25),
+            price_per_million=3.0,
+        )
+
+        self.assertEqual(row.cost, 3.0, "a million tokens at three riyals")
+        self.assertEqual(row.provider_cost, 0.25, "and the provider's number beside it")
+        self.assertEqual(row.input_tokens, 500_000)

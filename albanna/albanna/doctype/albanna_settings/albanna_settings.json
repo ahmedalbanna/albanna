@@ -33,6 +33,7 @@
   "limits_section",
   "max_tool_rounds",
   "history_limit",
+  "price_per_million",
   "turn_timeout",
   "turns_per_minute",
   "disabled_tools",
@@ -216,6 +217,14 @@
    "fieldname": "turn_timeout",
    "fieldtype": "Int",
    "label": "Turn Timeout (s)"
+  },
+  {
+   "fieldname": "price_per_million",
+   "fieldtype": "Float",
+   "label": "Price per Million Tokens",
+   "description": "What a million tokens cost, in this site's currency. The chat prices a turn with it, so the ledger is in your currency and not in the provider's. Leave it at 0 and the cost is not known.",
+   "default": "0",
+   "precision": "6"
   },
   {
    "default": "6",

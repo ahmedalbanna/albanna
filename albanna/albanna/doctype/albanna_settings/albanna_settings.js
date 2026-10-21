@@ -101,6 +101,11 @@ function usage_html(summary) {
 		),
 	);
 	rows.push(row(__("Cost"), `${Number(summary.cost || 0).toFixed(4)}`));
+	if (summary.provider_cost) {
+		rows.push(
+			row(__("Provider cost"), `${Number(summary.provider_cost || 0).toFixed(8)}`),
+		);
+	}
 	rows.push(row(__("Failed turns"), String(summary.errors || 0)));
 
 	let html = `<table class="table table-sm" style="width: 100%"><tbody>${rows.join(
@@ -109,12 +114,14 @@ function usage_html(summary) {
 
 	if (summary.uncosted_turns) {
 		html += `<p class="text-muted" style="font-size: 12px">${escape(
-			__("{0} turn(s) had no cost reported by the provider.", [summary.uncosted_turns]),
+			__("No price is set, so {0} turn(s) have no known cost.", [summary.uncosted_turns]),
 		)}</p>`;
 	}
 
 	html += `<p class="text-muted" style="font-size: 12px">${escape(
-		__("The cost is what the provider reported, in the provider's own currency."),
+		__(
+			"The cost is the site's own: the tokens the turn used, priced with the price per million tokens in the settings.",
+		),
 	)}</p>`;
 
 	html += breakdown(__("By model"), summary.by_model);
