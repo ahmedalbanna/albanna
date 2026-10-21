@@ -413,6 +413,20 @@ body.albanna-side-chat-docked-inline-start {
 	background: var(--albanna-hover, #f3f3f3);
 }
 
+/* The transcript is not given `content-visibility`, and that was measured.
+ *
+ * A conversation of two hundred messages is twenty thousand nodes, and
+ * laying them out costs the better part of a second — 705ms, measured —
+ * where `content-visibility: auto` costs 30ms.  It is the obvious answer
+ * and it is the wrong one: a skipped message has an *estimated* height,
+ * and the panel's scroll to the latest answer is a scroll to the bottom of
+ * the content.  With the estimates in place the content is shorter than
+ * the panel, the scroll does nothing, and the reader opens a conversation
+ * and is looking at its beginning rather than its end.
+ *
+ * A freeze the reader waits out once is better than a scroll that lands
+ * in the wrong place every time.  So the transcript is laid out in full,
+ * and the cost of a very long thread is paid in one go. */
 .albanna-chat__message {
 	display: flex;
 	flex-direction: column;

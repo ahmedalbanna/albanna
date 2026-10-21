@@ -460,7 +460,51 @@ Sales Order" tells the reader that the answer is being assembled against
 the thing they are looking at — which is the difference between a chat
 that is working and a chat that is working *on your question*.
 
-### 31. The reader is shown an error they can read
+### 31. The widget hears the Desk, and the Desk says "change"
+
+The Desk is a single-page application, so a navigation does not reload the
+page — it changes the route, and the router says so.  It says so with the
+event **"change"**.
+
+It does not say so with "route-change".  That event does not exist, and a
+listener for an event that does not exist is a listener that never
+fires.  The widget listened for one for a long time, and the cost was not
+a panel that failed to update: it was a panel that was *right about the
+wrong thing*.  The page the widget believed it was on was frozen at the
+page it had been opened on, so the assistant was asked about the wrong
+page, the answer was filed under the wrong page, and the transcript
+showed the wrong conversation — while looking, to the reader, perfectly
+correct.
+
+So the name of the Desk's event lives in one place, `page.mjs`, and
+`page.test.mjs` holds it to account: the test fires the event the Desk
+fires and the widget must respond, and it fires an event the Desk does
+not and the widget must not.
+
+### 32. The question is asked about the page the reader is on *now*
+
+The panel keeps the page it is showing, because that is what the reader
+sees.  But the page context that goes to the model is read at the moment
+the question is asked, not read from that cache.
+
+A cache is a cache and a context is a fact, and a fact is read when it
+is needed.  So a route event that was missed costs the panel its label
+and not the assistant its question.  The two can disagree; they are not
+allowed to *pretend* they are the same thing.
+
+### 33. The turn's state is a state machine, and it is written down
+
+The states of a turn are the part of this widget a reader can see being
+wrong: a turn that is "running" and has already finished, a stop button
+that stops nothing, an error that hides a message.
+
+So they are written down once, in `state.mjs`, as transitions over a
+plain object, and the component is a view over it.  There is one phase
+rather than a flag and a per-message flag that can disagree; the error
+and the notice are separate channels rather than one slot; and the
+transitions are tested with no Vue, no browser and no site.
+
+### 34. The reader is shown an error they can read
 
 A provider that answers in anything but Latin-1 — a Chinese error, an em
 dash — used to arrive as mojibake, because the error path read the body

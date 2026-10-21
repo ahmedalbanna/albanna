@@ -7,7 +7,14 @@
 
 /** The locale the interface is in. */
 export function currentLocale() {
-	return document.documentElement.lang || window.navigator.language || "en";
+	if (typeof document !== "undefined" && document.documentElement) {
+		const lang = document.documentElement.lang;
+		if (lang) return lang;
+	}
+	if (typeof navigator !== "undefined" && navigator.language) {
+		return navigator.language;
+	}
+	return "en";
 }
 
 /**
@@ -68,6 +75,35 @@ export function relativeTime(value) {
 }
 
 /**
+ * The formatters, by locale.
+ *
+ * Building an `Intl.DateTimeFormat` costs about half a millisecond — it
+ * resolves the locale's data.  The panel formats a time for every
+ * message, and the panel re-renders on every token, so a formatter per
+ * message per token is a millisecond and a half of work per token, for a
+ * clock.  So there is one formatter per locale, and it is kept.
+ */
+const formatters = new Map();
+
+function timeFormatter() {
+	const locale = currentLocale();
+	if (formatters.has(locale)) return formatters.get(locale);
+
+	let formatter = null;
+	try {
+		formatter = new Intl.DateTimeFormat(locale, {
+			hour: "2-digit",
+			minute: "2-digit",
+		});
+	} catch (error) {
+		// A browser with no locale data still shows the reader something.
+		formatter = null;
+	}
+	formatters.set(locale, formatter);
+	return formatter;
+}
+
+/**
  * A moment, as the time of day.
  *
  * The reader's locale and the reader's clock: `Intl.DateTimeFormat`
@@ -82,15 +118,15 @@ export function clockTime(value) {
 	const date = toDate(value);
 	if (!date) return "";
 
-	try {
-		return new Intl.DateTimeFormat(currentLocale(), {
-			hour: "2-digit",
-			minute: "2-digit",
-		}).format(date);
-	} catch (error) {
-		// A browser with no locale data still shows the reader something.
-		return date.toTimeString().slice(0, 5);
+	const formatter = timeFormatter();
+	if (formatter) {
+		try {
+			return formatter.format(date);
+		} catch (error) {
+			// Fall through to the plain time below.
+		}
 	}
+	return date.toTimeString().slice(0, 5);
 }
 
 /**
@@ -104,7 +140,26 @@ export function clockTime(value) {
  */
 export function readablePage(page) {
 	if (!page) return "";
+
 	const parts = String(page).split("|");
-	const doctype = parts.length > 1 ? parts[1] : parts[0];
-	return doctype || "";
+	if (parts.length > 1) return parts[1] || "";
+
+	// A list or a workspace: the identity is the route, and the route's
+	// last segment is a slug — "erpnext/sales-order" is not a name a
+	// person would recognise.  So it is turned into one.
+	return titleise(parts[0].split("/").pop() || "");
+}
+
+/**
+ * A slug, as a name: "sales-order" becomes "Sales Order".
+ *
+ * @param {string} slug the slug
+ * @returns {string} the name
+ */
+function titleise(slug) {
+	return String(slug || "")
+		.split(/[-_\s]+/)
+		.filter(Boolean)
+		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+		.join(" ");
 }

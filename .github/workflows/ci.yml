@@ -49,6 +49,12 @@ jobs:
       - name: The turn transport
         run: node albanna/public/js/side-chat/turn.test.mjs
 
+      - name: The turn's state machine
+        run: node albanna/public/js/side-chat/state.test.mjs
+
+      - name: The Desk's route event
+        run: node albanna/public/js/side-chat/page.test.mjs
+
   server:
     name: Server tests
     runs-on: ubuntu-latest

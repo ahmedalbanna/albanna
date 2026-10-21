@@ -82,7 +82,9 @@ Anthropic.  It has no other runtime dependency.
   and to the user who started it.
 * **The panel follows the page.** Open it on a page you have used before
   and the thread is there, because it is the thread the assistant will
-  answer in.  "New" starts a real one.
+  answer in — and the question is asked about the page you are looking at
+  *now*, not about the page the panel was opened on.  "New" starts a real
+  one.
 * **Arabic and right-to-left.** The interface follows the reader's
   direction, and the whole Desk in Arabic is a first-class case rather than
   an afterthought — the widget sits on the reading end of the screen, so it
@@ -326,6 +328,8 @@ cd apps/albanna
 ../../env/bin/python -m pytest                       # the domain suite: no bench, no site, no network
 node albanna/public/js/side-chat/markdown.test.mjs  # the markdown renderer
 node albanna/public/js/side-chat/turn.test.mjs      # the turn transport
+node albanna/public/js/side-chat/state.test.mjs     # the turn's state machine
+node albanna/public/js/side-chat/page.test.mjs      # the Desk's route event
 python3 scripts/check_translations.py              # the Arabic catalogue against the code
 ```
 

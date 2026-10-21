@@ -31,6 +31,20 @@ import ConversationDrawer from "./ConversationDrawer.vue";
 import { pageIdentity, resolveContext } from "./context.mjs";
 import { clockTime } from "./format.mjs";
 import { hasTable, renderMarkdown, tableAsTsv } from "./markdown.js";
+import { watchRoute } from "./page.mjs";
+import {
+	beginTurn,
+	canSend,
+	canStop,
+	clearTranscript,
+	dismiss,
+	endTurn,
+	failTurn,
+	initialState,
+	isBusy,
+	setActivity,
+	stopTurn,
+} from "./state.mjs";
 import { call, runTurn } from "./turn.mjs";
 
 const props = defineProps({
@@ -42,15 +56,18 @@ const props = defineProps({
 	onContext: { type: Function, default: () => {} },
 });
 
-const messages = ref([]);
+/**
+ * The turn's state.
+ *
+ * It is a state machine, in `state.mjs`, because the states of a turn
+ * are the part of this widget a reader can see being wrong: a turn that
+ * is "running" and has already finished, a stop button that stops
+ * nothing, an error that hides a message.  The component is a view over
+ * it.
+ */
+const state = reactive(initialState());
+
 const draft = ref("");
-const busy = ref(false);
-/** What the assistant is doing right now, in the reader's language. */
-const activity = ref("");
-const error = ref("");
-/** A message that is not an error: "Stopped.", "Copied." */
-const notice = ref("");
-const lastQuestion = ref("");
 const conversationId = ref("");
 const transcriptEl = ref(null);
 /** What a screen reader is told, once a turn is over. */
@@ -73,10 +90,20 @@ let messageCounter = 0;
 const currentPage = ref("");
 
 /** The controller of the turn in flight, so that it can be stopped. */
-let abortController = null;
+const abortController = ref(null);
+
+/** Stops the panel hearing the Desk's route. */
+let unwatch = () => {};
 
 const locked = computed(() => props.config.locked === true);
 const canChat = computed(() => props.config.chat_access === true && !locked.value);
+
+/** Is a turn in flight? */
+const busy = computed(() => isBusy(state));
+/** May the reader ask a question? */
+const maySend = computed(() => canSend(state) && canChat.value);
+/** May the reader stop the turn? */
+const mayStop = computed(() => canStop(state) && canChat.value);
 
 /**
  * The document the widget is looking at, if it is looking at one.
@@ -167,11 +194,22 @@ function makeMessage(role, content, at) {
 		// then.
 		documents: [],
 		pending: false,
-		// When it was said.  A message the panel is showing now is
-		// stamped with the reader's clock; a message from a conversation
-		// that was opened comes with the server's.
-		at: at || Date.now() / 1000,
+		// When it was said, formatted once.  A message the panel is
+		// showing now is stamped with the reader's clock; a message from a
+		// conversation that was opened comes with the server's.
+		//
+		// It is formatted *here* and not in the template, because the
+		// template renders every message on every change — and a render
+		// happens on every token.  Building a date formatter costs half a
+		// millisecond, so a formatter per message per token is a
+		// millisecond and a half of work per token, for a clock.
+		time: "",
+		// Whether the answer holds a table that can be taken away.
+		hasTable: false,
+		// What the turn's tool calls did, in one line.
+		summary: "",
 	});
+	message.time = clockTime(at || Date.now() / 1000);
 	setContent(message, content || "");
 	return message;
 }
@@ -191,7 +229,24 @@ function makeMessage(role, content, at) {
  */
 function setContent(message, text) {
 	message.content = text;
-	message.html = renderMarkdown(text, message.documents);
+	refresh(message);
+}
+
+/**
+ * Write everything about a message that is *derived* from it.
+ *
+ * One place, so that a message cannot be half-updated: the summary was
+ * computed when the tool calls changed and nowhere else, so a conversation
+ * opened again showed its tool calls with no line above them.
+ *
+ * @param {object} message the message
+ */
+function refresh(message) {
+	message.html = renderMarkdown(message.content, message.documents);
+	// An answer can gain a table as it streams, so this is not a
+	// once-and-for-all thing.
+	message.hasTable = hasTable(message.content);
+	message.summary = toolSummary(message);
 }
 
 /**
@@ -262,7 +317,7 @@ function onTranscriptScroll() {
 	if (!el) return;
 	const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
 	followBottom.value = atBottom;
-	showScrollButton.value = !atBottom && messages.value.length > 0;
+	showScrollButton.value = !atBottom && state.messages.length > 0;
 }
 
 function jumpToBottom() {
@@ -353,8 +408,33 @@ function toolSummary(message) {
  * @param {object} message the message
  * @returns {string} the time of day
  */
-function messageTime(message) {
-	return clockTime(message.at);
+/**
+ * The notices the panel can show, in the reader's language.
+ *
+ * The state holds a *key*, not a sentence: the state machine is pure and
+ * has no language of its own, and the reader's language can change under
+ * a notice that was already shown.
+ *
+ * @param {string} notice the key
+ * @returns {string} the sentence
+ */
+function noticeText(notice) {
+	switch (notice) {
+		case "stopped":
+			return __("Stopped.");
+		case "moved":
+			return __("You moved to another page, so the turn was stopped.");
+		case "no-table":
+			return __("There is no table to copy.");
+		case "copy-failed":
+			return __("The table could not be copied.");
+		case "deleted":
+			return __("The conversation was deleted.");
+		case "started":
+			return __("A new conversation was started.");
+		default:
+			return "";
+	}
 }
 
 /**
@@ -364,35 +444,37 @@ function messageTime(message) {
  */
 async function send(question) {
 	const text = String(question || draft.value || "").trim();
-	if (!text || busy.value || !canChat.value) return;
+	if (!text || !maySend.value) return;
 
 	draft.value = "";
-	error.value = "";
-	notice.value = "";
-	busy.value = true;
-	activity.value = __("Thinking");
-	lastQuestion.value = text;
 	followBottom.value = true;
 	showScrollButton.value = false;
 
 	const asked = makeMessage("user", text);
-	messages.value.push(asked);
-	scrollToBottom(true);
-
 	const answer = makeMessage("assistant", "");
 	answer.pending = true;
-	messages.value.push(answer);
+
+	beginTurn(state, text, asked, answer);
+	setActivity(state, __("Thinking"));
 	scrollToBottom(true);
 
+	/* The page is read *now*, not from a cache.
+	 *
+	 * The panel keeps the page it is showing, but the question is being
+	 * asked about the page the reader is looking at at this moment.  A
+	 * cached page is a cache; the context is a fact, and a fact is read
+	 * when it is needed.  So a route event that was missed costs the
+	 * panel its label and not the assistant its question. */
 	const context = resolveContext();
+	const page = pageIdentity();
 	const controller = new AbortController();
-	abortController = controller;
+	abortController.value = controller;
 
 	try {
 		const result = await runTurn({
 			question: text,
 			conversationId: conversationId.value,
-			page: currentPage.value,
+			page: page,
 			pageContext: {
 				route: context.route,
 				view: context.view,
@@ -411,7 +493,8 @@ async function send(question) {
 				}
 				if (event.event === "tool_start") {
 					answer.tools.push({ name: event.name, ok: null, summary: "" });
-					activity.value = describeTool(event.name, event.arguments);
+					refresh(answer);
+					setActivity(state, describeTool(event.name, event.arguments));
 					scrollToBottom();
 					return;
 				}
@@ -423,6 +506,7 @@ async function send(question) {
 						pending.ok = event.ok !== false;
 						pending.summary = event.summary || "";
 					}
+					refresh(answer);
 
 					// The documents the call looked at.  They become links
 					// in the answer, so that the answer is a doorway into
@@ -443,7 +527,7 @@ async function send(question) {
 					return;
 				}
 				if (event.event === "status") {
-					activity.value = statusLabel(event.code) || event.text || activity.value;
+					setActivity(state, statusLabel(event.code) || event.text || state.activity);
 				}
 			},
 		});
@@ -457,34 +541,52 @@ async function send(question) {
 			// arrived is kept — it is the truth so far — and the worker
 			// finishes on its own, so the answer is in the conversation
 			// when they come back to it.
-			notice.value = __("Stopped.");
+			stopTurn(state, answer);
+			// A notice that is already there is more specific than this
+			// one — "you moved to another page" says more than "stopped".
+			if (!state.notice) state.notice = "stopped";
 		} else if (result && result.status === "error") {
-			error.value = result.error || __("Something went wrong.");
+			failTurn(state, answer, result.error || __("Something went wrong."));
 			if (!answer.content) {
-				messages.value = messages.value.filter((message) => message.id !== answer.id);
+				removeMessage(answer);
 			}
 		} else if (result && result.reply) {
 			// The server's answer is the truth.  The streamed text was the
 			// live preview, and a preview that lost a fragment is worse
 			// than no preview: it is a wrong answer that looks complete.
 			setContent(answer, result.reply);
+			endTurn(state, answer);
+		} else {
+			// A turn that ended without an answer and without an error
+			// is still over.
+			failTurn(state, answer, __("Something went wrong."));
 		}
 
 		if (answer.content) {
 			announcement.value = answer.content;
 		}
 	} catch (failure) {
-		error.value = String(
-			(failure && failure.message) || failure || __("Something went wrong."),
+		failTurn(
+			state,
+			answer,
+			String((failure && failure.message) || failure || __("Something went wrong.")),
 		);
-		messages.value = messages.value.filter((message) => message.id !== answer.id);
+		removeMessage(answer);
 	} finally {
 		answer.pending = false;
-		busy.value = false;
-		activity.value = "";
-		abortController = null;
+		abortController.value = null;
 		scrollToBottom();
 	}
+}
+
+/**
+ * Take a message out of the transcript.
+ *
+ * @param {object} message the message
+ */
+function removeMessage(message) {
+	const index = state.messages.findIndex((entry) => entry.id === message.id);
+	if (index >= 0) state.messages.splice(index, 1);
 }
 
 /**
@@ -496,12 +598,12 @@ async function send(question) {
  * should not have to watch the rest of it arrive.
  */
 function stop() {
-	if (!busy.value || !abortController) return;
-	abortController.abort();
+	if (!mayStop.value || !abortController.value) return;
+	abortController.value.abort();
 }
 
 function retry() {
-	const question = lastQuestion.value;
+	const question = state.asked;
 	if (!question) return;
 	send(question);
 }
@@ -528,7 +630,7 @@ function ask(question) {
 async function copyTable(message) {
 	const text = tableAsTsv(message.content);
 	if (!text) {
-		notice.value = __("There is no table to copy.");
+		state.notice = "no-table";
 		return;
 	}
 	try {
@@ -538,7 +640,7 @@ async function copyTable(message) {
 			if (copiedTableId.value === message.id) copiedTableId.value = "";
 		}, 1600);
 	} catch (failure) {
-		notice.value = __("The table could not be copied.");
+		state.notice = "copy-failed";
 	}
 }
 
@@ -557,7 +659,7 @@ async function copyAnswer(message) {
 			if (copiedId.value === message.id) copiedId.value = "";
 		}, 1600);
 	} catch (failure) {
-		notice.value = __("The answer could not be copied.");
+		state.notice = "copy-failed";
 	}
 }
 
@@ -570,7 +672,7 @@ async function showHistory() {
 		const result = await call("albanna.api.conversations.list_conversations", {});
 		conversations.value = result.conversations || [];
 	} catch (failure) {
-		error.value = String(
+		state.error = String(
 			(failure && failure.message) || failure || __("Could not load the conversations."),
 		);
 	} finally {
@@ -588,20 +690,20 @@ function showTranscript() {
  * @param {object} conversation the conversation
  */
 async function openConversation(conversation) {
-	error.value = "";
+	state.error = "";
 	try {
 		const result = await call("albanna.api.conversations.open_conversation", {
 			conversation: conversation.name,
 		});
 		conversationId.value = conversation.name;
-		messages.value = (result.messages || []).map((message) => {
+		state.messages = (result.messages || []).map((message) => {
 			return messageFromServer(message);
 		});
 		view.value = "chat";
 		followBottom.value = true;
 		scrollToBottom(true);
 	} catch (failure) {
-		error.value = String(
+		state.error = String(
 			(failure && failure.message) || failure || __("Could not open that conversation."),
 		);
 	}
@@ -619,7 +721,7 @@ async function renameConversation(name, title) {
 		const item = conversations.value.find((conversation) => conversation.name === name);
 		if (item) item.title = title;
 	} catch (failure) {
-		error.value = String(
+		state.error = String(
 			(failure && failure.message) || failure || __("Could not rename that conversation."),
 		);
 	}
@@ -664,12 +766,12 @@ async function deleteConversation(conversation) {
 			// next question starts one, and a conversation made here and
 			// never used is an empty row in the drawer's list.
 			conversationId.value = "";
-			messages.value = [];
+			state.messages = [];
 			view.value = "chat";
-			notice.value = __("The conversation was deleted.");
+			state.notice = "deleted";
 		}
 	} catch (failure) {
-		error.value = String(
+		state.error = String(
 			(failure && failure.message) || failure || __("Could not delete that conversation."),
 		);
 	}
@@ -684,18 +786,18 @@ async function deleteConversation(conversation) {
  * back in the thread the reader was trying to leave.
  */
 async function newConversation() {
-	error.value = "";
+	state.error = "";
 	try {
 		const result = await call("albanna.api.conversations.new_conversation", {
 			page: currentPage.value,
 		});
 		conversationId.value = result.conversation || "";
-		messages.value = [];
+		state.messages = [];
 		view.value = "chat";
-		notice.value = __("A new conversation was started.");
+		state.notice = "started";
 		scrollToBottom(true);
 	} catch (failure) {
-		error.value = String(
+		state.error = String(
 			(failure && failure.message) || failure || __("Could not start a new conversation."),
 		);
 	}
@@ -721,13 +823,13 @@ async function loadPageConversation() {
 		if (!result || page !== currentPage.value) return;
 
 		if (!result.conversation) {
-			messages.value = [];
+			state.messages = [];
 			conversationId.value = "";
 			return;
 		}
 
 		conversationId.value = result.conversation;
-		messages.value = (result.messages || []).map((message) => {
+		state.messages = (result.messages || []).map((message) => {
 			return messageFromServer(message);
 		});
 		followBottom.value = true;
@@ -738,15 +840,28 @@ async function loadPageConversation() {
 	}
 }
 
+/**
+ * The reader has moved to another page.
+ *
+ * A different page is a different thread.  The transcript is cleared
+ * rather than kept, because an answer about the previous page would be
+ * read as an answer about this one.
+ *
+ * A turn in flight is stopped with it.  The answer would be about the
+ * page the reader has just left, and it belongs to that page's thread —
+ * so the work goes on where it belongs, and the panel says what it did.
+ */
 function onRouteChange() {
 	const context = resolveContext();
 	const identity = pageIdentity();
 	if (identity === currentPage.value) return;
 
-	// A different page is a different thread.  The transcript is cleared
-	// rather than kept, because an answer about the previous page would be
-	// read as an answer about this one.
-	messages.value = [];
+	const stopped = clearTranscript(state);
+	if (stopped) {
+		state.notice = "moved";
+		if (abortController.value) abortController.value.abort();
+	}
+
 	conversationId.value = "";
 	currentPage.value = identity;
 	props.onContext(context);
@@ -758,35 +873,19 @@ onMounted(() => {
 	onContextChanged(context);
 	loadPageConversation();
 
-	try {
-		if (
-			window.frappe &&
-			window.frappe.router &&
-			typeof window.frappe.router.on === "function"
-		) {
-			window.frappe.router.on("route-change", onRouteChange);
-		}
-	} catch (error) {
-		// A Desk without a router event is still a usable Desk.
-	}
+	// The Desk says the page changed with "change".  It does not say it
+	// with "route-change" — that event does not exist — and a listener
+	// for an event that never fires is a listener that never fires.
+	// `page.mjs` holds the name, and `page.test.mjs` holds it to account.
+	unwatch = watchRoute(onRouteChange);
 });
 
 onBeforeUnmount(() => {
 	// A turn in flight is left to finish on the server, but this panel is
 	// no longer waiting for it.
-	if (abortController) abortController.abort();
+	if (abortController.value) abortController.value.abort();
 
-	try {
-		if (
-			window.frappe &&
-			window.frappe.router &&
-			typeof window.frappe.router.off === "function"
-		) {
-			window.frappe.router.off("route-change", onRouteChange);
-		}
-	} catch (error) {
-		// Nothing to clean up.
-	}
+	if (unwatch) unwatch();
 });
 </script>
 
@@ -828,7 +927,10 @@ onBeforeUnmount(() => {
 				     reader in the middle of a thread who wants a fresh one
 				     should not have to go through the list to get it.
 				     It is an icon like the two beside it, so that the
-				     header is three quiet buttons and not a form. -->
+				     header is three quiet buttons and not a form.
+				     And it is a *plus*, and not a pencil: the pencil is
+				     what the list uses for renaming, and one glyph must
+				     not mean two things. -->
 				<button
 					type="button"
 					class="albanna-chat__icon"
@@ -838,11 +940,10 @@ onBeforeUnmount(() => {
 				>
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
 						<path
-							d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"
+							d="M12 5v14M5 12h14"
 							stroke="currentColor"
-							stroke-width="1.8"
+							stroke-width="2"
 							stroke-linecap="round"
-							stroke-linejoin="round"
 						/>
 					</svg>
 				</button>
@@ -924,7 +1025,7 @@ onBeforeUnmount(() => {
 				aria-live="off"
 				@scroll="onTranscriptScroll"
 			>
-				<div v-if="!messages.length" class="albanna-chat__empty">
+				<div v-if="!state.messages.length" class="albanna-chat__empty">
 					<p class="albanna-chat__empty-title">
 						{{ __("Ask a question about this site") }}
 					</p>
@@ -945,7 +1046,7 @@ onBeforeUnmount(() => {
 				</div>
 
 				<div
-					v-for="message in messages"
+					v-for="message in state.messages"
 					:key="message.id"
 					class="albanna-chat__message"
 					:class="`albanna-chat__message--${message.role}`"
@@ -955,7 +1056,7 @@ onBeforeUnmount(() => {
 					     into the list of calls. -->
 					<div v-if="message.pending" class="albanna-chat__activity" role="status">
 						<span class="albanna-chat__spinner" aria-hidden="true"></span>
-						<span class="albanna-chat__activity-text">{{ activity }}</span>
+						<span class="albanna-chat__activity-text">{{ state.activity }}</span>
 					</div>
 
 					<details
@@ -963,7 +1064,7 @@ onBeforeUnmount(() => {
 						class="albanna-chat__tools"
 					>
 						<summary class="albanna-chat__tools-summary">
-							{{ toolSummary(message) }}
+							{{ message.summary }}
 						</summary>
 						<ul class="albanna-chat__tools-list">
 							<li
@@ -1053,7 +1154,7 @@ onBeforeUnmount(() => {
 							</svg>
 						</button>
 						<button
-							v-if="message.role === 'assistant' && hasTable(message.content)"
+							v-if="message.role === 'assistant' && message.hasTable"
 							type="button"
 							class="albanna-chat__copy albanna-chat__copy--table"
 							:aria-label="__('Copy the table')"
@@ -1062,7 +1163,7 @@ onBeforeUnmount(() => {
 						>
 							{{ copiedTableId === message.id ? __("Copied") : __("Copy table") }}
 						</button>
-						<span class="albanna-chat__time">{{ messageTime(message) }}</span>
+						<span class="albanna-chat__time">{{ message.time }}</span>
 					</div>
 				</div>
 			</div>
@@ -1095,9 +1196,9 @@ onBeforeUnmount(() => {
 			{{ announcement }}
 		</p>
 
-		<div v-if="error" class="albanna-chat__error" role="alert">
-			<span class="albanna-chat__error-text">{{ error }}</span>
-			<button v-if="lastQuestion" type="button" class="albanna-chat__retry" @click="retry">
+		<div v-if="state.error" class="albanna-chat__error" role="alert">
+			<span class="albanna-chat__error-text">{{ state.error }}</span>
+			<button v-if="state.asked" type="button" class="albanna-chat__retry" @click="retry">
 				{{ __("Try again") }}
 			</button>
 			<button
@@ -1105,7 +1206,7 @@ onBeforeUnmount(() => {
 				class="albanna-chat__dismiss"
 				:aria-label="__('Dismiss')"
 				:title="__('Dismiss')"
-				@click="error = ''"
+				@click="dismiss(state, 'error')"
 			>
 				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
 					<path
@@ -1118,14 +1219,16 @@ onBeforeUnmount(() => {
 			</button>
 		</div>
 
-		<div v-else-if="notice" class="albanna-chat__notice">
-			<span class="albanna-chat__notice-text">{{ notice }}</span>
+		<!-- The notice is not the error's else-branch: a notice that is
+		     hidden by an error is a notice the reader never sees. -->
+		<div v-if="state.notice" class="albanna-chat__notice">
+			<span class="albanna-chat__notice-text">{{ noticeText(state.notice) }}</span>
 			<button
 				type="button"
 				class="albanna-chat__dismiss"
 				:aria-label="__('Dismiss')"
 				:title="__('Dismiss')"
-				@click="notice = ''"
+				@click="dismiss(state, 'notice')"
 			>
 				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
 					<path
