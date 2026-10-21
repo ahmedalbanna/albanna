@@ -758,3 +758,14 @@ msgstr "هذه ليست خيارات صالحة: {0}"
 
 msgid "The options must be a JSON object, such as {"setCacheKey": "True"}."
 msgstr "يجب أن تكون الخيارات كائن JSON، مثل {"setCacheKey": "True"}."
+
+
+msgid "The answer was cut off before it was finished."
+msgstr "قُطعت الإجابة قبل أن تكتمل."
+
+
+msgid "How the turn ended. 'truncated' means the provider cut the answer off at the token ceiling — the answer is unfinished, not wrong."
+msgstr "كيف انتهى الدور. «truncated» تعني أن المزوّد قطع الإجابة عند سقف الرموز — الإجابة غير مكتملة لا خاطئة."
+
+msgid "truncated"
+msgstr "مقطوعة"

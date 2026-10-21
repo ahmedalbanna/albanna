@@ -113,7 +113,7 @@ def ask(
 
     check_turn_allowed(str(frappe.session.user or ""), SURFACE_ASK)
 
-    from albanna.services.chat_service import ChatService, TurnRequest
+    from albanna.services.chat_service import ChatService, TurnRequest, turn_payload
 
     request = TurnRequest(
         question=question or "",
@@ -124,21 +124,7 @@ def ask(
     )
     outcome = ChatService().run(request)
 
-    return {
-        "status": "ok" if outcome.ok else "error",
-        "reply": outcome.reply,
-        "conversation_id": outcome.conversation_id,
-        "provider": outcome.provider,
-        "model": outcome.model,
-        "rounds": outcome.rounds,
-        "tool_calls": outcome.tool_calls,
-        "capped": outcome.capped,
-        "error": outcome.error,
-        # The rows the turn wrote, so that the browser can address this
-        # turn later — a row that can be named is a row that can be
-        # removed.
-        "written": [{"name": name, "role": role} for name, role in outcome.written],
-    }
+    return turn_payload(outcome)
 
 
 @frappe.whitelist()

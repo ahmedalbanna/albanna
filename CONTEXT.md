@@ -555,6 +555,20 @@ in the wrong thread.
 
 ### 37. The user's own words stay in the conversation
 
+A secret has two lives: the value itself, and every place the value is
+*not*.  The API key is the app's one secret, and it had a third life it
+should never have had — the **printed form** of the configuration that
+holds it.  A dataclass prints itself, so anything that printed the
+settings printed the key: a traceback, a `bench execute`, a log line, a
+test failure.  An accidental leak is not a smaller leak — it is the same
+leak, in a place nobody was looking.
+
+So the configuration's representation is written by hand, and it says
+only *that* there is a key.  Not how long it is, not its first few
+characters: a mask that reveals the shape of the secret is a mask with
+holes in it.
+
+
 A question is the user's words, and the conversation is where they
 belong: a place the user owns and can erase.  Two things used to carry
 them out of it.
@@ -698,7 +712,32 @@ object, because a typo in them would otherwise be ignored silently: the
 option the operator wanted would simply not be there, with nothing
 anywhere saying why.
 
-### 44. The reader is shown an error they can read
+### 45. An answer that was cut off says so
+
+A provider stops for two reasons: it finished, or it hit the token
+ceiling.  The app could not tell the two apart — the reason was never
+read — so an answer cut off mid-sentence was stored as a complete answer,
+recorded in the ledger as `ok`, and shown to the reader as if it were
+finished.
+
+An answer that looks complete and is not is worse than one that says it
+was cut, because the reader cannot check what they cannot see.  So the
+reason is read (`finish_reason` in the OpenAI-compatible shape,
+`stop_reason` in Anthropic's, `done_reason` in Ollama's — the same fact,
+three vocabularies, one rule), and it travels with the answer: the panel
+says the answer was cut off, and the ledger records the turn as
+`truncated` rather than `ok`.
+
+**One place builds the wire shape of a turn.**  A turn reaches the
+browser twice over: the endpoint that runs it here and now, and the
+worker that runs it there and now.  Both send the same shape, so both
+build it from one function — a field that is added to one of them and
+forgotten in the other is a field the reader never sees, and the bug is
+invisible until someone waits for an answer that was never announced.
+That is not a hypothesis: it is how the first version of this went, and
+a test now holds the two paths to the same shape.
+
+### 46. The reader is shown an error they can read
 
 A provider that answers in anything but Latin-1 — a Chinese error, an em
 dash — used to arrive as mojibake, because the error path read the body

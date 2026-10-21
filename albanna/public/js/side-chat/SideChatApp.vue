@@ -472,6 +472,8 @@ function noticeText(notice) {
 			return __("A new conversation was started.");
 		case "removed":
 			return __("The question and its answer were removed.");
+		case "truncated":
+			return __("The answer was cut off before it was finished.");
 		default:
 			return "";
 	}
@@ -674,6 +676,12 @@ function applyTurnResult(result, asked, answer) {
 		// no preview: it is a wrong answer that looks complete.
 		setContent(answer, result.reply);
 		endTurn(state, answer);
+
+		// The answer was cut off at the token ceiling.  It is not wrong
+		// — it is unfinished, and the reader is told so, because an
+		// answer that looks complete and is not is worse than one that
+		// says it was cut.
+		if (result.truncated) state.notice = "truncated";
 	} else {
 		// A turn that ended without an answer and without an error is
 		// still over.

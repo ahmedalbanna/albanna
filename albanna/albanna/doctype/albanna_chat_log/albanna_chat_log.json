@@ -67,8 +67,9 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Status",
-   "options": "ok\nerror\ncapped\ndenied",
-   "read_only": 1
+   "options": "ok\nerror\ncapped\ndenied\ntruncated",
+   "read_only": 1,
+   "description": "How the turn ended. 'truncated' means the provider cut the answer off at the token ceiling — the answer is unfinished, not wrong."
   },
   {
    "fieldname": "rounds_section",

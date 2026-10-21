@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from albanna.core.messages import Message
+from albanna.core.secrets import mask_secret
 from albanna.core.tools import ToolSpec
 
 #: The provider kinds this app knows.
@@ -24,6 +25,23 @@ OLLAMA = "ollama"
 ANTHROPIC = "anthropic"
 
 PROVIDER_KINDS = (OPENAI, OLLAMA, ANTHROPIC)
+
+#: The stop reasons that mean the answer was cut off rather than
+#: finished.
+#:
+#: Each provider names it its own way: the OpenAI-compatible ones say
+#: "length", Anthropic says "max_tokens".  The fact is the same, so the
+#: rule is in one place.
+TRUNCATED_REASONS = frozenset({"length", "max_tokens"})
+
+
+def is_truncated(reason: Any) -> bool:
+    """True when the provider stopped because the answer hit the ceiling.
+
+    @param reason: the provider's stop reason
+    @returns: whether the answer was cut off
+    """
+    return str(reason or "").strip().lower() in TRUNCATED_REASONS
 
 
 @dataclass(frozen=True)
@@ -41,6 +59,22 @@ class ProviderConfig:
     #: The operator's extra options — the ones the app has no field for.
     #: They are added to the request body; see :mod:`albanna.core.options`.
     extra_options: dict[str, Any] = field(default_factory=dict)
+
+    def __repr__(self) -> str:
+        """The configuration, with the key hidden.
+
+        The configuration is printed by more than one thing — a
+        traceback, a ``bench execute``, a log line, a test failure — and
+        the key is in it.  So the representation is written by hand, and
+        it says only *that* there is a key.
+        """
+        return (
+            f"ProviderConfig(kind={self.kind!r}, base_url={self.base_url!r}, "
+            f"model={self.model!r}, api_key={mask_secret(self.api_key)!r}, "
+            f"max_tokens={self.max_tokens!r}, timeout={self.timeout!r}, "
+            f"temperature={self.temperature!r}, supports_tools={self.supports_tools!r}, "
+            f"extra_options={self.extra_options!r})"
+        )
 
     @property
     def usable(self) -> bool:
@@ -94,6 +128,13 @@ class Completion:
     model: str
     usage: Usage | None = None
     fell_back: bool = False
+    #: True when the provider stopped because the answer hit the token
+    #: ceiling, rather than because it was finished.
+    #:
+    #: The difference matters to the reader: an answer that was cut off
+    #: is not wrong, but it is not *complete*, and an answer that looks
+    #: complete and is not is worse than one that says it was cut.
+    truncated: bool = False
 
 
 @dataclass(frozen=True)

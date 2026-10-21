@@ -43,6 +43,7 @@ from albanna.providers.base import (
     StreamDelta,
     StreamDone,
     Usage,
+    is_truncated,
 )
 from albanna.providers.http import post
 
@@ -75,6 +76,7 @@ class AnthropicProvider:
             provider=config.kind,
             model=str(data.get("model") or config.model),
             usage=self._parse_usage(data.get("usage")),
+            truncated=is_truncated(data.get("stop_reason")),
         )
 
     def stream(
@@ -91,6 +93,7 @@ class AnthropicProvider:
             partial_calls: dict[int, dict[str, Any]] = {}
             usage: Usage | None = None
             model = config.model
+            truncated = False
 
             for event in self._read_events(response):
                 kind = event.get("type")
@@ -105,6 +108,12 @@ class AnthropicProvider:
                         yield StreamDelta(text=text)
                 elif kind == "message_delta":
                     usage = self._parse_usage(event.get("usage")) or usage
+                    # The reason comes with the delta that ends the
+                    # message, and it is the only thing that says
+                    # whether the answer was finished or cut off.
+                    delta = event.get("delta") or {}
+                    if is_truncated(delta.get("stop_reason")):
+                        truncated = True
 
             calls = self._build_calls(partial_calls)
             content = "".join(chunks)
@@ -116,6 +125,7 @@ class AnthropicProvider:
                     provider=config.kind,
                     model=model,
                     usage=usage,
+                    truncated=truncated,
                 )
             )
 

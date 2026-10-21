@@ -107,6 +107,12 @@ class TurnOutcome:
     usage: Usage | None = None
     error: str = ""
     capped: bool = False
+    #: True when the provider cut the answer off at the token ceiling.
+    #:
+    #: The answer is not wrong — it is unfinished, and the reader is told
+    #: so, because an answer that looks complete and is not is worse
+    #: than one that says it was cut.
+    truncated: bool = False
     diagnosis: dict[str, Any] = field(default_factory=dict)
     #: The rows this turn wrote, as ``(name, role)`` pairs.
     #:
@@ -116,6 +122,35 @@ class TurnOutcome:
     #: names are the rows' own, so they do not shift when the
     #: conversation grows.
     written: list[tuple[str, str]] = field(default_factory=list)
+def turn_payload(outcome: TurnOutcome) -> dict[str, Any]:
+    """The wire shape of a turn.
+
+    **One place**, because there are two ways a turn reaches the browser:
+    the endpoint that runs it here and now, and the worker that runs it
+    there and now.  Both send the same shape, so both build it here —
+    a field that is added to one of them and forgotten in the other is a
+    field the reader never sees, and the bug is invisible until someone
+    waits for the answer that was never announced.
+    """
+    return {
+        "status": "ok" if outcome.ok else "error",
+        "reply": outcome.reply,
+        "conversation_id": outcome.conversation_id,
+        "provider": outcome.provider,
+        "model": outcome.model,
+        "rounds": outcome.rounds,
+        "tool_calls": outcome.tool_calls,
+        "capped": outcome.capped,
+        # The answer was cut off at the token ceiling.  The reader is
+        # told, because an answer that looks complete and is not is
+        # worse than one that says it was cut.
+        "truncated": outcome.truncated,
+        "error": outcome.error,
+        # The rows the turn wrote, so that the browser can address this
+        # turn later — a row that can be named is a row that can be
+        # removed.
+        "written": [{"name": name, "role": role} for name, role in outcome.written],
+    }
 
 
 class ChatService:
@@ -267,7 +302,7 @@ class ChatService:
                     tool_calls_made,
                     usage,
                     started,
-                    "ok",
+                    "truncated" if completion.truncated else "ok",
                     "",
                     "",
                     price_per_million=settings.price_per_million,
@@ -281,6 +316,7 @@ class ChatService:
                     rounds=rounds,
                     tool_calls=tool_calls_made,
                     usage=usage,
+                    truncated=completion.truncated,
                     written=written,
                 )
 
@@ -321,7 +357,7 @@ class ChatService:
         # language rather than the app's, and it reports findings instead
         # of apologising for a limit that is not the assistant's own.
         diagnosis = self._diagnose(tool_calls_made, rounds)
-        reply = self._answer_from_findings(llm_config, messages, visible, diagnosis)
+        reply, truncated = self._answer_from_findings(llm_config, messages, visible, diagnosis)
 
         written = append_messages(
             conversation,
@@ -339,7 +375,7 @@ class ChatService:
             tool_calls_made,
             usage,
             started,
-            "capped",
+            "truncated" if truncated else "capped",
             "round_limit",
             f"reached {settings.max_tool_rounds} rounds",
             price_per_million=settings.price_per_million,
@@ -354,6 +390,7 @@ class ChatService:
             tool_calls=tool_calls_made,
             usage=usage,
             capped=True,
+            truncated=truncated,
             diagnosis=diagnosis,
             written=written,
         )
@@ -637,12 +674,17 @@ class ChatService:
         messages: list[Message],
         tools: list[ToolSpec],
         diagnosis: dict[str, Any],
-    ) -> str:
+    ) -> tuple[str, bool]:
         """Close a turn that ran out of steps, with the model's own words.
 
         The step budget is a fact about one question, not a failure of the
         assistant, and the answer says so by *reporting what was found*:
         the question's data, and which part of it is still open.
+
+        The second value says whether the closing answer was itself cut
+        off at the token ceiling — it was written under the same ceiling
+        as every other answer, and a closing that stops mid-sentence is
+        a closing that says nothing useful.
         """
         instruction = (
             "You have used every step one question is allowed to take, so you must "
@@ -657,11 +699,11 @@ class ChatService:
             completion = self._complete(config, closing, tools, _noop_emit, False)
             answer = (completion.message.content or "").strip()
             if answer:
-                return answer
+                return answer, completion.truncated
         except Exception:
             logger.exception("Could not close a capped turn with a summary")
 
-        return self._capped_reply(diagnosis)
+        return self._capped_reply(diagnosis), False
 
     def _capped_reply(self, diagnosis: dict[str, Any]) -> str:
         """The answer for a turn that ran out of steps *and* could not be summarised.

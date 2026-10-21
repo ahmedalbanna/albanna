@@ -423,3 +423,106 @@ def test_the_apps_own_settings_are_not_overwritten_by_the_options(tools, monkeyp
     payload = captured["payload"]
     assert payload["model"] == "test-model"
     assert payload["temperature"] == 0.2
+
+
+def test_an_answer_cut_off_at_the_ceiling_says_so(tools, monkeypatch):
+    """A provider that stops because the answer hit the token ceiling
+    says so, and the reason is read."""
+    captured = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None, stream=False):
+        captured.update({"payload": json})
+        return FakeResponse(
+            payload={
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": "a long answer"},
+                        "finish_reason": "length",
+                    }
+                ],
+                "model": "m",
+            }
+        )
+
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
+
+    completion = OpenAIProvider().complete(OPENAI_CONFIG, [user("u")], tools)
+
+    assert completion.truncated is True
+    assert completion.message.content == "a long answer"
+
+
+def test_an_answer_that_was_finished_is_not_truncated(tools, monkeypatch):
+    def fake_post(url, headers=None, json=None, timeout=None, stream=False):
+        return FakeResponse(
+            payload={
+                "choices": [
+                    {
+                        "message": {"role": "assistant", "content": "a whole answer"},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "model": "m",
+            }
+        )
+
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
+
+    completion = OpenAIProvider().complete(OPENAI_CONFIG, [user("u")], tools)
+
+    assert completion.truncated is False
+
+
+def test_a_stream_cut_off_at_the_ceiling_says_so(monkeypatch):
+    lines = [
+        'data: {"model":"m","choices":[{"delta":{"content":"half an ans"}}]}',
+        'data: {"model":"m","choices":[{"delta":{},"finish_reason":"length"}]}',
+        "data: [DONE]",
+    ]
+    response = FakeResponse(lines=lines)
+
+    def fake_post(*args, **kwargs):
+        return response
+
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
+
+    events = list(OpenAIProvider().stream(OPENAI_CONFIG, [user("u")], []))
+
+    assert events[-1].completion.truncated is True
+
+
+def test_a_finished_stream_is_not_truncated(monkeypatch):
+    lines = [
+        'data: {"model":"m","choices":[{"delta":{"content":"the whole"}}]}',
+        'data: {"model":"m","choices":[{"delta":{},"finish_reason":"stop"}]}',
+        "data: [DONE]",
+    ]
+    response = FakeResponse(lines=lines)
+
+    def fake_post(*args, **kwargs):
+        return response
+
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
+
+    events = list(OpenAIProvider().stream(OPENAI_CONFIG, [user("u")], []))
+
+    assert events[-1].completion.truncated is False
+
+
+def test_a_provider_with_no_reason_at_all_is_not_truncated(tools, monkeypatch):
+    """Some providers say nothing about why they stopped.  Silence is not
+    a cut-off: the answer is taken to be finished."""
+
+    def fake_post(url, headers=None, json=None, timeout=None, stream=False):
+        return FakeResponse(
+            payload={
+                "choices": [{"message": {"role": "assistant", "content": "an answer"}}],
+                "model": "m",
+            }
+        )
+
+    monkeypatch.setattr("albanna.providers.openai.post", fake_post)
+
+    completion = OpenAIProvider().complete(OPENAI_CONFIG, [user("u")], tools)
+
+    assert completion.truncated is False

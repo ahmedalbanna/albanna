@@ -92,6 +92,10 @@ Anthropic.  It has no other runtime dependency.
   direction, and the whole Desk in Arabic is a first-class case rather than
   an afterthought — the widget sits on the reading end of the screen, so it
   never covers the text being read.
+* **An answer that was cut off says so.** When a provider stops at the
+  token ceiling rather than finishing, the panel says so and the ledger
+  records the turn as `truncated` — an answer that looks complete and
+  is not is worse than one that admits it.
 * **The provider's own options, in the operator's hands.** Options the
   app has no field for — a cache key, a vendor's own flag — are written
   as JSON in the settings and added to the request the app sends.

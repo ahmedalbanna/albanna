@@ -1456,3 +1456,72 @@ class TestTheSettingsRefuseNonsense(FrappeTestCase):
             {"setCacheKey": True},
             "a string that spells a boolean is the boolean it means",
         )
+
+
+@pytest.mark.integration
+class TestATruncatedAnswer(FrappeTestCase):
+    """An answer that was cut off says so.
+
+    The reader must not be left with an answer that stops mid-sentence
+    and looks finished.  The provider's reason travels with the answer,
+    the log records it, and the panel says it.
+    """
+
+    def test_the_turn_says_the_answer_was_cut_off(self):
+        """The provider's reason travels with the answer."""
+        from albanna.core.messages import Message
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.chat_service import ChatService, TurnRequest
+
+        completion = Completion(
+            message=Message(role="assistant", content="half an answer"),
+            provider="openai",
+            model="a-model",
+            usage=Usage(input_tokens=10, output_tokens=5),
+            truncated=True,
+        )
+
+        service = ChatService()
+
+        def fake_complete(config, messages, tools, emit, stream):
+            return completion
+
+        service._complete = fake_complete
+
+        outcome = service.run(
+            TurnRequest(question="a question that needs no tools", page="test|truncation|")
+        )
+
+        self.assertTrue(outcome.ok)
+        self.assertTrue(outcome.truncated, "the turn must say the answer was cut off")
+        self.assertEqual(outcome.reply, "half an answer")
+
+    def test_the_log_records_the_cut_off(self):
+        from albanna.core.messages import Message
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.chat_service import ChatService, TurnRequest
+
+        completion = Completion(
+            message=Message(role="assistant", content="half an answer"),
+            provider="openai",
+            model="a-model",
+            usage=Usage(input_tokens=10, output_tokens=5),
+            truncated=True,
+        )
+
+        service = ChatService()
+        service._complete = lambda config, messages, tools, emit, stream: completion
+
+        frappe.db.sql("delete from `tabAlbanna Chat Log`")
+        outcome = service.run(
+            TurnRequest(question="a question that was cut off", page="test|truncation|log|")
+        )
+        frappe.db.commit()
+
+        row = frappe.db.get_value(
+            "Albanna Chat Log",
+            {"conversation": outcome.conversation_id},
+            ["status"],
+            as_dict=True,
+        )
+        self.assertEqual(row.status, "truncated", "the ledger must say the answer was cut off")

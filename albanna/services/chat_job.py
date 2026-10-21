@@ -46,7 +46,7 @@ def run_turn_job(
     the host.  The two parameters are kept only so that a turn queued
     before the change still runs; nothing enqueues them any more.
     """
-    from albanna.services.chat_service import ChatService, TurnRequest
+    from albanna.services.chat_service import ChatService, TurnRequest, turn_payload
 
     user = frappe.session.user
     emit = _realtime_emit(stream_id, user)
@@ -73,21 +73,7 @@ def run_turn_job(
             ),
             emit=emit,
         )
-        payload = {
-            "status": "ok" if outcome.ok else "error",
-            "reply": outcome.reply,
-            "conversation_id": outcome.conversation_id,
-            "provider": outcome.provider,
-            "model": outcome.model,
-            "rounds": outcome.rounds,
-            "tool_calls": outcome.tool_calls,
-            "capped": outcome.capped,
-            "error": outcome.error,
-            # The rows the turn wrote, so that the browser can address
-            # this turn later — a row that can be named is a row that can
-            # be removed.
-            "written": [{"name": name, "role": role} for name, role in outcome.written],
-        }
+        payload = turn_payload(outcome)
     except Exception as exc:  # noqa: BLE001 - the job must always answer
         logger.exception("Chat turn failed")
         payload = {

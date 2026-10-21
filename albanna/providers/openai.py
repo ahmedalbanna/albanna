@@ -40,6 +40,7 @@ from albanna.providers.base import (
     StreamDelta,
     StreamDone,
     Usage,
+    is_truncated,
 )
 from albanna.providers.http import post
 
@@ -99,6 +100,7 @@ class OpenAIProvider:
             provider=config.kind,
             model=str(data.get("model") or config.model),
             usage=self._parse_usage(data.get("usage")),
+            truncated=is_truncated(choice.get("finish_reason")),
         )
 
     def stream(
@@ -115,9 +117,17 @@ class OpenAIProvider:
             tool_calls: dict[int, dict[str, Any]] = {}
             model = config.model
             usage: Usage | None = None
+            truncated = False
 
             for event in self._read_events(response):
                 model = str(event.get("model") or model)
+
+                # The reason comes with the chunk that ends the answer,
+                # and it is the only thing that says whether the answer
+                # was finished or cut off.
+                for choice in event.get("choices") or []:
+                    if is_truncated(choice.get("finish_reason")):
+                        truncated = True
 
                 # The final chunk carries the usage, but only when the request
                 # asked for it.  Without this the ledger records a turn that
@@ -152,6 +162,7 @@ class OpenAIProvider:
                     provider=config.kind,
                     model=model,
                     usage=usage,
+                    truncated=truncated,
                 )
             )
         finally:

@@ -40,6 +40,7 @@ from albanna.providers.base import (
     StreamDelta,
     StreamDone,
     Usage,
+    is_truncated,
 )
 from albanna.providers.http import post
 
@@ -71,6 +72,7 @@ class OllamaProvider:
             provider=config.kind,
             model=str(data.get("model") or config.model),
             usage=self._parse_usage(data),
+            truncated=is_truncated(data.get("done_reason")),
         )
 
     def stream(
@@ -87,12 +89,19 @@ class OllamaProvider:
             calls: list[ToolCall] = []
             model = config.model
             usage: Usage | None = None
+            truncated = False
 
             for event in self._read_events(response):
                 model = str(event.get("model") or model)
                 parsed_usage = self._parse_usage(event)
                 if parsed_usage is not None:
                     usage = parsed_usage
+
+                # The reason comes with the last event, and it is the
+                # only thing that says whether the answer was finished
+                # or cut off.
+                if is_truncated(event.get("done_reason")):
+                    truncated = True
 
                 message = event.get("message") or {}
                 text = message.get("content")
@@ -111,6 +120,7 @@ class OllamaProvider:
                     provider=config.kind,
                     model=model,
                     usage=usage,
+                    truncated=truncated,
                 )
             )
         finally:

@@ -24,8 +24,12 @@ from typing import Any
 
 import frappe
 
+from albanna.core.secrets import REDACTED
+
 #: What a redacted parameter reads as in the log.
-REDACTED = "[redacted]"
+#:
+#: One definition, shared with the configuration that holds the API key:
+#: the mask of a secret is the same mask wherever the secret is hidden.
 
 #: The parameters that carry what the user typed or what they were
 #: looking at.
