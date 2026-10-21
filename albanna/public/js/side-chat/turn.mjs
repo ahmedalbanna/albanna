@@ -53,7 +53,7 @@ export async function call(method, args = {}) {
 		// that answers with an empty bubble is indistinguishable from a
 		// broken one, and the person has no way to tell that the assistant
 		// was *refused* rather than silent.
-		throw new Error(serverMessage(request) || "The request could not be completed.");
+		throw new Error(serverMessage(request) || __("The request could not be completed."));
 	}
 
 	const message = result && result.message;
@@ -61,7 +61,7 @@ export async function call(method, args = {}) {
 		return message;
 	}
 
-	throw new Error(serverMessage(result) || "The request could not be completed.");
+	throw new Error(serverMessage(result) || __("The request could not be completed."));
 }
 
 /**
@@ -204,9 +204,15 @@ export function subscribe(streamId, handler) {
  * @param {string} options.page the page identity
  * @param {object} options.pageContext the page description
  * @param {function} options.onEvent called with each progress event
+ * @param {AbortSignal} [options.signal] aborts the *client's* wait
  * @returns {Promise<object>} the final payload
  */
-export async function runTurn({ question, conversationId, page, pageContext, onEvent }) {
+export async function runTurn({ question, conversationId, page, pageContext, onEvent, signal }) {
+	// A turn that was stopped before it started is stopped, not queued.
+	if (signal && signal.aborted) {
+		return { status: "aborted" };
+	}
+
 	const queued = await call(ASK_ENDPOINT, {
 		question,
 		conversation_id: conversationId || "",
@@ -232,8 +238,28 @@ export async function runTurn({ question, conversationId, page, pageContext, onE
 			unsubscribeSocket();
 			if (firstPoll) window.clearTimeout(firstPoll);
 			if (pollTimer) window.clearInterval(pollTimer);
-			resolve(payload || { status: "error", error: "No answer." });
+			// The abort listener is removed here rather than left on the
+			// signal: a signal outlives the turn, and a listener that
+			// outlives its turn is a leak the user never sees.
+			if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+			resolve(payload || { status: "error", error: __("No answer.") });
 		};
+
+		/* Stopping a turn is a *client* action.
+		 *
+		 * The worker keeps running and the answer is still parked in the
+		 * cache, so the turn is not lost — it is merely no longer waited
+		 * for.  That is the honest shape of it: a server-side cancel would
+		 * have to reach into the worker to stop a model call that is
+		 * already in flight, and the cost of that is a whole cancellation
+		 * channel between the browser and the queue.
+		 *
+		 * What the user needs is to stop *watching*, and this does that:
+		 * the socket subscription is dropped, the poll stops, and the panel
+		 * is theirs again. */
+		function onAbort() {
+			finish({ status: "aborted" });
+		}
 
 		unsubscribeSocket = subscribe(streamId, (event) => {
 			if (event.event === "done") {
@@ -259,5 +285,19 @@ export async function runTurn({ question, conversationId, page, pageContext, onE
 			pollTimer = window.setInterval(poll, STATUS_POLL_MS);
 			poll();
 		}, FIRST_POLL_MS);
+
+		/* The abort listener goes on *last*, and that order matters.
+		 *
+		 * The signal may have been aborted while the request was in
+		 * flight — which is exactly the race a reader hits by pressing
+		 * Stop the moment the button changes.  If the listener were
+		 * registered before the timers were made, `finish` would run
+		 * first, find no timer to clear, and the poll would then be
+		 * scheduled *after* the turn was already over: a timer nobody
+		 * stops, polling a turn nobody is waiting for. */
+		if (signal) {
+			signal.addEventListener("abort", onAbort, { once: true });
+			if (signal.aborted) onAbort();
+		}
 	});
 }

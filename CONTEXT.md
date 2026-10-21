@@ -247,6 +247,230 @@ assistant works to.  When it is reached, the assistant is asked to answer
 with what it has found — it does not compose an apology about a limit
 that is not its own, and the limit is stated as a fact about the question.
 
+### 19. The panel is a frame, and the transcript is what scrolls inside it
+
+The panel's height is fixed.  The app fills it, the transcript takes what
+is left and scrolls, and the composer stays pinned to the bottom — visible
+at every moment, whatever the length of the answer.
+
+The chain is three links long, and it broke at the second one.  The mount
+point the app is mounted into had an auto height, so the app's
+`height: 100%` resolved to `auto`, so the transcript had no height to
+scroll against, and the panel's `overflow: hidden` cut the answer off
+*and* the composer with it.  A long answer was not a long answer; it was
+a widget that stopped working, and nothing in the source said so.
+
+The three links: the panel is a fixed-height flex column, the mount point
+is a flex child of it, the app is a flex child of the mount point.  Each
+has to be, or the height never reaches the transcript.
+
+### 20. The tokens arrive as they are produced
+
+The answer appears in the panel as the model writes it, not when the turn
+ends.  This is a promise about the *screen*, not about the server: the
+server may take four minutes, and the panel says so the whole time.
+
+The promise is easy to break and hard to see.  A message held in a `ref`
+array is a plain object unless it is made reactive, and a plain object
+pushed into a reactive array is stored raw — the template reads it
+through a proxy, and a mutation of the raw object bypasses that proxy.
+The tokens arrive, are appended to an object nobody is watching, and
+appear all at once when the turn ends and something else changes.  Every
+visible part of the feature worked; only the timing was wrong.
+
+So the messages are reactive *before* they are pushed, and the rule is
+the general one: **a value the panel shows as it changes has to be
+reactive where it is changed, not only where it is read.**
+
+### 21. The reader is told what the assistant did, in the reader's words
+
+`list_docs` and `run_report` are the model's names for two things, and
+they are not the reader's.  A person wants to know that the assistant is
+looking something up, not which function it reached for.
+
+So the progress is one line — a sentence, in the reader's language, that
+says what is happening now — and the turn's tool calls are folded behind
+one line that says what it did.  The names are still there, a click away,
+for the reader who wants them; they are simply not the first thing the
+reader has to read.
+
+The version before this put a chip on the panel for every call.  Seven
+calls meant seven chips and four rows, which said less than one sentence
+and took more room than the answer — and their labels were hardcoded
+English in an interface that is Arabic half the time.
+
+### 22. A page may hold more than one conversation, and "New" makes one
+
+A conversation belongs to a page, and a page's context is the context
+behind every question asked on it — so the page's conversation is the
+one a question joins when the panel has no thread to continue.
+
+But a page may hold several, and the panel's "New" button makes one.  It
+has to ask the server for it: the server resolves a page's conversation
+*by page*, so a "new" conversation that existed only in the browser would
+land back in the thread the reader was trying to leave.  The button
+would clear the screen, and the assistant would carry on with the old
+thread's memory of what had been asked before.
+
+A conversation with no title is named after the first question asked in
+it, and only then: a conversation the reader has renamed keeps the name
+they gave it.
+
+### 23. The panel's width is the reader's, and the Desk pays for it
+
+The panel can be dragged wider, because the one thing in it that is
+genuinely wide is the answer's table.  400px is enough for a sentence
+and not enough for four columns of a sales order, and a table the reader
+has to scroll sideways *inside* a 400px window is a table nobody reads.
+
+The width is one CSS variable, and both the panel and the Desk's margin
+are written against it.  A wider panel takes more of the Desk, which is
+what the dock means: the Desk was already giving the space up, and now
+it gives up more of it.
+
+The handle is on the panel's *logical* edge — the one that faces the
+Desk — because the panel is pinned to one edge of the screen and the
+handle is on the other.  A handle on a physical edge would land on the
+wrong side of the panel in a right-to-left interface, which is the same
+trap as the position itself.
+
+### 24. The panel shows the page's thread, and the model reads the same one
+
+The server resolves a page's conversation *by page*, so the thread the
+assistant will answer in is the page's thread.  The panel shows that
+thread: a panel that opened empty on a page with a conversation on it
+would be telling the reader one thing and the assistant another, and the
+reader would not know which of them to believe.
+
+So the panel asks the server what is there when it opens on a page and
+when it moves to one.  Asking does not create: a page with no thread is
+a page with nothing to show, which is an answer and not a failure.
+
+The reader can still start a new thread on the same page, and the new
+one is the page's thread from then on — which is what the server's own
+lookup says, and what the assistant reads.
+
+And the panel says which page it is on.  The widget's whole claim is
+that it knows what you are looking at, and an empty panel that says
+nothing about it leaves the reader wondering whether it does.  With a
+document open, the panel names it and the questions it offers are about
+*that* document — a reader with a Sales Order open wants to know about
+the Sales Order in front of them, not about sales orders in general.
+
+A list is not named, because a list's route is a slug and not a name:
+"erpnext/sales-order" is not "Sales Order".  Better to say nothing than
+to say a slug.
+
+### 25. The question box and the send button are one thing
+
+A box and a button beside it read as a *form*: something to fill in and
+submit.  A chat is not a form.  It is a place you say something, and the
+arrow in the corner says "go" rather than "submit".
+
+So the button is inside the field, and it is a circle of a fixed size.
+It holds that size when it becomes a stop, so the thing the reader is
+about to click does not move under their cursor at the moment the turn
+starts.
+
+The field carries the focus ring and the box inside it has none: a ring
+around the whole thing says where the reader's words are going, which is
+more use than a ring around the text alone.
+
+### 26. The markdown is the answer, and it is rendered as markdown
+
+The renderer is a small subset — headings, emphasis, code, lists, tables,
+links, quotes — and the subset is chosen by what an assistant actually
+produces.
+
+Two things it gets right that are easy to get wrong:
+
+*   A **nested list** stays nested.  Flattening it loses the structure
+    that made the list worth writing.
+*   A **wrapped line** belongs to the item it continues.  A line that is
+    not an item is the way a sentence wraps, and it belongs *inside* that
+    item — the version before this dropped it outside the list, where it
+    read as a stray paragraph.
+
+A link is only a link when its scheme is `http`, `https` or `mailto`.
+Everything else — `javascript:`, `data:`, a bare path — is left as the
+text it was written as, because a link the reader clicks is the one
+place the model's output becomes an action rather than a sentence.
+
+### 27. The settings fail loudly, because a quiet failure is worse
+
+Two ways to configure this app used to fail in silence.
+
+**A role name that is not a role** was ignored.  The operator typed
+`Sale User` instead of `Sales User`, and the people they had chosen
+simply could not chat — with nothing, anywhere, saying that the name was
+wrong.  Now the save is refused and the names that are not roles are
+named.
+
+**A provider with no base URL** was not one the app would call.  The
+check for whether a provider is usable happens *before* the request is
+made, and the request is where the default would have been applied — so
+a deployment that followed the instructions, with a key and a model and
+nothing else, had no provider at all.  The settings now ask the provider
+what its default endpoint is, and use it.
+
+And the settings page can **test the provider**: one message, no tools,
+the smallest question that means anything.  It costs nothing worth
+counting and it proves the three things that are wrong in practice — the
+base URL, the model id, and the key.  An operator who has mistyped a
+base URL should find that out at the moment they press the button, and
+not at the first question in front of a user.
+
+### 28. The answer is a doorway into the Desk
+
+A name in the answer is a link, and it opens the document.
+
+The names that are linked are the ones the **tools** were given — the
+document a call read, the documents a listing returned, the document a
+call created.  Nothing is guessed from the shape of the text, and a name
+the assistant never opened is not a link.  A word that only looks like a
+document name is left as a word.
+
+The links are the Desk's own: the same URL the Desk's list view makes,
+from the same slug, so a name in an answer opens exactly what a name in a
+list opens.
+
+And they are stored with the tool call, so a conversation opened again
+links to the same documents.  An answer you read yesterday should still
+be a doorway today.
+
+### 29. A table in an answer is data, and data can be taken away
+
+The answer's table is copied as **tab-separated values**, with the header
+row first, so that a paste into a spreadsheet lands as a table and not as
+a column of text.
+
+The markdown is not data.  A cell that says `**24**` is a cell that says
+24, and a spreadsheet that reads `**24**` is reading the emphasis rather
+than the number — so the emphasis markers are stripped on the way out.
+
+There are two copy buttons, and they do different things: the icon takes
+the answer, and "Copy table" takes the data out of it.  They are not the
+same button twice, because a reader should not have to guess which is
+which.
+
+### 30. The live line says what is being looked at
+
+"Searching" tells the reader that the assistant is busy.  "Searching
+Sales Order" tells the reader that the answer is being assembled against
+the thing they are looking at — which is the difference between a chat
+that is working and a chat that is working *on your question*.
+
+### 31. The reader is shown an error they can read
+
+A provider that answers in anything but Latin-1 — a Chinese error, an em
+dash — used to arrive as mojibake, because the error path read the body
+before anything said how to decode it, and `requests` decodes a response
+with no charset as ISO-8859-1.
+
+That message is what the reader is shown.  An error that is a puzzle is
+worse than an error that is dull, because the reader cannot tell whether
+the assistant is broken or the message is.
+
 ## What is deliberately not here
 
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.

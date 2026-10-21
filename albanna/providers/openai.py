@@ -73,6 +73,11 @@ def _affordable_tokens(detail: str) -> int | None:
 
 class OpenAIProvider:
     """Talks to any OpenAI-compatible ``/chat/completions`` endpoint."""
+    #: The endpoint used when the settings leave the base URL
+    #: blank.  It is here, and not only in the request code, because the
+    #: settings have to know it too: a provider with no base URL is a
+    #: provider the app will not call.
+    default_base_url = DEFAULT_BASE_URL
 
     kind = "openai"
 
@@ -272,6 +277,13 @@ class OpenAIProvider:
         return data if isinstance(data, dict) else {}
 
     def _http_error(self, response: requests.Response, config: ProviderConfig) -> ProviderError:
+        # The body is read before anything says how to decode it, and
+        # `requests` decodes a response with no charset as ISO-8859-1.  A
+        # provider that answers in anything else — a Chinese error, an
+        # em dash — arrives as mojibake, and this message is what the
+        # reader is shown.  Saying so explicitly is the difference between
+        # an error and a puzzle.
+        response.encoding = "utf-8"
         detail = ""
         try:
             body = response.json()

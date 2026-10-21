@@ -43,8 +43,10 @@ import pytest
 from frappe.tests.utils import FrappeTestCase
 
 from albanna.api.conversations import (
+    conversation_for_page,
     delete_conversation,
     list_conversations,
+    new_conversation,
     open_conversation,
     rename_conversation,
 )
@@ -55,6 +57,8 @@ from albanna.services.conversation_service import (
     append_messages,
     ensure_conversation,
     load_messages,
+    load_transcript,
+    name_after_question,
 )
 from albanna.services.settings_service import get_settings
 from albanna.tools.backend import ErpnextBackend
@@ -383,6 +387,476 @@ class TestConversationOwnership(FrappeTestCase):
         self._as(self.owner)
         with self.assertRaises(frappe.DoesNotExistError):
             open_conversation(conversation="nope")
+
+
+@pytest.mark.integration
+class TestNewConversation(FrappeTestCase):
+    """The panel's "New" button, and the conversation it makes.
+
+    The button used to clear the panel and nothing else.  The server
+    resolves a page's conversation *by page*, so the next question landed
+    back in the thread the reader was trying to leave: the screen was
+    empty and the assistant was not.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.owner = "albanna.test.new@albanna.dev"
+        if not frappe.db.exists("User", self.owner):
+            user = frappe.new_doc("User")
+            user.email = self.owner
+            user.first_name = "Albanna"
+            user.last_name = "Test"
+            user.flags.ignore_permissions = True
+            user.insert()
+            user.add_roles("Desk User")
+        frappe.db.commit()
+
+        self._original_chat_roles = frappe.db.get_single_value("Albanna Settings", "chat_roles")
+        doc = frappe.get_single("Albanna Settings")
+        doc.chat_roles = "Desk User"
+        doc.flags.ignore_permissions = True
+        doc.save(ignore_permissions=True)
+        frappe.db.commit()
+        get_settings(refresh=True)
+
+    def tearDown(self):
+        frappe.db.set_single_value("Albanna Settings", "chat_roles", self._original_chat_roles or "")
+        frappe.db.commit()
+        get_settings(refresh=True)
+        super().tearDown()
+
+    def _as(self, email):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _page(self, label):
+        """A page identity this run has not used before.
+
+        A conversation is found by its page, and the conversations outlive
+        the test run, so a fixed identity would find the last run's
+        conversation and count its messages.
+        """
+        return f"test|{label}|{frappe.generate_hash(length=8)}|"
+
+    def test_new_makes_a_second_conversation_on_the_same_page(self):
+        self._as(self.owner)
+        page = self._page("new")
+        first = ensure_conversation(self.owner, page)
+
+        second = new_conversation(page=page)["conversation"]
+
+        self.assertNotEqual(first, second)
+        self.assertTrue(frappe.db.exists("Albanna Conversation", second))
+        self.assertEqual(
+            frappe.db.get_value("Albanna Conversation", second, "page"),
+            page,
+        )
+
+    def test_a_new_conversation_belongs_to_the_caller(self):
+        self._as(self.owner)
+        second = new_conversation(page=self._page("owned"))["conversation"]
+
+        self.assertEqual(
+            frappe.db.get_value("Albanna Conversation", second, "user"),
+            self.owner,
+        )
+
+    def test_the_thread_the_button_leaves_is_untouched(self):
+        self._as(self.owner)
+        page = self._page("join")
+        first = ensure_conversation(self.owner, page)
+        append_messages(first, [{"role": "user", "content": "the first question"}])
+
+        second = new_conversation(page=page)["conversation"]
+
+        self.assertNotEqual(first, second)
+        # The thread the reader left is still there, with its question in
+        # it, and the new one is empty.
+        self.assertEqual(len(load_messages(first, 20)), 1)
+        self.assertEqual(len(load_messages(second, 20)), 0)
+
+    def test_a_question_carrying_the_new_id_joins_the_new_thread(self):
+        self._as(self.owner)
+        page = self._page("carry")
+        first = ensure_conversation(self.owner, page)
+        append_messages(first, [{"role": "user", "content": "the first question"}])
+
+        second = new_conversation(page=page)["conversation"]
+        append_messages(second, [{"role": "user", "content": "the second question"}])
+
+        # The panel carries the id, so the question goes to the thread the
+        # reader asked for and not to the page's other one.
+        self.assertEqual(len(load_messages(first, 20)), 1)
+        self.assertEqual(len(load_messages(second, 20)), 1)
+
+    def test_a_new_conversation_is_told_it_has_no_title_yet(self):
+        self._as(self.owner)
+        conversation = new_conversation(page=self._page("untitled"))["conversation"]
+
+        titles = [c["title"] for c in list_conversations(limit=50)["conversations"]]
+        self.assertIn("", titles)
+
+        opened = open_conversation(conversation=conversation)
+        self.assertEqual(opened["conversation"]["title"], "")
+
+    def test_the_first_question_names_an_untitled_conversation(self):
+        self._as(self.owner)
+        conversation = new_conversation(page=self._page("naming"))["conversation"]
+
+        name_after_question(conversation, "How many open orders are there?")
+
+        self.assertEqual(
+            frappe.db.get_value("Albanna Conversation", conversation, "title"),
+            "How many open orders are there?",
+        )
+
+    def test_the_page_s_thread_is_the_one_the_panel_shows(self):
+        self._as(self.owner)
+        page = self._page("follow")
+        conversation = ensure_conversation(self.owner, page, title="the first question")
+        append_messages(conversation, [{"role": "user", "content": "the first question"}])
+
+        found = conversation_for_page(page=page)
+
+        self.assertEqual(found["conversation"], conversation)
+        self.assertEqual(len(found["messages"]), 1)
+        self.assertEqual(found["messages"][0]["content"], "the first question")
+
+    def test_a_page_with_no_thread_has_nothing_to_show(self):
+        self._as(self.owner)
+        found = conversation_for_page(page=self._page("empty"))
+
+        self.assertEqual(found["conversation"], "")
+        self.assertEqual(found["messages"], [])
+
+    def test_asking_what_is_there_does_not_create_a_thread(self):
+        self._as(self.owner)
+        page = self._page("untouched")
+        conversation_for_page(page=page)
+
+        # Nothing was created, so a question on this page starts one.
+        created = ensure_conversation(self.owner, page)
+        self.assertTrue(frappe.db.exists("Albanna Conversation", created))
+
+    def test_the_newest_thread_on_a_page_is_the_one_shown(self):
+        self._as(self.owner)
+        page = self._page("newest")
+        first = ensure_conversation(self.owner, page, title="the first thread")
+        second = new_conversation(page=page)["conversation"]
+
+        found = conversation_for_page(page=page)
+
+        self.assertEqual(found["conversation"], second)
+        self.assertNotEqual(found["conversation"], first)
+
+    def test_a_renamed_conversation_keeps_its_name(self):
+        self._as(self.owner)
+        conversation = new_conversation(page=self._page("renamed"))["conversation"]
+        rename_conversation(conversation=conversation, title="The one I want")
+
+        name_after_question(conversation, "How many open orders are there?")
+
+        self.assertEqual(
+            frappe.db.get_value("Albanna Conversation", conversation, "title"),
+            "The one I want",
+        )
+
+
+@pytest.mark.integration
+class TestSettings(FrappeTestCase):
+    """The settings, and the two ways they used to fail silently.
+
+    A role name that is not a role was ignored, so a typo left the people
+    an administrator had chosen unable to chat, with nothing saying why.
+    And a provider with no base URL was not one the app would call, even
+    though the request code had a default for it — so a deployment that
+    followed the instructions had no provider at all.
+    """
+
+    def _restore(self, fieldname, value):
+        frappe.db.set_single_value("Albanna Settings", fieldname, value or "")
+        frappe.db.commit()
+        get_settings(refresh=True)
+
+    def test_a_role_name_that_is_not_a_role_is_refused(self):
+        original = frappe.db.get_single_value("Albanna Settings", "chat_roles")
+        try:
+            doc = frappe.get_single("Albanna Settings")
+            doc.chat_roles = "Desk User\nNot A Role At All"
+            with self.assertRaises(frappe.ValidationError) as caught:
+                doc.save(ignore_permissions=True)
+            self.assertIn("Not A Role At All", str(caught.exception))
+        finally:
+            self._restore("chat_roles", original)
+
+    def test_a_real_role_is_accepted(self):
+        original = frappe.db.get_single_value("Albanna Settings", "chat_roles")
+        try:
+            doc = frappe.get_single("Albanna Settings")
+            doc.chat_roles = "System Manager"
+            doc.save(ignore_permissions=True)
+            frappe.db.commit()
+        finally:
+            self._restore("chat_roles", original)
+
+    def test_a_provider_with_no_base_url_uses_the_provider_default(self):
+        from albanna.providers.openai import OpenAIProvider
+
+        original = frappe.db.get_single_value("Albanna Settings", "base_url")
+        original_kind = frappe.db.get_single_value("Albanna Settings", "provider_kind")
+        try:
+            frappe.db.set_single_value("Albanna Settings", "base_url", "")
+            frappe.db.set_single_value("Albanna Settings", "provider_kind", "openai")
+            frappe.db.commit()
+            get_settings(refresh=True)
+
+            settings = get_settings()
+
+            self.assertEqual(settings.provider.base_url, OpenAIProvider.default_base_url)
+            self.assertTrue(settings.provider.usable)
+        finally:
+            frappe.db.set_single_value("Albanna Settings", "base_url", original or "")
+            frappe.db.set_single_value(
+                "Albanna Settings", "provider_kind", original_kind or ""
+            )
+            frappe.db.commit()
+            get_settings(refresh=True)
+
+    def test_a_provider_with_no_model_is_refused_by_the_test(self):
+        from albanna.api.provider import test_provider
+
+        with self.assertRaises(frappe.ValidationError):
+            test_provider(kind="openai", base_url="https://example.invalid", model="")
+
+
+@pytest.mark.integration
+class TestTouchedDocuments(FrappeTestCase):
+    """The documents a tool call looked at.
+
+    They are what the panel turns into links, so that an answer is a
+    doorway into the Desk.  The names come from the tools, so a name in
+    the answer is a link only when it *is* a document name.
+    """
+
+    def _call(self, name, arguments):
+        from albanna.core.messages import ToolCall
+
+        return ToolCall(id="call-1", name=name, arguments=arguments)
+
+    def _as(self, email):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def setUp(self):
+        super().setUp()
+        self.sales_user = "albanna.test.docs@albanna.dev"
+        if not frappe.db.exists("User", self.sales_user):
+            user = frappe.new_doc("User")
+            user.email = self.sales_user
+            user.first_name = "Albanna"
+            user.last_name = "Test"
+            user.flags.ignore_permissions = True
+            user.insert()
+            user.add_roles("Sales User")
+        frappe.db.commit()
+
+    def test_a_read_reports_the_document_it_read(self):
+        from albanna.services.chat_service import touched_documents
+        from albanna.tools.base import ToolResult
+
+        call = self._call("get_doc", {"doctype": "Sales Order", "name": "SAL-ORD-2026-00001"})
+        result = ToolResult.success("Read it", data={"name": "SAL-ORD-2026-00001"})
+
+        self.assertEqual(
+            touched_documents(call, result),
+            [{"doctype": "Sales Order", "name": "SAL-ORD-2026-00001"}],
+        )
+
+    def test_a_listing_reports_the_documents_it_returned(self):
+        from albanna.services.chat_service import touched_documents
+        from albanna.tools.base import ToolResult
+
+        call = self._call("list_docs", {"doctype": "Sales Order"})
+        result = ToolResult.success(
+            "Found 2",
+            data=[{"name": "SAL-ORD-2026-00001"}, {"name": "SAL-ORD-2026-00002"}],
+        )
+
+        self.assertEqual(
+            touched_documents(call, result),
+            [
+                {"doctype": "Sales Order", "name": "SAL-ORD-2026-00001"},
+                {"doctype": "Sales Order", "name": "SAL-ORD-2026-00002"},
+            ],
+        )
+
+    def test_a_write_reports_the_document_it_created(self):
+        from albanna.services.chat_service import touched_documents
+        from albanna.tools.base import ToolResult
+
+        call = self._call("create_doc", {"doctype": "Sales Order", "data": {}})
+        result = ToolResult.success(
+            "Created it",
+            data={"doctype": "Sales Order", "name": "SAL-ORD-2026-00009"},
+        )
+
+        self.assertEqual(
+            touched_documents(call, result),
+            [{"doctype": "Sales Order", "name": "SAL-ORD-2026-00009"}],
+        )
+
+    def test_a_tool_with_no_doctype_reports_nothing(self):
+        from albanna.services.chat_service import touched_documents
+        from albanna.tools.base import ToolResult
+
+        call = self._call("run_report", {"report": "Sales Register"})
+        result = ToolResult.success("Done", data={"rows": [{"name": "x"}]})
+
+        self.assertEqual(touched_documents(call, result), [])
+
+    def test_a_tool_call_reports_the_documents_it_looked_at(self):
+        """The event the panel reads carries the documents.
+
+        This is the whole path, with the real tool: the tool runs, and the
+        event that comes out of it names the documents it read.
+        """
+        from albanna.core.authority import Authority
+        from albanna.core.messages import ToolCall
+        from albanna.core.tools import TOOL_MANIFEST
+        from albanna.permissions import FrappePermissionChecker, current_principal
+        from albanna.services.chat_service import ChatService
+
+        self._as(self.sales_user)
+        principal = current_principal()
+        authority = Authority(TOOL_MANIFEST, principal, FrappePermissionChecker())
+
+        events: list[dict] = []
+        call = ToolCall(
+            id="call-1",
+            name="list_docs",
+            arguments={"doctype": "Item", "limit": 3},
+        )
+
+        result = ChatService()._run_tool(
+            call,
+            authority,
+            principal,
+            frappe.local.site,
+            list(TOOL_MANIFEST.all()),
+            events.append,
+        )
+
+        self.assertTrue(result.ok, result.content)
+
+        done = [event for event in events if event.get("event") == "tool_done"]
+        self.assertEqual(len(done), 1)
+        self.assertTrue(done[0]["documents"], done[0])
+        for document in done[0]["documents"]:
+            self.assertEqual(document["doctype"], "Item")
+            self.assertTrue(document["name"])
+
+    def test_the_documents_survive_a_stored_conversation(self):
+        """A conversation opened again still links to the documents.
+
+        The documents are stored with the tool call, so that the answer
+        in a conversation from yesterday links to the same documents the
+        answer named.
+        """
+        import json
+
+        conversation = ensure_conversation("Administrator", "test|documents|")
+        append_messages(
+            conversation,
+            [
+                {
+                    "role": "user",
+                    "content": "which orders are open?",
+                },
+                {
+                    "role": "assistant",
+                    "content": "Two of them.",
+                    "tool_calls": json.dumps(
+                        [
+                            {
+                                "name": "list_docs",
+                                "ok": True,
+                                "summary": "Found 2 Sales Order",
+                                "documents": [
+                                    {"doctype": "Sales Order", "name": "SAL-ORD-2026-00001"},
+                                    {"doctype": "Sales Order", "name": "SAL-ORD-2026-00002"},
+                                ],
+                            }
+                        ]
+                    ),
+                },
+            ],
+        )
+
+        transcript = load_transcript(conversation)
+
+        documents = transcript[1]["tools"][0]["documents"]
+        self.assertEqual(
+            documents,
+            [
+                {"doctype": "Sales Order", "name": "SAL-ORD-2026-00001"},
+                {"doctype": "Sales Order", "name": "SAL-ORD-2026-00002"},
+            ],
+        )
+
+    def test_a_stored_document_that_is_not_one_is_dropped(self):
+        import json
+
+        conversation = ensure_conversation("Administrator", "test|bad-documents|")
+        append_messages(
+            conversation,
+            [
+                {
+                    "role": "assistant",
+                    "content": "Something.",
+                    "tool_calls": json.dumps(
+                        [
+                            {
+                                "name": "list_docs",
+                                "ok": True,
+                                "documents": [
+                                    {"doctype": "Sales Order"},
+                                    {"name": "SAL-ORD-2026-00001"},
+                                    "not a document",
+                                    {"doctype": "Sales Order", "name": "SAL-ORD-2026-00002"},
+                                ],
+                            }
+                        ]
+                    ),
+                },
+            ],
+        )
+
+        transcript = load_transcript(conversation)
+
+        self.assertEqual(
+            transcript[0]["tools"][0]["documents"],
+            [{"doctype": "Sales Order", "name": "SAL-ORD-2026-00002"}],
+        )
+
+    def test_a_name_is_reported_once(self):
+        from albanna.services.chat_service import touched_documents
+        from albanna.tools.base import ToolResult
+
+        call = self._call("list_docs", {"doctype": "Sales Order"})
+        result = ToolResult.success(
+            "Found 2",
+            data=[{"name": "SAL-ORD-2026-00001"}, {"name": "SAL-ORD-2026-00001"}],
+        )
+
+        self.assertEqual(
+            touched_documents(call, result),
+            [{"doctype": "Sales Order", "name": "SAL-ORD-2026-00001"}],
+        )
 
 
 @pytest.mark.integration

@@ -42,6 +42,17 @@
 	--albanna-accent-soft: var(--gray-100, #f3f3f3);
 	--albanna-error-bg: var(--red-50, #fff1f0);
 	--albanna-error-text: var(--red-700, #a1231f);
+	/* The halo around the field the reader is typing in. */
+	--albanna-focus-ring: rgba(23, 23, 23, 0.08);
+	/* The button that stops a turn. */
+	--albanna-stop: var(--red-700, #a1231f);
+	/* What is drawn *on* the filled buttons.
+	 *
+	 * The accent is near-black in the light theme and a dark grey in the
+	 * dark one, so the mark on it has to be near-white in both — a dark
+	 * arrow on a dark circle is an arrow nobody can see. */
+	--albanna-on-accent: #ffffff;
+	--albanna-on-stop: #ffffff;
 	--albanna-panel-width: 400px;
 	--albanna-panel-height: 70vh;
 	--albanna-shadow: 0 8px 28px rgba(20, 30, 40, 0.14);
@@ -58,6 +69,12 @@
 	--albanna-accent: var(--gray-700, #383838);
 	--albanna-error-bg: var(--red-900, #3a1a19);
 	--albanna-error-text: var(--red-300, #f0a8a5);
+	--albanna-focus-ring: rgba(255, 255, 255, 0.14);
+	/* In the dark theme the stop is a *light* red, so the square on it
+	 * has to be dark. */
+	--albanna-stop: var(--red-300, #f0a8a5);
+	--albanna-on-accent: #f8f8f8;
+	--albanna-on-stop: #171717;
 	--albanna-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
 }
 
@@ -148,6 +165,74 @@
 	display: flex;
 }
 
+/* The handle on the panel's edge that faces the Desk.
+ *
+ * It is on the *logical* edge, so the build's RTL pass cannot move it to
+ * the wrong side of the panel: the panel is pinned to one edge of the
+ * screen, and the handle is on the other one, and which that is follows
+ * from the side the panel is on.  See `albanna-side-chat.bundle.js`. */
+.albanna-side-chat-resize {
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: -3px;
+	width: 7px;
+	cursor: col-resize;
+	touch-action: none;
+	z-index: 3;
+}
+
+#albanna-side-chat.albanna-side-chat-pos-inline-start .albanna-side-chat-resize {
+	inset-inline-start: auto;
+	inset-inline-end: -3px;
+}
+
+/* The handle is a line, and it is only there when it is wanted. */
+.albanna-side-chat-resize::after {
+	content: "";
+	position: absolute;
+	inset-block: 0;
+	inset-inline-start: 3px;
+	width: 1px;
+	background: var(--albanna-accent, #171717);
+	opacity: 0;
+	transition: opacity 120ms ease;
+}
+
+.albanna-side-chat-resize:hover::after,
+.albanna-side-chat-resize:focus-visible::after {
+	opacity: 0.45;
+}
+
+.albanna-side-chat-resize:focus-visible {
+	outline: 2px solid var(--albanna-accent, #2563eb);
+	outline-offset: -1px;
+}
+
+/* The mount point: the panel's only child, and the element the Vue app is
+ * mounted into.  Its id is set by the launcher bundle
+ * (`albanna-side-chat.bundle.js`), which owns the panel's outside; this
+ * sheet owns what is inside it, and the two meet at this one element.
+ *
+ * It has to be a flex child that fills the panel, *and* a flex container
+ * itself.  The panel is a fixed-height column, so the mount point's height
+ * is a flex result rather than a declared one — and the app inside it can
+ * only fill a height that its parent actually has.  Without this rule the
+ * mount point is auto-height, the app's `height: 100%` resolves against
+ * an auto-height parent (and therefore to `auto`), and the chain stops
+ * there: the transcript has no constraint to scroll against, the panel's
+ * `overflow: hidden` clips the rest of the answer, and the composer is
+ * pushed out of the panel and out of reach.
+ *
+ * `min-height: 0` is load-bearing for the same reason it is on the app
+ * below: a flex item's default `min-height: auto` refuses to shrink below
+ * its content, which is the same clipping wearing a different hat. */
+#albanna-side-chat-vue-root {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
 /* Docking: while the panel is open the Desk gives up the space instead of
  * being covered.  The class is on <body> because a margin there is the
  * only thing that moves the whole Desk — the navbar is in flow and the
@@ -198,7 +283,12 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat {
 	display: flex;
 	flex-direction: column;
-	height: 100%;
+	/* `flex`, not `height: 100%`.  The mount point's height is a flex
+	 * result, and a percentage height against a flex-derived height
+	 * resolves to `auto` — which is how the app ended up 243px tall inside
+	 * a 630px panel, and how a long answer pushed the composer out of the
+	 * panel entirely.  See `#albanna-side-chat-vue-root` above. */
+	flex: 1 1 auto;
 	min-height: 0;
 	background: var(--albanna-surface, #fff);
 	color: var(--albanna-text, #1f272e);
@@ -218,6 +308,11 @@ body.albanna-side-chat-docked-inline-start {
 	display: flex;
 	flex-direction: column;
 	min-width: 0;
+	/* The heading takes the room and the actions sit at the end of the row.
+	 * `space-between` on the header with three children — heading, history,
+	 * close — put the history button in the *middle* of the header, a long
+	 * way from the close button it belongs beside. */
+	flex: 1 1 auto;
 }
 
 .albanna-chat__title {
@@ -230,7 +325,15 @@ body.albanna-side-chat-docked-inline-start {
 	font-size: 11px;
 }
 
-.albanna-chat__close {
+/* The header's buttons, as one group at the end of the row. */
+.albanna-chat__actions {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.albanna-chat__icon {
 	border: 0;
 	background: transparent;
 	color: var(--albanna-muted, #6c7680);
@@ -240,9 +343,20 @@ body.albanna-side-chat-docked-inline-start {
 	line-height: 0;
 }
 
-.albanna-chat__close:hover {
+.albanna-chat__icon:hover {
 	background: var(--albanna-hover, #f2f4f5);
 	color: var(--albanna-text, #1f272e);
+}
+
+/* The body holds the transcript and the button that jumps to the end of
+ * it.  The button is positioned against the body rather than against the
+ * transcript, because the transcript scrolls and a button that scrolls
+ * away with it is a button that is not there when it is needed. */
+.albanna-chat__body {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
 }
 
 .albanna-chat__transcript {
@@ -264,17 +378,39 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__empty-title {
 	font-weight: 600;
 	color: var(--albanna-text, #1f272e);
-	margin-bottom: 4px;
+	margin-bottom: 10px;
 }
 
-.albanna-chat__empty-detail {
-	margin: 0 0 8px;
-}
-
-.albanna-chat__empty-tools {
-	margin: 0;
+/* The suggestions.  They are questions, not descriptions: a suggestion the
+ * reader has to turn into a question costs more than it gives, and the
+ * empty state of a chat that has never been used is a dead end otherwise. */
+/* What the panel is asking about, when it is asking about a document. */
+.albanna-chat__empty-context {
+	margin: 0 0 10px;
 	font-size: 11px;
-	opacity: 0.8;
+	color: var(--albanna-muted, #7c7c7c);
+}
+
+.albanna-chat__examples {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.albanna-chat__example {
+	font: inherit;
+	font-size: 12px;
+	text-align: start;
+	color: var(--albanna-text, #1f272e);
+	background: var(--albanna-surface, #fff);
+	border: 1px solid var(--albanna-border, #ededed);
+	border-radius: 7px;
+	padding: 7px 10px;
+	cursor: pointer;
+}
+
+.albanna-chat__example:hover {
+	background: var(--albanna-hover, #f3f3f3);
 }
 
 .albanna-chat__message {
@@ -320,6 +456,24 @@ body.albanna-side-chat-docked-inline-start {
 	padding-inline-start: 18px;
 }
 
+/* A list inside a list is indented a little less, so that the nesting
+ * reads as nesting and not as a second list. */
+.albanna-chat__bubble li > ul,
+.albanna-chat__bubble li > ol {
+	margin: 2px 0;
+	padding-inline-start: 15px;
+}
+
+/* A quote: the aside the assistant sets apart.  The border is on the
+ * logical start side, so it is on the reader's side in both reading
+ * directions. */
+.albanna-chat__bubble blockquote {
+	margin: 6px 0;
+	padding-inline-start: 10px;
+	border-inline-start: 3px solid var(--albanna-border, #ededed);
+	color: var(--albanna-muted, #6c7680);
+}
+
 .albanna-chat__bubble code {
 	font-family: var(--font-stack-monospace, monospace);
 	font-size: 0.92em;
@@ -339,6 +493,19 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__bubble pre code {
 	background: none;
 	padding: 0;
+}
+
+/* A link in an answer.
+ *
+ * The Desk's own blue, so it follows the Desk's theme, and an underline,
+ * so that it reads as a link and not as a word that happens to be
+ * coloured.  The url is escaped by the renderer before it is put in the
+ * attribute, and only http, https and mailto are linked at all. */
+.albanna-chat__bubble a {
+	color: var(--blue-500, #0289f7);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	overflow-wrap: anywhere;
 }
 
 .albanna-chat__bubble h2,
@@ -369,9 +536,24 @@ body.albanna-side-chat-docked-inline-start {
 	margin-top: 0;
 }
 
-.albanna-chat__bubble table {
-	width: 100%;
+/* A table can be wider than the panel, and it scrolls rather than being
+ * squeezed into it.  Squeezed, a cell like `Open` breaks across two
+ * lines as `Op` / `en` and a date breaks as `2026-` / `06-15`, and a
+ * table that cannot be read is worse than one that scrolls.
+ *
+ * `keep-all` stops a cell breaking *within* a word while still letting a
+ * cell with spaces in it wrap, which is the difference between a wide
+ * table and a table of single letters. */
+.albanna-chat__table-wrap {
+	max-width: 100%;
+	overflow-x: auto;
 	margin: 6px 0;
+}
+
+.albanna-chat__bubble table {
+	width: max-content;
+	min-width: 100%;
+	margin: 0;
 	border-collapse: collapse;
 	font-size: 12px;
 }
@@ -382,6 +564,8 @@ body.albanna-side-chat-docked-inline-start {
 	padding: 4px 7px;
 	text-align: start;
 	vertical-align: top;
+	word-break: keep-all;
+	overflow-wrap: normal;
 }
 
 .albanna-chat__bubble th {
@@ -393,27 +577,202 @@ body.albanna-side-chat-docked-inline-start {
 	background: var(--albanna-accent-soft, #f3f3f3);
 }
 
-.albanna-chat__tools {
+/* The activity line: what the assistant is doing, right now.
+ *
+ * One line, not one chip per call.  A turn that calls seven tools used to
+ * put seven chips in the transcript, which said less than one sentence
+ * and took more room than the answer. */
+.albanna-chat__activity {
 	display: flex;
-	flex-wrap: wrap;
-	gap: 4px;
-}
-
-.albanna-chat__tool {
+	align-items: center;
+	gap: 6px;
 	font-size: 11px;
-	padding: 2px 6px;
-	border-radius: 10px;
-	background: var(--albanna-hover, #f2f4f5);
 	color: var(--albanna-muted, #6c7680);
 }
 
-.albanna-chat__tool--running {
+.albanna-chat__spinner {
+	flex: 0 0 auto;
+	width: 10px;
+	height: 10px;
+	border: 2px solid var(--albanna-border, #e2e6e9);
+	border-top-color: var(--albanna-muted, #6c7680);
+	border-radius: 50%;
+	animation: albanna-spin 700ms linear infinite;
+}
+
+@keyframes albanna-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* A spinner that spins is motion, and motion is not wanted by everybody.
+ * The ring becomes a dot: the line still says the turn is running. */
+@media (prefers-reduced-motion: reduce) {
+	.albanna-chat__spinner {
+		animation: none;
+		background: var(--albanna-muted, #6c7680);
+		border-top-color: var(--albanna-border, #e2e6e9);
+	}
+}
+
+/* The tool calls, folded away behind one line. */
+.albanna-chat__tools {
+	margin: 0;
+}
+
+.albanna-chat__tools-summary {
+	cursor: pointer;
+	font-size: 11px;
+	color: var(--albanna-muted, #6c7680);
+	padding: 1px 0;
+}
+
+.albanna-chat__tools-summary:hover {
+	color: var(--albanna-text, #1f272e);
+}
+
+.albanna-chat__tools-list {
+	list-style: none;
+	margin: 4px 0 0;
+	padding-inline-start: 14px;
+	font-size: 11px;
+	color: var(--albanna-muted, #6c7680);
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.albanna-chat__tool {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+}
+
+.albanna-chat__tool-label {
+	font-weight: 500;
+}
+
+/* The model's own name for the tool.  It is here because the reader who
+ * wants it can have it, not because it is the reader's vocabulary. */
+.albanna-chat__tool-name {
+	font-family: var(--font-stack-monospace, monospace);
+	font-size: 0.92em;
 	opacity: 0.7;
 }
 
-.albanna-chat__tool--failed {
-	background: var(--albanna-error-bg, #fff1f0);
+/* What the call found, in the tool's own words.  It is the sentence the
+ * tool already wrote — "Found 24 Sales Order" — and it is what makes the
+ * disclosure worth opening: the reader can see what was looked up without
+ * reading the answer. */
+.albanna-chat__tool-summary {
+	font-style: italic;
+	color: var(--albanna-muted, #6c7680);
+}
+
+.albanna-chat__tool-failed {
 	color: var(--albanna-error-text, #a1231f);
+}
+
+.albanna-chat__tool--failed .albanna-chat__tool-label {
+	color: var(--albanna-error-text, #a1231f);
+}
+
+/* The foot of a message: the copy button and the time it was said.
+ *
+ * Both are at the end of the message, quietly.  The time is the reader's
+ * clock and the reader's language, so an Arabic interface gets Arabic
+ * digits without a second table. */
+.albanna-chat__footer {
+	align-self: flex-end;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.albanna-chat__time {
+	font-size: 10px;
+	line-height: 1;
+	color: var(--albanna-muted, #7c7c7c);
+	opacity: 0.85;
+}
+
+/* Copy the answer.  It sits at the end of the message, quietly, and is
+ * there for the reader who wants to take the answer somewhere else. */
+.albanna-chat__copy {
+	border: 0;
+	background: transparent;
+	color: var(--albanna-muted, #6c7680);
+	cursor: pointer;
+	padding: 3px;
+	border-radius: 4px;
+	line-height: 0;
+}
+
+.albanna-chat__copy:hover {
+	background: var(--albanna-hover, #f2f4f5);
+	color: var(--albanna-text, #1f272e);
+}
+
+/* The button that takes the table away as data.
+ *
+ * It is a text button and not another icon, because it is a different
+ * kind of thing from the copy icon and a reader should not have to guess
+ * which is which.  The copy icon takes the answer; this takes the table
+ * out of it, as something a spreadsheet will read. */
+.albanna-chat__copy--table {
+	font-size: 11px;
+	line-height: 1.4;
+	color: var(--albanna-muted, #7c7c7c);
+	padding: 2px 6px;
+}
+
+/* Jump to the end of the transcript, for the reader who has scrolled up to
+ * read something and does not want to be dragged back by the next token.
+ *
+ * It is small and round because it floats over the answer: a wide label
+ * across the bottom of the panel would sit on top of the content the
+ * reader came back to read. */
+.albanna-chat__scroll-bottom {
+	position: absolute;
+	inset-block-end: 10px;
+	inset-inline-end: 10px;
+	z-index: 2;
+	width: 26px;
+	height: 26px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	border: 1px solid var(--albanna-border, #ededed);
+	border-radius: 50%;
+	background: var(--albanna-surface, #fff);
+	color: var(--albanna-muted, #6c7680);
+	cursor: pointer;
+	box-shadow: var(--albanna-shadow);
+	line-height: 0;
+}
+
+.albanna-chat__scroll-bottom:hover {
+	color: var(--albanna-text, #383838);
+}
+
+/* Visually hidden, but read out.
+ *
+ * The transcript is not a live region: it changes on every token, and a
+ * live region that changes that often re-announces the whole answer over
+ * and over.  The answer is announced once, here, when the turn is over. */
+.albanna-chat__announce {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	margin: -1px;
+	padding: 0;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	clip-path: inset(50%);
+	white-space: nowrap;
+	border: 0;
 }
 
 .albanna-chat__locked {
@@ -438,34 +797,187 @@ body.albanna-side-chat-docked-inline-start {
 	background: var(--albanna-error-bg, #fff1f0);
 	color: var(--albanna-error-text, #a1231f);
 	font-size: 12px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
 }
 
+.albanna-chat__error-text {
+	min-width: 0;
+}
+
+/* A failed turn is worth asking again: the question is still there, and
+ * the reason it failed is often a worker that was restarted. */
+.albanna-chat__retry {
+	flex: 0 0 auto;
+	border: 1px solid currentColor;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	font-size: 11px;
+	padding: 2px 9px;
+	border-radius: 5px;
+	cursor: pointer;
+}
+
+/* A message that is not an error: "Stopped.", and so on. */
+.albanna-chat__notice {
+	margin: 0 12px 8px;
+	padding: 7px 10px;
+	border-radius: 6px;
+	background: var(--albanna-hover, #f2f4f5);
+	color: var(--albanna-muted, #6c7680);
+	font-size: 12px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.albanna-chat__notice-text {
+	min-width: 0;
+}
+
+/* The little cross that puts a message away.
+ *
+ * A message that cannot be dismissed is a message that is still there
+ * after the reader has read it. */
+.albanna-chat__dismiss {
+	flex: 0 0 auto;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+	padding: 2px;
+	border-radius: 4px;
+	line-height: 0;
+	opacity: 0.7;
+}
+
+.albanna-chat__dismiss:hover {
+	opacity: 1;
+	background: rgba(0, 0, 0, 0.06);
+}
+
+/* The composer.
+ *
+ * The question box and the send button are one thing: a rounded field
+ * with a button in it, not a box with a button beside it.  A box and a
+ * button beside it read as a *form* — something to fill in and submit —
+ * and a chat is not a form.  It is a place you say something, and the
+ * arrow in the corner says "go".
+ *
+ * The field is what carries the focus ring, because the box inside it has
+ * none: the ring around the whole thing says where the reader's words
+ * are going, which is more useful than a ring around the text alone. */
 .albanna-chat__composer {
 	display: flex;
-	gap: 8px;
-	align-items: flex-end;
-	padding: 10px 12px;
+	flex-direction: column;
+	gap: 5px;
+	padding: 10px 12px 9px;
 	border-top: 1px solid var(--albanna-border, #e2e6e9);
+}
+
+.albanna-chat__field {
+	display: flex;
+	align-items: flex-end;
+	gap: 6px;
+	/* More room where the words begin than where the button is.  The
+	 * padding is *logical*, so the text keeps its room in a right-to-left
+	 * interface too — a physical padding would give the Arabic text the
+	 * button's space and the button the text's. */
+	padding-block: 6px;
+	padding-inline: 11px 6px;
+	border: 1px solid var(--albanna-border, #d8dee2);
+	border-radius: 12px;
+	background: var(--albanna-surface, #fff);
+	transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.albanna-chat__field:focus-within {
+	border-color: var(--albanna-accent, #171717);
+	box-shadow: 0 0 0 3px var(--albanna-focus-ring, rgba(23, 23, 23, 0.08));
 }
 
 .albanna-chat__input {
 	flex: 1 1 auto;
+	min-width: 0;
+	box-sizing: border-box;
 	resize: none;
+	border: 0;
+	background: transparent;
 	font: inherit;
-	padding: 7px 9px;
-	border: 1px solid var(--albanna-border, #d8dee2);
-	border-radius: 6px;
-	background: var(--albanna-surface, #fff);
 	color: inherit;
+	padding: 4px 0;
+	/* A little more than the text needs.  Arabic carries ascenders and
+	 * descenders that a tight line clips, and the letters in a chat box
+	 * are read at a glance rather than studied. */
+	line-height: 22px;
+	/* One line to start with, and the box grows from there.  The button
+	 * beside it is 30px, which is one line plus the box's own padding, so
+	 * the two line up exactly. */
+	min-height: 30px;
+	max-height: 140px;
+	overflow-y: auto;
+	outline: none;
 }
 
-.albanna-chat__input:focus {
-	outline: 2px solid var(--albanna-accent, #2563eb);
-	outline-offset: -1px;
+.albanna-chat__input::placeholder {
+	color: var(--albanna-muted, #7c7c7c);
+	opacity: 0.9;
 }
 
+/* The send button.
+ *
+ * A circle of a fixed size, so that it does not move under the reader's
+ * cursor when the turn starts and the arrow becomes a stop. */
 .albanna-chat__send {
 	flex: 0 0 auto;
+	width: 30px;
+	height: 30px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0;
+	border: 0;
+	border-radius: 50%;
+	background: var(--albanna-accent, #171717);
+	color: var(--albanna-on-accent, #fff);
+	cursor: pointer;
+	transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.albanna-chat__send:hover:not(:disabled) {
+	transform: translateY(-1px);
+}
+
+.albanna-chat__send:disabled {
+	opacity: 0.3;
+	cursor: default;
+}
+
+.albanna-chat__send:focus-visible {
+	outline: 2px solid var(--albanna-accent, #2563eb);
+	outline-offset: 2px;
+}
+
+/* Stopping is not sending.  The shape says it — an arrow becomes a
+ * square — and the colour says it too, so the change is unmistakable in
+ * a glance and in a screen reader's list of buttons. */
+.albanna-chat__send--stop {
+	background: var(--albanna-stop, #a1231f);
+	color: var(--albanna-on-stop, #fff);
+}
+
+/* The hint.  It is on its own line, under the field, in the quietest type
+ * in the panel. */
+.albanna-chat__hint {
+	margin: 0;
+	font-size: 10px;
+	line-height: 1.4;
+	color: var(--albanna-muted, #6c7680);
+	opacity: 0.8;
 }
 
 /* ---------------------------------------------------------------------------
@@ -475,20 +987,6 @@ body.albanna-side-chat-docked-inline-start {
  * already a column of the Desk, and a drawer over it would be a second
  * floating thing on a page that has one.
  * --------------------------------------------------------------------------- */
-
-.albanna-chat__new {
-	border: 1px solid var(--albanna-border, #ededed);
-	background: transparent;
-	color: var(--albanna-text, #383838);
-	font-size: 12px;
-	padding: 3px 9px;
-	border-radius: 6px;
-	cursor: pointer;
-}
-
-.albanna-chat__new:hover {
-	background: var(--albanna-hover, #f3f3f3);
-}
 
 .albanna-drawer {
 	flex: 1 1 auto;

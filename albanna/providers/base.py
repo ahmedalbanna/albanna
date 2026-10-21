@@ -135,6 +135,32 @@ class ChatProvider(Protocol):
         ...
 
 
+def default_base_url(kind: str) -> str:
+    """The endpoint a provider kind uses when the settings leave it blank.
+
+    The settings have to know it, because a provider with no base URL is
+    not one the app will call: the check for whether a provider is usable
+    happens before the request is made, and the request is where the
+    default would have been applied.  A deployment that followed the
+    instructions — a key and a model, and nothing else — would have had
+    no provider at all.
+    """
+    kind = (kind or "").strip().lower()
+    if kind == OPENAI:
+        from albanna.providers.openai import OpenAIProvider
+
+        return OpenAIProvider.default_base_url
+    if kind == OLLAMA:
+        from albanna.providers.ollama import OllamaProvider
+
+        return OllamaProvider.default_base_url
+    if kind == ANTHROPIC:
+        from albanna.providers.anthropic import AnthropicProvider
+
+        return AnthropicProvider.default_base_url
+    return ""
+
+
 def build_provider(kind: str) -> ChatProvider:
     """The adapter for a provider kind.
 

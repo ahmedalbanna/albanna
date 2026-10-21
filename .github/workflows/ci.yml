@@ -46,6 +46,9 @@ jobs:
       - name: The markdown renderer
         run: node albanna/public/js/side-chat/markdown.test.mjs
 
+      - name: The turn transport
+        run: node albanna/public/js/side-chat/turn.test.mjs
+
   server:
     name: Server tests
     runs-on: ubuntu-latest

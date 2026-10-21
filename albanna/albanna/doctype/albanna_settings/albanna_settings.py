@@ -21,6 +21,7 @@ class AlbannaSettings(Document):
 
     def validate(self):
         self._enforce_one_key()
+        self._enforce_real_roles()
 
     def on_update(self):
         self._store_secret("api_key", self.api_key)
@@ -52,6 +53,42 @@ class AlbannaSettings(Document):
                     ).format(fieldname),
                     frappe.ValidationError,
                 )
+
+    def _enforce_real_roles(self):
+        """Refuse a role name that is not a role.
+
+        The two role fields are free text, and the operator types role
+        names into them.  A name that is not exactly a role is *ignored*
+        — silently — so a typo left an administrator wondering why the
+        people they had chosen could not chat, with nothing anywhere
+        saying that the name was wrong.
+
+        So the save is where it is caught.  The names that do not exist
+        are named, and the roles that do exist are offered, so the fix is
+        a click rather than a guess.
+        """
+        from albanna.services.settings_service import split_names
+
+        for fieldname, label in (
+            ("chat_roles", "Chat Roles"),
+            ("widget_roles", "Widget Roles"),
+        ):
+            names = split_names(self.get(fieldname))
+            if not names:
+                continue
+
+            # Each name is checked on its own: a listing of the roles
+            # would be paginated, and a role past the first page would be
+            # reported as missing.
+            missing = [name for name in names if not frappe.db.exists("Role", name)]
+            if not missing:
+                continue
+
+            frappe.throw(
+                frappe._("These are not roles: {0}").format(", ".join(missing)),
+                frappe.ValidationError,
+                title=label,
+            )
 
     def _store_secret(self, fieldname: str, value: str | None):
         """Write a secret into ``__Auth`` and leave a mask in the column."""

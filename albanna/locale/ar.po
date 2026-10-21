@@ -30,14 +30,6 @@ msgid "Ask a question about this site"
 msgstr "اطرح سؤالاً عن هذا الموقع"
 
 
-msgid "For example: which Sales Orders are still open, or what is customer Acme's balance."
-msgstr "مثال: ما أوامر البيع التي ما زالت مفتوحة، أو ما رصيد العميل Acme؟"
-
-
-msgid "Available tools"
-msgstr "الأدوات المتاحة"
-
-
 msgid "Close"
 msgstr "إغلاق"
 
@@ -48,10 +40,6 @@ msgstr "سؤالك"
 
 msgid "Ask about your data…"
 msgstr "اسأل عن بياناتك…"
-
-
-msgid "Working…"
-msgstr "جارٍ العمل…"
 
 
 msgid "Send"
@@ -72,10 +60,6 @@ msgstr "المحادثات"
 
 msgid "Your questions and answers"
 msgstr "أسئلتك وإجاباتها"
-
-
-msgid "New"
-msgstr "جديد"
 
 
 msgid "Back to the conversation"
@@ -174,3 +158,167 @@ msgstr "القيمة في {0} مخزّنة كنص صريح. امسح الحقل 
 
 msgid "Something went wrong."
 msgstr "حدث خطأ ما."
+
+
+msgid "The request could not be completed."
+msgstr "تعذّر إتمام الطلب."
+
+
+msgid "No answer."
+msgstr "لا توجد إجابة."
+
+
+msgid "Stop"
+msgstr "إيقاف"
+
+
+msgid "Stopped."
+msgstr "تم الإيقاف."
+
+
+msgid "Try again"
+msgstr "أعد المحاولة"
+
+
+msgid "Copy the answer"
+msgstr "نسخ الإجابة"
+
+
+msgid "The answer could not be copied."
+msgstr "تعذّر نسخ الإجابة."
+
+
+msgid "Jump to the latest"
+msgstr "انتقل إلى الأحدث"
+
+
+msgid "Enter to send · Shift+Enter for a new line"
+msgstr "Enter للإرسال · Shift+Enter لسطر جديد"
+
+
+msgid "Which Sales Orders are still open?"
+msgstr "ما أوامر البيع التي ما زالت مفتوحة؟"
+
+
+msgid "What is the total value of open orders?"
+msgstr "ما القيمة الإجمالية للأوامر المفتوحة؟"
+
+
+msgid "How many customers are there?"
+msgstr "كم عدد العملاء؟"
+
+
+msgid "A new conversation was started."
+msgstr "تم بدء محادثة جديدة."
+
+
+msgid "Could not start a new conversation."
+msgstr "تعذّر بدء محادثة جديدة."
+
+
+msgid "Delete the conversation “{0}”? This cannot be undone."
+msgstr "حذف المحادثة «{0}»؟ لا يمكن التراجع عن ذلك."
+
+
+msgid "Tools used: {0} · Calls: {1}"
+msgstr "الأدوات المستخدمة: {0} · الاستدعاءات: {1}"
+
+
+msgid "failed"
+msgstr "فشل"
+
+
+msgid "Searching"
+msgstr "يبحث"
+
+
+msgid "Reading"
+msgstr "يقرأ"
+
+
+msgid "Checking fields"
+msgstr "يتحقق من الحقول"
+
+
+msgid "Running a report"
+msgstr "يشغّل تقريراً"
+
+
+msgid "Creating"
+msgstr "يُنشئ"
+
+
+msgid "Working"
+msgstr "يعمل"
+
+
+msgid "Calling the provider…"
+msgstr "جارٍ الاتصال بالمزوّد…"
+
+msgid "Choose a provider."
+msgstr "اختر مزوّداً."
+
+msgid "Dismiss"
+msgstr "إغلاق"
+
+msgid "Testing…"
+msgstr "جارٍ الاختبار…"
+
+msgid "The conversation was deleted."
+msgstr "تم حذف المحادثة."
+
+msgid "The provider answered"
+msgstr "استجاب المزوّد"
+
+msgid "The provider could not be called"
+msgstr "تعذّر الاتصال بالمزوّد"
+
+msgid "The provider did not answer"
+msgstr "لم يستجب المزوّد"
+
+msgid "The provider needs a base URL."
+msgstr "يحتاج المزوّد إلى عنوان أساسي."
+
+msgid "The provider needs a model id."
+msgstr "يحتاج المزوّد إلى معرّف نموذج."
+
+msgid "These are not roles: {0}"
+msgstr "هذه ليست أدواراً: {0}"
+
+msgid "The provider is not one this app knows: {0}"
+msgstr "المزوّد ليس واحداً يعرفه هذا التطبيق: {0}"
+
+msgid "Took {0} seconds"
+msgstr "استغرق {0} ثانية"
+
+msgid "Unknown error."
+msgstr "خطأ غير معروف."
+
+
+msgid "Asking about {0} {1}"
+msgstr "أسأل عن {0} {1}"
+
+msgid "Summarise this {0}"
+msgstr "لخّص {0}"
+
+msgid "What is the status of this {0}?"
+msgstr "ما حالة {0}؟"
+
+msgid "What is the total of this {0}?"
+msgstr "ما الإجمالي لـ {0}؟"
+
+
+msgid "Copy the table"
+msgstr "نسخ الجدول"
+
+msgid "Copy table"
+msgstr "نسخ الجدول"
+
+msgid "Copied"
+msgstr "تم النسخ"
+
+msgid "There is no table to copy."
+msgstr "لا يوجد جدول لنسخه."
+
+msgid "The table could not be copied."
+msgstr "تعذّر نسخ الجدول."

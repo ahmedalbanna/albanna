@@ -37,6 +37,9 @@ class FakeResponse:
         self.status_code = status_code
         self.text = text
         self._lines = lines or []
+        # `requests` sets this on a real response; the fake needs it too, so
+        # that the code under test has something to set.
+        self.encoding = None
 
     def json(self):
         if self._payload is None:
@@ -50,6 +53,46 @@ class FakeResponse:
 @pytest.fixture
 def tools():
     return TOOL_MANIFEST.enabled()
+
+
+def test_an_error_body_is_decoded_as_utf_8(tools, monkeypatch):
+    """A provider that answers in anything but Latin-1 is not mojibake.
+
+    The error is what the reader is shown, and a Chinese error message
+    that arrives as "Ã¤Â¸Â­..." is a puzzle rather than an error.
+    """
+    from albanna.providers.openai import OpenAIProvider
+
+    class Failing(FakeResponse):
+        def json(self):
+            raise ValueError("not json")
+
+        @property
+        def text(self):
+            # The body must not be read before the encoding is set: the
+            # bytes on the wire would have been decoded as Latin-1.
+            assert self.encoding == "utf-8", self.encoding
+            return self._text
+
+        @text.setter
+        def text(self, value):
+            self._text = value
+
+    response = Failing(status_code=500, text="服务自动下线，模型不可用")
+    captured = {}
+    provider = OpenAIProvider()
+
+    def fake_post(*args, **kwargs):
+        captured.update(kwargs)
+        return response
+
+    monkeypatch.setattr("albanna.providers.openai.requests.post", fake_post)
+
+    with pytest.raises(Exception) as caught:
+        provider.complete(OPENAI_CONFIG, [user("hello")], tools)
+
+    assert response.encoding == "utf-8"
+    assert "服务自动下线" in str(caught.value)
 
 
 # -- OpenAI ---------------------------------------------------------------

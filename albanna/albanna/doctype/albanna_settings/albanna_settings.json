@@ -12,6 +12,7 @@
   "base_url",
   "model",
   "api_key",
+  "test_provider",
   "column_break_provider",
   "temperature",
   "max_tokens",
@@ -81,6 +82,12 @@
    "fieldname": "api_key",
    "fieldtype": "Password",
    "label": "API Key"
+  },
+  {
+   "fieldname": "test_provider",
+   "fieldtype": "Button",
+   "label": "Test the connection",
+   "description": "Calls the provider with the smallest question that means anything, and says what happened. The values in this form are used, so a provider can be tested before it is saved."
   },
   {
    "fieldname": "column_break_provider",
@@ -154,13 +161,13 @@
    "label": "Access"
   },
   {
-   "description": "Roles allowed to use the chat, one per line. Leave empty to allow only System Managers.",
+   "description": "Roles allowed to use the chat, one per line. Leave empty to allow only System Managers. A name that is not a role is refused when you save.",
    "fieldname": "chat_roles",
    "fieldtype": "Small Text",
    "label": "Chat Roles"
   },
   {
-   "description": "Roles allowed to see the side-chat widget, one per line. Leave empty to allow every user who may chat.",
+   "description": "Roles allowed to see the side-chat widget, one per line. Leave empty to allow every user who may chat. A name that is not a role is refused when you save.",
    "fieldname": "widget_roles",
    "fieldtype": "Small Text",
    "label": "Widget Roles"

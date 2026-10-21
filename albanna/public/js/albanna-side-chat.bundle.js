@@ -27,6 +27,19 @@ const BUNDLE_KEY = "albanna-side-chat-ui.bundle.js";
 const MOUNT_FLAG = "__albanna_side_chat__";
 const ROOT_ID = "albanna-side-chat";
 const MOUNT_ID = "albanna-side-chat-vue-root";
+const PANEL_ID = "albanna-side-chat-panel";
+
+/* The panel's width, and the range it may be dragged through.
+ *
+ * The panel is 400px, which is enough for a sentence and not enough for a
+ * table of four columns: the answer's table is the one thing in here that
+ * is genuinely wide, and the reader is left scrolling it sideways inside
+ * a 400px window.  The panel can be dragged wider, and the Desk gives up
+ * the space, because the Desk is already giving it up. */
+const WIDTH_KEY = "albanna.side-chat.width";
+const MIN_WIDTH = 320;
+const MAX_WIDTH = 720;
+const KEYBOARD_STEP = 24;
 
 const LAUNCHER_SVG =
 	'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
@@ -155,19 +168,41 @@ async function boot() {
 
 	const panel = document.createElement("aside");
 	panel.className = "albanna-side-chat-panel";
-	panel.setAttribute("role", "dialog");
+	panel.id = PANEL_ID;
+	// The panel is a column of the Desk, not a dialog over it: it is not
+	// modal, it does not take the focus, and the page beside it stays
+	// readable.  `role="dialog"` would promise a focus trap and a modal
+	// boundary that this thing does not have.
+	panel.setAttribute("role", "complementary");
 	panel.setAttribute("aria-label", tr("Albanna assistant"));
 	panel.setAttribute("aria-hidden", "true");
 
+	/* The handle on the panel's edge that faces the Desk.
+	 *
+	 * Which edge that is follows from the side the panel is on: the panel
+	 * is pinned to one edge of the screen, and the handle is on the other
+	 * one.  The position is written in *logical* terms, so the build's RTL
+	 * pass cannot move it to the wrong side of the panel. */
+	const resize = document.createElement("div");
+	resize.className = "albanna-side-chat-resize";
+	resize.setAttribute("role", "separator");
+	resize.setAttribute("aria-orientation", "vertical");
+	resize.setAttribute("aria-label", tr("Resize the assistant"));
+	resize.setAttribute("title", tr("Resize the assistant"));
+	resize.setAttribute("tabindex", "0");
+
 	const mountPoint = document.createElement("div");
 	mountPoint.id = MOUNT_ID;
-	panel.appendChild(mountPoint);
+	panel.append(mountPoint, resize);
 
 	const launcher = document.createElement("button");
 	launcher.className = "albanna-side-chat-launcher";
 	launcher.type = "button";
 	launcher.setAttribute("aria-label", tr("Albanna assistant"));
 	launcher.setAttribute("aria-expanded", "false");
+	// The launcher says what it opens, so that a screen reader can say so
+	// too.
+	launcher.setAttribute("aria-controls", PANEL_ID);
 	launcher.innerHTML = LAUNCHER_SVG;
 
 	root.append(panel, launcher);
@@ -194,6 +229,98 @@ async function boot() {
 		"inline-end": "albanna-side-chat-docked-inline-end",
 		"inline-start": "albanna-side-chat-docked-inline-start",
 	};
+
+	/* The width.
+	 *
+	 * It is a CSS variable on the document, because both the panel and the
+	 * Desk's margin are written against it: a wider panel takes more of
+	 * the Desk's width, which is what the dock means. */
+	const setWidth = (width) => {
+		const clamped = Math.round(Math.min(Math.max(width, MIN_WIDTH), MAX_WIDTH));
+		document.documentElement.style.setProperty("--albanna-panel-width", `${clamped}px`);
+		resize.setAttribute("aria-valuenow", String(clamped));
+		resize.setAttribute("aria-valuemin", String(MIN_WIDTH));
+		resize.setAttribute("aria-valuemax", String(MAX_WIDTH));
+		try {
+			window.localStorage.setItem(WIDTH_KEY, String(clamped));
+		} catch (error) {
+			// A browser that will not remember the width is a browser that
+			// will not lose it either.
+		}
+	};
+
+	const currentWidth = () => {
+		const stored = Number.parseInt(window.localStorage.getItem(WIDTH_KEY) || "", 10);
+		return Number.isFinite(stored) && stored >= MIN_WIDTH && stored <= MAX_WIDTH ? stored : 400;
+	};
+
+	/* The panel is pinned to one edge of the screen, and the handle is on
+	 * the other one.  Which physical edge it is depends on the direction
+	 * as well as on the side, so it is worked out here rather than read
+	 * from the DOM. */
+	const pinnedRight = side === "inline-end" ? !isRtl : isRtl;
+
+	setWidth(currentWidth());
+
+	let dragging = false;
+
+	resize.addEventListener("pointerdown", (event) => {
+		dragging = true;
+		resize.setPointerCapture(event.pointerId);
+		event.preventDefault();
+	});
+
+	resize.addEventListener("pointermove", (event) => {
+		if (!dragging) return;
+		// The panel's outer edge does not move; the handle is the edge
+		// that follows the pointer.
+		const rect = panel.getBoundingClientRect();
+		const width = pinnedRight ? rect.right - event.clientX : event.clientX - rect.left;
+		setWidth(width);
+	});
+
+	const endDrag = (event) => {
+		if (!dragging) return;
+		dragging = false;
+		try {
+			resize.releasePointerCapture(event.pointerId);
+		} catch (error) {
+			// The pointer is already gone.
+		}
+	};
+
+	resize.addEventListener("pointerup", endDrag);
+	resize.addEventListener("pointercancel", endDrag);
+
+	resize.addEventListener("keydown", (event) => {
+		// The handle is a splitter, and a splitter is moved with the
+		// arrow keys.  "Out" is the direction that makes the panel wider,
+		// which is the same in both reading directions: towards the middle
+		// of the screen.
+		const grow = pinnedRight ? "ArrowLeft" : "ArrowRight";
+		const shrink = pinnedRight ? "ArrowRight" : "ArrowLeft";
+		const width = currentWidth();
+
+		if (event.key === grow) {
+			setWidth(width + KEYBOARD_STEP);
+			event.preventDefault();
+			return;
+		}
+		if (event.key === shrink) {
+			setWidth(width - KEYBOARD_STEP);
+			event.preventDefault();
+			return;
+		}
+		if (event.key === "Home") {
+			setWidth(MIN_WIDTH);
+			event.preventDefault();
+			return;
+		}
+		if (event.key === "End") {
+			setWidth(MAX_WIDTH);
+			event.preventDefault();
+		}
+	});
 
 	const setDock = (next) => {
 		for (const name of Object.values(DOCK_CLASS)) {

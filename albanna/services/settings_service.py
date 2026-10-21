@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 import frappe
 
-from albanna.providers.base import ProviderConfig
+from albanna.providers.base import ProviderConfig, default_base_url
 
 #: Where the memoised settings live between calls in one request.
 _CACHE_ATTR = "albanna_settings_cache"
@@ -59,9 +59,15 @@ def get_settings(refresh: bool = False) -> AppSettings:
 def _build() -> AppSettings:
     doc = frappe.get_single("Albanna Settings")
 
+    kind = str(doc.provider_kind or "openai").strip() or "openai"
     provider = ProviderConfig(
-        kind=str(doc.provider_kind or "openai").strip() or "openai",
-        base_url=str(doc.base_url or "").strip(),
+        kind=kind,
+        # The provider's own default, when the settings leave it blank.  The
+        # check for whether a provider is usable happens before the request
+        # is made, so a blank base URL would leave the app with no
+        # provider at all — even though the request code would have used
+        # the default.
+        base_url=str(doc.base_url or "").strip() or default_base_url(kind),
         model=str(doc.model or "").strip(),
         api_key=_password(doc, "api_key"),
         max_tokens=_int(doc.max_tokens, 8192),
@@ -71,9 +77,10 @@ def _build() -> AppSettings:
 
     fallback: ProviderConfig | None = None
     if doc.fallback_enabled:
+        fallback_kind = str(doc.fallback_kind or "openai").strip() or "openai"
         fallback = ProviderConfig(
-            kind=str(doc.fallback_kind or "openai").strip() or "openai",
-            base_url=str(doc.fallback_base_url or "").strip(),
+            kind=fallback_kind,
+            base_url=str(doc.fallback_base_url or "").strip() or default_base_url(fallback_kind),
             model=str(doc.fallback_model or "").strip(),
             api_key=_password(doc, "fallback_api_key"),
             max_tokens=_int(doc.max_tokens, 8192),
@@ -85,8 +92,8 @@ def _build() -> AppSettings:
         enabled=bool(doc.enabled),
         provider=provider,
         fallback=fallback,
-        chat_roles=frozenset(_split(doc.chat_roles)),
-        widget_roles=frozenset(_split(doc.widget_roles)),
+        chat_roles=frozenset(split_names(doc.chat_roles)),
+        widget_roles=frozenset(split_names(doc.widget_roles)),
         widget_enabled=bool(doc.widget_enabled),
         widget_position=str(doc.widget_position or "bottom-right").strip() or "bottom-right",
         max_tool_rounds=max(1, _int(doc.max_tool_rounds, 25)),
@@ -95,7 +102,7 @@ def _build() -> AppSettings:
         turns_per_minute=max(0, _int_allowing_zero(doc.turns_per_minute, 6)),
         allow_writes=bool(doc.allow_writes),
         system_prompt=str(doc.system_prompt or ""),
-        disabled_tools=frozenset(_split(doc.disabled_tools)),
+        disabled_tools=frozenset(split_names(doc.disabled_tools)),
     )
 
 
@@ -107,11 +114,17 @@ def _password(doc, fieldname: str) -> str:
         return ""
 
 
-def _split(value) -> list[str]:
+def split_names(value) -> list[str]:
     """Split a multi-value setting into names.
 
     Newlines and commas both work, because operators paste both.
     """
+    if not value:
+        return []
+
+    text = str(value)
+    for separator in ("\n", ","):
+        text = text.replace(separator, "\n")
     if not value:
         return []
     text = str(value)

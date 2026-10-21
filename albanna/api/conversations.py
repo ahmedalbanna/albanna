@@ -45,7 +45,7 @@ def open_conversation(conversation: str = "") -> dict:
     """A conversation's transcript."""
     require_chat_access()
 
-    from albanna.services.conversation_service import assert_owns, load_transcript
+    from albanna.services.conversation_service import assert_owns, display_title, load_transcript
 
     user = str(frappe.session.user or "")
     assert_owns(conversation, user)
@@ -57,11 +57,70 @@ def open_conversation(conversation: str = "") -> dict:
         as_dict=True,
     )
 
+    conversation_meta = dict(meta) if meta else {}
+    conversation_meta["title"] = display_title(conversation_meta.get("title"))
+
     return {
         "status": "ok",
-        "conversation": dict(meta) if meta else {},
+        "conversation": conversation_meta,
         "messages": load_transcript(conversation),
     }
+
+
+@frappe.whitelist()
+def conversation_for_page(page: str = "") -> dict:
+    """The caller's conversation on *page*, and its transcript.
+
+    The panel asks this when it opens on a page.  The server resolves a
+    page's conversation by page, so the thread the assistant will answer
+    in is the page's thread — and the reader should be shown the same one
+    rather than an empty panel that pretends the thread does not exist.
+
+    Nothing is created: a page with no thread is a page with nothing to
+    show, and that is an answer, not an error.
+    """
+    require_chat_access()
+
+    from albanna.services.conversation_service import conversation_for_page as _for
+    from albanna.services.conversation_service import display_title, load_transcript
+
+    user = str(frappe.session.user or "")
+    conversation = _for(user, page or "")
+    if not conversation:
+        return {"status": "ok", "conversation": "", "title": "", "messages": []}
+
+    title = frappe.db.get_value("Albanna Conversation", conversation, "title") or ""
+    return {
+        "status": "ok",
+        "conversation": conversation,
+        "title": display_title(title),
+        "messages": load_transcript(conversation),
+    }
+
+
+@frappe.whitelist()
+def new_conversation(page: str = "") -> dict:
+    """Start a new conversation on *page*.
+
+    The panel's "New" button asks for this rather than clearing its own
+    state.  Clearing the state alone would be a lie: the server resolves a
+    page's conversation by page, so a "new" conversation with no id would
+    land back in the thread the button was meant to leave, and the
+    assistant would answer with the old thread's context.
+
+    The new conversation has no title.  It is named after the first
+    question asked in it, which is the same rule every other conversation
+    follows.
+    """
+    require_chat_access()
+
+    from albanna.services.conversation_service import new_conversation as _new
+
+    user = str(frappe.session.user or "")
+    conversation = _new(user, page or "")
+    frappe.db.commit()
+
+    return {"status": "ok", "conversation": conversation}
 
 
 @frappe.whitelist()

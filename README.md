@@ -29,7 +29,7 @@ roles and the same permissions as the person who asked the question.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-<img src="docs/images/side-chat-arabic.png" alt="The side chat, in Arabic, answering a question about the open sales orders" width="640">
+<img src="docs/images/side-chat-arabic.png" alt="The side chat, in Arabic, answering a question about the open sales orders" width="520">
 
 ## Install
 
@@ -60,12 +60,29 @@ Anthropic.  It has no other runtime dependency.
   (OpenRouter, OpenAI, Groq, vLLM, LM Studio), Ollama, or Anthropic.
 * **A side chat, not a page.** A launcher on every Desk page; the panel
   docks beside the Desk rather than covering it.
-* **Live progress.** Tokens as they are produced, and each tool call as it
-  starts and finishes.
+* **Live progress.** The answer arrives as the model writes it, and one
+  line says what the assistant is doing while it waits.  The tool calls
+  are folded away behind that line, and open on demand.
+* **A turn can be stopped.** The panel never leaves the reader watching a
+  turn they have decided they do not want.  The work finishes on the
+  server; the waiting stops in the browser.
+* **A way in.** The empty state says which page — and which document —
+  the assistant is looking at, and offers questions about *that*.
+* **The answer is a doorway.** A document name in an answer is a link, and
+  it opens the document.  The names that are linked are the ones the
+  tools actually read, so nothing is guessed.
+* **The answer is data, too.** A table in an answer copies as tab-separated
+  values, so it pastes into a spreadsheet as a table.
+* **A panel you can widen.** The answer's table is the one thing in here
+  that is genuinely wide, so the panel can be dragged wider and the Desk
+  gives up the space.  The width is remembered.
 * **A history.** The panel lists the caller's conversations, and any of them
-  can be reopened, renamed or deleted.
+  can be reopened, renamed or deleted.  "New" starts a real new thread.
 * **Private history.** A conversation belongs to the page it was started on
   and to the user who started it.
+* **The panel follows the page.** Open it on a page you have used before
+  and the thread is there, because it is the thread the assistant will
+  answer in.  "New" starts a real one.
 * **Arabic and right-to-left.** The interface follows the reader's
   direction, and the whole Desk in Arabic is a first-class case rather than
   an afterthought — the widget sits on the reading end of the screen, so it
@@ -254,11 +271,35 @@ these two fields — OpenRouter, OpenAI, Groq, vLLM, LM Studio.
   every call.  `sites/currentsite.txt` names the production site on this
   bench, and a tool that fell back to it would read and write the wrong
   database.
+* **The settings fail loudly.**  A role name that is not a role is
+  refused when you save, and the names that are wrong are named.  A
+  provider with no base URL uses the provider's own default, so a key and
+  a model are enough.
+* **The settings can test the provider.**  One button, one small
+  question, and the answer says which model answered and how long it
+  took — or why it did not answer.
 * **The Desk's own tokens, not invented ones.**  The widget's colours come
   from the Desk's variables, so it follows the Desk's theme.  Two of the
   obvious ones are traps: `--fg-color` is *white* in the light theme (it is
   a foreground-on-dark token, not a body-text token), and `--subtle-fg` is a
   *background* grey.  A panel that uses either for text is unreadable.
+* **The panel is a frame, and the transcript scrolls inside it.**  The
+  height reaches the transcript through three links — the panel, the mount
+  point the Vue app is mounted into, and the app — and each of them has to
+  be a flex child of the one above, or the app has no height to fill and
+  the panel's `overflow: hidden` clips the answer *and* the composer.
+  See [CONTEXT.md](CONTEXT.md), invariant 19.
+* **A new translation needs the site's cache cleared.**  The catalogue is
+  compiled to a `.mo` at build time and cached per site, and the cache
+  does not expire:
+
+  ```bash
+  bench compile-po-to-mo --app albanna
+  bench --site <site> clear-cache
+  ```
+
+  Without the second command the new strings keep falling back to English
+  and nothing says why.
 
 ### A note on the site's nginx vhost
 
@@ -284,6 +325,7 @@ Two suites, two commands, two purposes.
 cd apps/albanna
 ../../env/bin/python -m pytest                       # the domain suite: no bench, no site, no network
 node albanna/public/js/side-chat/markdown.test.mjs  # the markdown renderer
+node albanna/public/js/side-chat/turn.test.mjs      # the turn transport
 python3 scripts/check_translations.py              # the Arabic catalogue against the code
 ```
 

@@ -289,6 +289,13 @@ class ChatService:
                     "ok": result.ok,
                     "denied": result.denied,
                     "error": result.error,
+                    # What the call found, kept with the call so that a
+                    # conversation reopened tomorrow still says what was
+                    # looked up, and not only which function was called.
+                    "summary": result.summary or result.error,
+                    # The documents it looked at, kept for the same
+                    # reason: a reopened answer links to them too.
+                    "documents": touched_documents(call, result),
                 }
                 created = _created_name(result)
                 if created:
@@ -422,12 +429,22 @@ class ChatService:
         the caller's own: the rows are read with direct SQL, which does not
         consult the permission hooks.
         """
-        from albanna.services.conversation_service import assert_owns, ensure_conversation
+        from albanna.services.conversation_service import (
+            assert_owns,
+            ensure_conversation,
+            name_after_question,
+        )
 
         if not request.conversation_id:
             return ensure_conversation(user, request.page, title=question[:120])
 
         assert_owns(request.conversation_id, user)
+
+        # A conversation the panel's "New" button created has no title yet:
+        # the button is pressed before there is a question to name it
+        # after.  This is that question, so it names it.
+        name_after_question(request.conversation_id, question)
+
         return request.conversation_id
 
     def _tool_registry(self, settings) -> ToolRegistry:
@@ -463,12 +480,28 @@ class ChatService:
 
         decision = authority.authorize(call.name, call.arguments)
         if not decision.allowed:
-            emit({"event": "tool_done", "name": call.name, "ok": False, "error": decision.reason})
+            emit(
+                {
+                    "event": "tool_done",
+                    "name": call.name,
+                    "ok": False,
+                    "error": decision.reason,
+                    "summary": decision.reason,
+                }
+            )
             return ToolResult.refusal(decision.reason, decision.code)
 
         invalid = validate_arguments(spec, call.arguments)
         if invalid:
-            emit({"event": "tool_done", "name": call.name, "ok": False, "error": invalid})
+            emit(
+                {
+                    "event": "tool_done",
+                    "name": call.name,
+                    "ok": False,
+                    "error": invalid,
+                    "summary": invalid,
+                }
+            )
             return ToolResult.failure(invalid, invalid)
 
         emit({"event": "tool_start", "name": call.name, "arguments": call.arguments})
@@ -480,7 +513,15 @@ class ChatService:
         except Exception as exc:  # noqa: BLE001 - a tool must not kill the turn
             logger.exception("Tool '%s' could not be run", call.name)
             message = f"The tool '{call.name}' could not be run: {type(exc).__name__}: {exc}"
-            emit({"event": "tool_done", "name": call.name, "ok": False, "error": message})
+            emit(
+                {
+                    "event": "tool_done",
+                    "name": call.name,
+                    "ok": False,
+                    "error": message,
+                    "summary": message,
+                }
+            )
             return ToolResult.failure(message, message)
 
         emit(
@@ -489,6 +530,13 @@ class ChatService:
                 "name": call.name,
                 "ok": result.ok,
                 "error": result.error,
+                # What the call found, in the tool's own words.  It goes
+                # behind the tool's name in the panel: the reader can see
+                # what was looked up without reading the answer.
+                "summary": result.summary or result.error,
+                # The documents it looked at, so that the answer can link
+                # to them.
+                "documents": touched_documents(call, result),
             }
         )
         return result
@@ -674,6 +722,43 @@ class ChatService:
             doc.insert(ignore_permissions=True)
         except Exception:
             logger.exception("Could not write the chat log row")
+
+
+def touched_documents(call, result: ToolResult) -> list[dict[str, str]]:
+    """The documents a tool call looked at.
+
+    They are what the panel turns into links, so that an answer is a
+    doorway into the Desk and not only a description of it.
+
+    The names are the ones the tool was *given* — the document it read,
+    the documents a listing returned, the document it created — so there
+    is no guessing about which words in the answer are document names.
+    A name the assistant never opened is not a link, and a name that is
+    not a document is never mistaken for one.
+    """
+    doctype = str(call.arguments.get("doctype") or "").strip()
+    if not doctype:
+        return []
+
+    documents: list[dict[str, str]] = []
+    seen: set[str] = set()
+
+    def add(name) -> None:
+        name = str(name or "").strip()
+        if name and name not in seen:
+            seen.add(name)
+            documents.append({"doctype": doctype, "name": name})
+
+    if call.name == "get_doc":
+        add(call.arguments.get("name"))
+    elif call.name == "list_docs":
+        for row in result.data or []:
+            if isinstance(row, dict):
+                add(row.get("name"))
+    elif call.name == "create_doc":
+        add(_created_name(result))
+
+    return documents
 
 
 def _created_name(result: ToolResult) -> str:

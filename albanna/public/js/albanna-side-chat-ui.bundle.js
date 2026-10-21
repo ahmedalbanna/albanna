@@ -49,9 +49,14 @@ if (!window[MOUNT_FLAG]) {
 			// fall back to the global scope.  So `__` and `frappe` used in a
 			// template resolve to `undefined` unless they are on the
 			// instance.
+			//
+			// The arguments are forwarded, not just the first: Frappe's `__`
+			// takes a replacement object and formats `{0}` placeholders with
+			// it, and a wrapper that dropped the second argument would leave
+			// every placeholder in the string as a literal `{0}`.
 			const globals = app.config.globalProperties;
-			globals.__ = (text) => (window.__ ? window.__(text) : text);
-			globals._ = (text) => (window._ ? window._(text) : text);
+			globals.__ = (...args) => (window.__ ? window.__(...args) : args[0]);
+			globals._ = (...args) => (window._ ? window._(...args) : args[0]);
 			globals.frappe = window.frappe;
 
 			app.mount(el);

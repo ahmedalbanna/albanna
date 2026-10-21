@@ -11,29 +11,41 @@ export function currentLocale() {
 }
 
 /**
- * A moment, as "2 minutes ago" / "أمس".
+ * A moment, as a `Date`.
  *
- * The epoch is preferred over the string: the server's timestamps are naive —
- * "2026-10-21 03:20:00", with no timezone — so a browser in a different
- * timezone from the server reads them as a different moment, and a
- * conversation that happened a minute ago reads as "in three hours".
+ * The epoch is preferred over the string: the server's timestamps are
+ * naive — "2026-10-21 03:20:00", with no timezone — so a browser in a
+ * different timezone from the server reads them as a different moment, and
+ * a conversation that happened a minute ago reads as "in three hours".
+ *
+ * @param {number|string|Date} value an epoch in seconds, a timestamp or a
+ *   Date
+ * @returns {Date|null} the moment, or null when it could not be read
+ */
+function toDate(value) {
+	if (!value) return null;
+
+	if (typeof value === "number") {
+		return new Date(value * 1000);
+	}
+	if (value instanceof Date) {
+		return value;
+	}
+	const date = new Date(String(value).replace(" ", "T"));
+	if (Number.isNaN(date.getTime())) return null;
+	return date;
+}
+
+/**
+ * A moment, as "2 minutes ago" / "أمس".
  *
  * @param {number|string|Date} value an epoch in seconds, an ISO timestamp
  *   or a Date
  * @returns {string} the relative time
  */
 export function relativeTime(value) {
-	if (!value) return "";
-
-	let date;
-	if (typeof value === "number") {
-		date = new Date(value * 1000);
-	} else if (value instanceof Date) {
-		date = value;
-	} else {
-		date = new Date(String(value).replace(" ", "T"));
-	}
-	if (Number.isNaN(date.getTime())) return "";
+	const date = toDate(value);
+	if (!date) return "";
 
 	const seconds = Math.round((date.getTime() - Date.now()) / 1000);
 	const units = [
@@ -53,6 +65,32 @@ export function relativeTime(value) {
 		}
 	}
 	return "";
+}
+
+/**
+ * A moment, as the time of day.
+ *
+ * The reader's locale and the reader's clock: `Intl.DateTimeFormat`
+ * formats in the browser's language, so an Arabic interface gets Arabic
+ * digits without a second translation table.
+ *
+ * @param {number|string|Date} value an epoch in seconds, a timestamp or a
+ *   Date
+ * @returns {string} the time of day, or an empty string
+ */
+export function clockTime(value) {
+	const date = toDate(value);
+	if (!date) return "";
+
+	try {
+		return new Intl.DateTimeFormat(currentLocale(), {
+			hour: "2-digit",
+			minute: "2-digit",
+		}).format(date);
+	} catch (error) {
+		// A browser with no locale data still shows the reader something.
+		return date.toTimeString().slice(0, 5);
+	}
 }
 
 /**

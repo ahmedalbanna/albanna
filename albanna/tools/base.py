@@ -39,14 +39,18 @@ class ToolResult:
     data: Any = None
     error: str = ""
     denied: bool = False
+    #: One line saying what the call found — "Found 24 Sales Order".  It is
+    #: what the panel shows beside the tool's name, so that the reader can
+    #: see what was looked up without reading the answer.
+    summary: str = ""
 
     @classmethod
-    def success(cls, content: str, data: Any = None) -> ToolResult:
-        return cls(ok=True, content=content, data=data)
+    def success(cls, content: str, data: Any = None, summary: str = "") -> ToolResult:
+        return cls(ok=True, content=content, data=data, summary=summary)
 
     @classmethod
-    def failure(cls, content: str, error: str, data: Any = None) -> ToolResult:
-        return cls(ok=False, content=content, error=error, data=data)
+    def failure(cls, content: str, error: str, data: Any = None, summary: str = "") -> ToolResult:
+        return cls(ok=False, content=content, error=error, data=data, summary=summary)
 
     @classmethod
     def refusal(cls, content: str, error: str) -> ToolResult:

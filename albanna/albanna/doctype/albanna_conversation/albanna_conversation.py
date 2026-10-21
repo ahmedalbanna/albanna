@@ -11,14 +11,13 @@ widens or breaks the other.
 import frappe
 from frappe.model.document import Document
 
-#: The title given to a conversation that has not been asked anything yet.
-PLACEHOLDER_TITLE = "New conversation"
-
 
 class AlbannaConversation(Document):
     """A thread of questions and answers."""
 
     def before_insert(self):
+        from albanna.services.conversation_service import PLACEHOLDER_TITLE
+
         if not self.user:
             self.user = frappe.session.user
         if not self.title:

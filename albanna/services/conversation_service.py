@@ -34,6 +34,13 @@ logger = logging.getLogger(__name__)
 #: The parent field the message rows hang off.
 PARENT_FIELD = "messages"
 
+#: The title a conversation carries until it has a question to be named
+#: after.  It is a *sentinel*, not a translation: the drawer renders its
+#: own translated "New conversation" for a conversation with no title, and
+#: the first question asked in a conversation replaces this with the
+#: question itself.
+PLACEHOLDER_TITLE = "New conversation"
+
 #: How many messages a conversation keeps.  The model only ever sees the
 #: last ``history_limit`` of them, so this is a storage bound rather than a
 #: context bound.
@@ -57,13 +64,70 @@ def ensure_conversation(user: str, page: str = "", title: str = "") -> str:
     if existing:
         return existing
 
+    return new_conversation(user, page=page, title=title)
+
+
+def new_conversation(user: str, page: str = "", title: str = "") -> str:
+    """Create a conversation for *page*, whether one exists there or not.
+
+    ``ensure_conversation`` returns the page's conversation, because a
+    page's context is the context behind every question asked on it.  This
+    creates a *second* one on the same page, which is what the panel's
+    "New" button means: a fresh thread on the same page, with the same
+    context behind it and none of the previous thread's questions in it.
+
+    The title is the placeholder, which the doctype puts there for any
+    conversation with no title of its own.  A conversation is named after
+    the question that started it, and the button is pressed before there
+    is such a question; the first question that arrives names it.
+    """
     doc = frappe.new_doc("Albanna Conversation")
     doc.user = user
     doc.page = page or ""
-    doc.title = title or "New conversation"
+    doc.title = title or ""
     doc.last_activity = frappe.utils.now_datetime()
     doc.insert(ignore_permissions=True)
     return doc.name
+
+
+def conversation_for_page(user: str, page: str = "") -> str:
+    """The user's conversation for *page*, or an empty string.
+
+    Unlike :func:`ensure_conversation` this does not create one: the
+    panel asks what is there, and a page with no thread is a page with
+    nothing to show.
+    """
+    return (
+        frappe.db.get_value(
+            "Albanna Conversation",
+            {"user": user, "page": page or ""},
+            "name",
+            order_by="last_activity desc",
+        )
+        or ""
+    )
+
+
+def name_after_question(conversation: str, question: str) -> None:
+    """Name a conversation after the question that started it.
+
+    A conversation created by the "New" button has no title yet, because
+    the button is pressed before there is a question to name it after.
+    The first question that arrives in it is what the drawer should show,
+    and that is the same rule ``ensure_conversation`` already follows.
+
+    Only the placeholder is replaced: a conversation the user has renamed
+    keeps the name they gave it.
+    """
+    title = (frappe.db.get_value("Albanna Conversation", conversation, "title") or "").strip()
+    if title and title != PLACEHOLDER_TITLE:
+        return
+
+    name = " ".join(str(question or "").split())[:120]
+    if not name:
+        return
+
+    frappe.db.set_value("Albanna Conversation", conversation, "title", name)
 
 
 def append_messages(conversation: str, rows: list[dict]) -> None:
@@ -207,7 +271,7 @@ def load_transcript(conversation: str, limit: int = 200) -> list[dict]:
     """
     rows = frappe.db.sql(
         """
-        select role, content, tool_calls
+        select role, content, tool_calls, creation
         from `tabAlbanna Message`
         where parent = %s and parentfield = %s
         order by idx asc
@@ -231,6 +295,8 @@ def load_transcript(conversation: str, limit: int = 200) -> list[dict]:
                         "name": str(item.get("name") or ""),
                         "ok": bool(item.get("ok", True)),
                         "denied": bool(item.get("denied", False)),
+                        "summary": str(item.get("summary") or ""),
+                        "documents": _documents(item.get("documents")),
                     }
                     for item in (raw if isinstance(raw, list) else [])
                     if isinstance(item, dict) and item.get("name")
@@ -238,9 +304,52 @@ def load_transcript(conversation: str, limit: int = 200) -> list[dict]:
             except (json.JSONDecodeError, ValueError, TypeError):
                 tools = []
 
-        transcript.append({"role": role, "content": row.content or "", "tools": tools})
+        transcript.append(
+            {
+                "role": role,
+                "content": row.content or "",
+                "tools": tools,
+                # When it was said, so that the transcript can say so.
+                # The epoch is what the browser reads: the stored value is
+                # a naive string written in the *site's* timezone, and a
+                # browser reading it as its own would be wrong by hours.
+                "creation_ts": _epoch(row.creation),
+            }
+        )
 
     return transcript
+
+
+def _documents(raw) -> list[dict[str, str]]:
+    """The documents a stored tool call looked at.
+
+    They were stored with the call, so that a conversation that is opened
+    again links to the same documents the answer names.  A stored value
+    that is not a list of documents is dropped rather than trusted.
+    """
+    if not isinstance(raw, list):
+        return []
+
+    documents = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        doctype = str(item.get("doctype") or "").strip()
+        name = str(item.get("name") or "").strip()
+        if doctype and name:
+            documents.append({"doctype": doctype, "name": name})
+    return documents
+
+
+def display_title(title: str) -> str:
+    """The title as the widget should be told it.
+
+    The placeholder is a storage detail.  What the widget is told is that
+    the conversation has no title yet, and the drawer renders its own
+    translated "New conversation" for it.
+    """
+    text = (title or "").strip()
+    return "" if text == PLACEHOLDER_TITLE else text
 
 
 def list_conversations(user: str, limit: int = 20, offset: int = 0) -> list[dict]:
@@ -269,6 +378,7 @@ def list_conversations(user: str, limit: int = 20, offset: int = 0) -> list[dict
     for row in rows:
         conversation = dict(row)
         conversation["last_activity_ts"] = _epoch(conversation.get("last_activity"))
+        conversation["title"] = display_title(conversation.get("title"))
         conversations.append(conversation)
 
     return conversations

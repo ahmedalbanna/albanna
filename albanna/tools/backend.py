@@ -46,6 +46,29 @@ class ToolNotBound(LookupError):
     """The manifest names a tool this backend cannot run."""
 
 
+def _summarise(payload: Any) -> str:
+    """A one-line summary of a payload that carries no message of its own.
+
+    Most of the tools answer with an envelope whose ``message`` is the
+    summary — "Found 24 Sales Order".  The ones that answer with raw JSON
+    have no envelope to carry one, so it is made here from the shape of
+    the payload.  A payload with nothing recognisable in it gets no
+    summary, which is honest: a line that says nothing is worse than no
+    line.
+    """
+    if not isinstance(payload, dict):
+        return ""
+
+    doctype = payload.get("doctype")
+    if not doctype:
+        return ""
+
+    fields = payload.get("fields")
+    if isinstance(fields, list):
+        return f"{doctype}: {len(fields)} fields"
+    return str(doctype)
+
+
 class ErpnextBackend:
     """Runs the ERPNext tools."""
 
@@ -160,15 +183,24 @@ class ErpnextBackend:
                 content = f"{content}\n{compact_json(data)}"
 
             if succeeded:
-                return ToolResult.success(truncate_result(content, spec.max_result_chars), data)
+                return ToolResult.success(
+                    truncate_result(content, spec.max_result_chars),
+                    data,
+                    summary=message or status,
+                )
             return ToolResult.failure(
                 truncate_result(content, spec.max_result_chars),
                 error=message or status,
                 data=data,
+                summary=message or status,
             )
 
         content = raw if payload is None else compact_json(payload)
-        return ToolResult.success(truncate_result(content, spec.max_result_chars), payload)
+        return ToolResult.success(
+            truncate_result(content, spec.max_result_chars),
+            payload,
+            summary=_summarise(payload),
+        )
 
     def _explain_missing_doctype(self, result: ToolResult) -> ToolResult:
         """When a DocType's name is wrong, name the ones that exist.

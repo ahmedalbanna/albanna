@@ -25,12 +25,13 @@
  * already a column of the Desk, and a drawer floating over it would be a
  * second floating thing on a page that has one.
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import Composer from "./Composer.vue";
 import ConversationDrawer from "./ConversationDrawer.vue";
 import { pageIdentity, resolveContext } from "./context.mjs";
-import { renderMarkdown } from "./markdown.js";
-import { call } from "./turn.mjs";
-import { runTurn } from "./turn.mjs";
+import { clockTime } from "./format.mjs";
+import { hasTable, renderMarkdown, tableAsTsv } from "./markdown.js";
+import { call, runTurn } from "./turn.mjs";
 
 const props = defineProps({
 	/** The options payload, already resolved by the launcher. */
@@ -44,11 +45,23 @@ const props = defineProps({
 const messages = ref([]);
 const draft = ref("");
 const busy = ref(false);
-const status = ref("");
+/** What the assistant is doing right now, in the reader's language. */
+const activity = ref("");
 const error = ref("");
+/** A message that is not an error: "Stopped.", "Copied." */
+const notice = ref("");
+const lastQuestion = ref("");
 const conversationId = ref("");
 const transcriptEl = ref(null);
-const composerEl = ref(null);
+/** What a screen reader is told, once a turn is over. */
+const announcement = ref("");
+/** Whether the transcript is pinned to the bottom. */
+const followBottom = ref(true);
+const showScrollButton = ref(false);
+/** The message whose answer was just copied, if any. */
+const copiedId = ref("");
+/** The message whose table was just copied, if any. */
+const copiedTableId = ref("");
 
 /** "chat" shows the transcript; "history" shows the list of conversations. */
 const view = ref("chat");
@@ -56,26 +69,210 @@ const conversations = ref([]);
 const historyLoading = ref(false);
 
 let messageCounter = 0;
-let currentPage = "";
+/** The page's identity, as a ref so that the examples follow the page. */
+const currentPage = ref("");
+
+/** The controller of the turn in flight, so that it can be stopped. */
+let abortController = null;
 
 const locked = computed(() => props.config.locked === true);
 const canChat = computed(() => props.config.chat_access === true && !locked.value);
-const toolNames = computed(() => (props.config.tools || []).join(", "));
+
+/**
+ * The document the widget is looking at, if it is looking at one.
+ *
+ * A *form* is a document, and the document's name and type are known
+ * exactly.  A list is a route, and the route's last segment is a slug
+ * rather than a name — "erpnext/sales-order" is not "Sales Order" — so
+ * a list is not named here.  Better to say nothing than to say a slug.
+ */
+const openDocument = computed(() => {
+	// `currentPage` is read so that this is recomputed when the page
+	// changes: `resolveContext` reads globals that Vue cannot see.
+	const page = currentPage.value;
+	if (!page) return null;
+
+	const context = resolveContext();
+	if (!context.doctype || !context.name) return null;
+	return { doctype: context.doctype, name: context.name };
+});
+
+/**
+ * What the empty state says it is asking about.
+ *
+ * The widget's whole claim is that it knows what page you are looking
+ * at, and an empty panel that says nothing about it makes the reader
+ * wonder whether it does.
+ */
+const pageContext = computed(() => {
+	const document = openDocument.value;
+	if (!document) return "";
+	return __("Asking about {0} {1}", [document.doctype, document.name]);
+});
+
+/**
+ * The questions the empty state offers.
+ *
+ * With a document open, the questions are about *that* document — a
+ * reader with a Sales Order open wants to know about the Sales Order in
+ * front of them, not about sales orders in general.  Without one, they
+ * are the questions people actually ask of a site.
+ *
+ * They are asked as questions rather than described, because a suggestion
+ * the reader has to translate into a question is a suggestion that costs
+ * more than it gives.
+ */
+const examples = computed(() => {
+	const document = openDocument.value;
+	if (document) {
+		return [
+			__("Summarise this {0}", [document.doctype]),
+			__("What is the status of this {0}?", [document.doctype]),
+			__("What is the total of this {0}?", [document.doctype]),
+		];
+	}
+
+	return [
+		__("Which Sales Orders are still open?"),
+		__("What is the total value of open orders?"),
+		__("How many customers are there?"),
+	];
+});
 
 function nextId() {
 	messageCounter += 1;
 	return `m${messageCounter}`;
 }
 
-function scrollToBottom() {
+/**
+ * A message, as a reactive object.
+ *
+ * The messages live in a `ref`, so the array is reactive — but a *plain*
+ * object pushed into it is not.  Vue hands the template a proxy of it,
+ * and a mutation of the plain object bypasses that proxy, so nothing
+ * re-renders.  The tokens would arrive, be appended to an object nobody
+ * is watching, and appear all at once when the turn ended and something
+ * else changed.  This is why the message is made reactive *before* it is
+ * pushed: the streaming is the feature, and it has to be seen.
+ */
+function makeMessage(role, content, at) {
+	const message = reactive({
+		id: nextId(),
+		role,
+		content: "",
+		html: "",
+		tools: [],
+		// The documents the assistant read, each a `{name, url}` pair.  A
+		// name in the answer is a link when it is one of these, and only
+		// then.
+		documents: [],
+		pending: false,
+		// When it was said.  A message the panel is showing now is
+		// stamped with the reader's clock; a message from a conversation
+		// that was opened comes with the server's.
+		at: at || Date.now() / 1000,
+	});
+	setContent(message, content || "");
+	return message;
+}
+
+/**
+ * Set a message's text, and its rendered HTML with it.
+ *
+ * The HTML is kept on the message rather than rendered in the template
+ * because the template renders *every* message on every change.  A token
+ * arriving re-renders the panel, and with a conversation of any length
+ * that is the whole transcript's markdown, parsed again and again, for
+ * one word.  The parsing is the expensive part, so it is done once per
+ * message and only for the message that actually changed.
+ *
+ * @param {object} message the message
+ * @param {string} text the new text
+ */
+function setContent(message, text) {
+	message.content = text;
+	message.html = renderMarkdown(text, message.documents);
+}
+
+/**
+ * A message the server sent, with the documents its calls looked at.
+ *
+ * The documents are stored with the tool calls, so that a conversation
+ * opened again links to the same documents the answer names — the same
+ * links the live answer had.
+ *
+ * @param {object} message the message, as the server sent it
+ * @returns {object} the message, ready to show
+ */
+function messageFromServer(message) {
+	const item = makeMessage(message.role, message.content, message.creation_ts);
+	item.tools = message.tools || [];
+
+	for (const tool of item.tools) {
+		tool.documents = (tool.documents || []).map(documentLink).filter(Boolean);
+	}
+	item.documents = item.tools
+		.flatMap((tool) => tool.documents || [])
+		.filter(
+			(document, index, all) =>
+				all.findIndex((other) => other.name === document.name) === index,
+		);
+
+	setContent(item, item.content);
+	return item;
+}
+
+/**
+ * The Desk's own link to a document.
+ *
+ * It is the link the Desk's list view makes, so that a name in an answer
+ * opens the same thing a name in a list opens.
+ *
+ * @param {object} document the document, as the server named it
+ * @returns {object} the document, with its url
+ */
+function documentLink(document) {
+	const name = String(document.name || "").trim();
+	if (!name) return null;
+
+	const doctype = String(document.doctype || "").trim();
+	const slug =
+		doctype && window.frappe && window.frappe.router
+			? window.frappe.router.slug(doctype)
+			: doctype.toLowerCase().replace(/ /g, "-");
+
+	return {
+		name,
+		url: `/app/${encodeURIComponent(slug)}/${encodeURIComponent(name)}`,
+	};
+}
+
+function scrollToBottom(force = false) {
+	// The reader who has scrolled up to read something is not dragged back
+	// down by the next token.
+	if (!force && !followBottom.value) return;
 	nextTick(() => {
 		const el = transcriptEl.value;
 		if (el) el.scrollTop = el.scrollHeight;
 	});
 }
 
+function onTranscriptScroll() {
+	const el = transcriptEl.value;
+	if (!el) return;
+	const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+	followBottom.value = atBottom;
+	showScrollButton.value = !atBottom && messages.value.length > 0;
+}
+
+function jumpToBottom() {
+	followBottom.value = true;
+	showScrollButton.value = false;
+	scrollToBottom(true);
+}
+
 function onContextChanged(context) {
-	currentPage = pageIdentity();
+	currentPage.value = pageIdentity();
 	props.onContext(context);
 }
 
@@ -90,46 +287,112 @@ function onContextChanged(context) {
  * @returns {string} the label
  */
 function statusLabel(code) {
-	const labels = {
-		thinking: () => __("Thinking"),
-	};
-	const label = labels[code];
-	return label ? label() : "";
+	if (code === "thinking") return __("Thinking");
+	return "";
 }
 
-function describeTool(name) {
-	const labels = {
-		list_docs: "Searching",
-		get_doc: "Reading",
-		get_doctype_meta: "Checking fields",
-		run_report: "Running a report",
-		create_doc: "Creating",
-	};
-	return labels[name] || "Working";
+/**
+ * What a tool call is called, in the reader's language.
+ *
+ * The tool's *name* — `list_docs`, `run_report` — is the model's name for
+ * it, and it is not the reader's.  A person wants to know that the
+ * assistant is looking something up, not which function it reached for.
+ * The name is still available, on demand, in the summary under the
+ * answer.
+ *
+ * @param {string} name the tool's name
+ * @returns {string} the label
+ */
+function describeTool(name, toolArguments) {
+	const label = toolLabel(name);
+	const doctype = String((toolArguments && toolArguments.doctype) || "").trim();
+	// What is being looked at, not only how: "Searching Sales Order" tells
+	// the reader the question is being answered against the right thing.
+	if (!doctype) return label;
+	return `${label} ${doctype}`;
 }
 
-async function send() {
-	const question = draft.value.trim();
-	if (!question || busy.value || !canChat.value) return;
+function toolLabel(name) {
+	switch (name) {
+		case "list_docs":
+			return __("Searching");
+		case "get_doc":
+			return __("Reading");
+		case "get_doctype_meta":
+			return __("Checking fields");
+		case "run_report":
+			return __("Running a report");
+		case "create_doc":
+			return __("Creating");
+		default:
+			return __("Working");
+	}
+}
+
+/**
+ * The one line that says what the turn did.
+ *
+ * The count is of *distinct* tools and of *calls*, because "3 tools" and
+ * "7 calls" are different questions and the reader may want either.  The
+ * model's own names are behind the disclosure, for the reader who wants
+ * them.
+ *
+ * @param {object} message the message
+ * @returns {string} the summary
+ */
+function toolSummary(message) {
+	const tools = message.tools || [];
+	if (!tools.length) return "";
+	const distinct = new Set(tools.map((tool) => tool.name)).size;
+	return __("Tools used: {0} · Calls: {1}", [distinct, tools.length]);
+}
+
+/**
+ * When a message was said.
+ *
+ * @param {object} message the message
+ * @returns {string} the time of day
+ */
+function messageTime(message) {
+	return clockTime(message.at);
+}
+
+/**
+ * Ask a question, starting a turn.
+ *
+ * @param {string} question the question
+ */
+async function send(question) {
+	const text = String(question || draft.value || "").trim();
+	if (!text || busy.value || !canChat.value) return;
 
 	draft.value = "";
 	error.value = "";
+	notice.value = "";
 	busy.value = true;
+	activity.value = __("Thinking");
+	lastQuestion.value = text;
+	followBottom.value = true;
+	showScrollButton.value = false;
 
-	messages.value.push({ id: nextId(), role: "user", content: question, tools: [] });
-	scrollToBottom();
+	const asked = makeMessage("user", text);
+	messages.value.push(asked);
+	scrollToBottom(true);
 
-	const answer = { id: nextId(), role: "assistant", content: "", tools: [] };
+	const answer = makeMessage("assistant", "");
+	answer.pending = true;
 	messages.value.push(answer);
-	scrollToBottom();
+	scrollToBottom(true);
 
 	const context = resolveContext();
+	const controller = new AbortController();
+	abortController = controller;
 
 	try {
 		const result = await runTurn({
-			question,
+			question: text,
 			conversationId: conversationId.value,
-			page: currentPage,
+			page: currentPage.value,
 			pageContext: {
 				route: context.route,
 				view: context.view,
@@ -139,14 +402,16 @@ async function send() {
 				filters: context.filters,
 				selection: context.selection,
 			},
+			signal: controller.signal,
 			onEvent: (event) => {
 				if (event.event === "token") {
-					answer.content += event.text;
+					setContent(answer, answer.content + event.text);
 					scrollToBottom();
 					return;
 				}
 				if (event.event === "tool_start") {
-					answer.tools.push({ name: event.name, ok: null });
+					answer.tools.push({ name: event.name, ok: null, summary: "" });
+					activity.value = describeTool(event.name, event.arguments);
 					scrollToBottom();
 					return;
 				}
@@ -154,12 +419,31 @@ async function send() {
 					const pending = answer.tools.find(
 						(tool) => tool.ok === null && tool.name === event.name,
 					);
-					if (pending) pending.ok = event.ok !== false;
+					if (pending) {
+						pending.ok = event.ok !== false;
+						pending.summary = event.summary || "";
+					}
+
+					// The documents the call looked at.  They become links
+					// in the answer, so that the answer is a doorway into
+					// the Desk and not only a description of it.
+					const documents = (event.documents || []).map(documentLink).filter(Boolean);
+					if (documents.length) {
+						const known = new Set(answer.documents.map((entry) => entry.name));
+						const fresh = documents.filter((entry) => !known.has(entry.name));
+						if (fresh.length) {
+							answer.documents.push(...fresh);
+							// The answer may already have streamed past a
+							// name that is only now known, so the text is
+							// rendered again.
+							setContent(answer, answer.content);
+						}
+					}
 					scrollToBottom();
 					return;
 				}
 				if (event.event === "status") {
-					status.value = event.code ? statusLabel(event.code) : event.text || "";
+					activity.value = statusLabel(event.code) || event.text || activity.value;
 				}
 			},
 		});
@@ -168,7 +452,13 @@ async function send() {
 			conversationId.value = result.conversation_id;
 		}
 
-		if (result && result.status === "error") {
+		if (result && result.status === "aborted") {
+			// The turn was stopped at the reader's request.  Whatever
+			// arrived is kept — it is the truth so far — and the worker
+			// finishes on its own, so the answer is in the conversation
+			// when they come back to it.
+			notice.value = __("Stopped.");
+		} else if (result && result.status === "error") {
 			error.value = result.error || __("Something went wrong.");
 			if (!answer.content) {
 				messages.value = messages.value.filter((message) => message.id !== answer.id);
@@ -177,7 +467,11 @@ async function send() {
 			// The server's answer is the truth.  The streamed text was the
 			// live preview, and a preview that lost a fragment is worse
 			// than no preview: it is a wrong answer that looks complete.
-			answer.content = result.reply;
+			setContent(answer, result.reply);
+		}
+
+		if (answer.content) {
+			announcement.value = answer.content;
 		}
 	} catch (failure) {
 		error.value = String(
@@ -185,17 +479,85 @@ async function send() {
 		);
 		messages.value = messages.value.filter((message) => message.id !== answer.id);
 	} finally {
+		answer.pending = false;
 		busy.value = false;
-		status.value = "";
+		activity.value = "";
+		abortController = null;
 		scrollToBottom();
 	}
 }
 
-function onKeydown(event) {
-	// Enter sends; Shift+Enter is a new line.
-	if (event.key === "Enter" && !event.shiftKey) {
-		event.preventDefault();
-		send();
+/**
+ * Stop the turn in flight.
+ *
+ * The turn is not cancelled on the server — the worker finishes it, and the
+ * answer it produces is kept in the conversation.  What is stopped is the
+ * *waiting*: a reader who has decided they do not want the answer any more
+ * should not have to watch the rest of it arrive.
+ */
+function stop() {
+	if (!busy.value || !abortController) return;
+	abortController.abort();
+}
+
+function retry() {
+	const question = lastQuestion.value;
+	if (!question) return;
+	send(question);
+}
+
+/**
+ * Ask one of the suggestions.
+ *
+ * @param {string} question the suggestion
+ */
+function ask(question) {
+	if (busy.value || !canChat.value) return;
+	send(question);
+}
+
+/**
+ * Copy the table in an answer, as data.
+ *
+ * A table in an answer is data, and data goes into a spreadsheet.  The
+ * tabs are what a spreadsheet expects, so the paste lands as a table and
+ * not as a column of text.
+ *
+ * @param {object} message the message
+ */
+async function copyTable(message) {
+	const text = tableAsTsv(message.content);
+	if (!text) {
+		notice.value = __("There is no table to copy.");
+		return;
+	}
+	try {
+		await navigator.clipboard.writeText(text);
+		copiedTableId.value = message.id;
+		window.setTimeout(() => {
+			if (copiedTableId.value === message.id) copiedTableId.value = "";
+		}, 1600);
+	} catch (failure) {
+		notice.value = __("The table could not be copied.");
+	}
+}
+
+/**
+ * Copy an answer.
+ *
+ * @param {object} message the message
+ */
+async function copyAnswer(message) {
+	const text = message.content || "";
+	if (!text) return;
+	try {
+		await navigator.clipboard.writeText(text);
+		copiedId.value = message.id;
+		window.setTimeout(() => {
+			if (copiedId.value === message.id) copiedId.value = "";
+		}, 1600);
+	} catch (failure) {
+		notice.value = __("The answer could not be copied.");
 	}
 }
 
@@ -220,6 +582,11 @@ function showTranscript() {
 	view.value = "chat";
 }
 
+/**
+ * Open a conversation.
+ *
+ * @param {object} conversation the conversation
+ */
 async function openConversation(conversation) {
 	error.value = "";
 	try {
@@ -227,14 +594,12 @@ async function openConversation(conversation) {
 			conversation: conversation.name,
 		});
 		conversationId.value = conversation.name;
-		messages.value = (result.messages || []).map((message) => ({
-			id: nextId(),
-			role: message.role,
-			content: message.content,
-			tools: message.tools || [],
-		}));
+		messages.value = (result.messages || []).map((message) => {
+			return messageFromServer(message);
+		});
 		view.value = "chat";
-		scrollToBottom();
+		followBottom.value = true;
+		scrollToBottom(true);
 	} catch (failure) {
 		error.value = String(
 			(failure && failure.message) || failure || __("Could not open that conversation."),
@@ -242,6 +607,12 @@ async function openConversation(conversation) {
 	}
 }
 
+/**
+ * Rename a conversation.
+ *
+ * @param {string} name the conversation
+ * @param {string} title the new title
+ */
 async function renameConversation(name, title) {
 	try {
 		await call("albanna.api.conversations.rename_conversation", { conversation: name, title });
@@ -254,14 +625,48 @@ async function renameConversation(name, title) {
 	}
 }
 
-async function removeConversation(conversation) {
+/**
+ * Delete a conversation, after asking.
+ *
+ * A conversation is a thread of questions and answers that cannot be
+ * recovered, and the button that deletes it is a small icon next to a
+ * list of things the reader may want to keep.  One click is not a decision.
+ *
+ * @param {object} conversation the conversation
+ */
+function removeConversation(conversation) {
+	const title = conversation.title || __("New conversation");
+	const message = __("Delete the conversation “{0}”? This cannot be undone.", [title]);
+
+	const confirm = window.frappe && window.frappe.confirm;
+	if (typeof confirm === "function") {
+		confirm(message, () => deleteConversation(conversation));
+		return;
+	}
+	if (window.confirm(message)) {
+		deleteConversation(conversation);
+	}
+}
+
+/**
+ * Delete a conversation.
+ *
+ * @param {object} conversation the conversation
+ */
+async function deleteConversation(conversation) {
 	try {
 		await call("albanna.api.conversations.delete_conversation", {
 			conversation: conversation.name,
 		});
 		conversations.value = conversations.value.filter((item) => item.name !== conversation.name);
 		if (conversationId.value === conversation.name) {
-			newConversation();
+			// The panel is emptied, and no new conversation is made: the
+			// next question starts one, and a conversation made here and
+			// never used is an empty row in the drawer's list.
+			conversationId.value = "";
+			messages.value = [];
+			view.value = "chat";
+			notice.value = __("The conversation was deleted.");
 		}
 	} catch (failure) {
 		error.value = String(
@@ -270,30 +675,88 @@ async function removeConversation(conversation) {
 	}
 }
 
-function newConversation() {
-	messages.value = [];
-	conversationId.value = "";
-	view.value = "chat";
-	scrollToBottom();
+/**
+ * Start a new conversation on this page.
+ *
+ * The server is asked for it, because a "new" conversation that only
+ * existed in the browser would be the old one: the server resolves a
+ * page's conversation by page, so a turn with no conversation id lands
+ * back in the thread the reader was trying to leave.
+ */
+async function newConversation() {
+	error.value = "";
+	try {
+		const result = await call("albanna.api.conversations.new_conversation", {
+			page: currentPage.value,
+		});
+		conversationId.value = result.conversation || "";
+		messages.value = [];
+		view.value = "chat";
+		notice.value = __("A new conversation was started.");
+		scrollToBottom(true);
+	} catch (failure) {
+		error.value = String(
+			(failure && failure.message) || failure || __("Could not start a new conversation."),
+		);
+	}
+}
+
+/**
+ * Load the page's thread into the panel.
+ *
+ * The server resolves a page's conversation *by page*, so the thread the
+ * assistant will answer in is the page's thread.  A panel that showed an
+ * empty transcript on a page with a thread on it would be telling the
+ * reader one thing and the assistant another — and the reader would not
+ * know which of them was right.
+ *
+ * A page with no thread is a page with nothing to show, which is an
+ * answer and not a failure.
+ */
+async function loadPageConversation() {
+	const page = currentPage.value;
+	try {
+		const result = await call("albanna.api.conversations.conversation_for_page", { page });
+		// The page may have changed while the answer was in flight.
+		if (!result || page !== currentPage.value) return;
+
+		if (!result.conversation) {
+			messages.value = [];
+			conversationId.value = "";
+			return;
+		}
+
+		conversationId.value = result.conversation;
+		messages.value = (result.messages || []).map((message) => {
+			return messageFromServer(message);
+		});
+		followBottom.value = true;
+		scrollToBottom(true);
+	} catch (failure) {
+		// The panel still works without it: the reader can ask, and the
+		// answer will join whatever thread the server picks.
+	}
 }
 
 function onRouteChange() {
 	const context = resolveContext();
 	const identity = pageIdentity();
-	if (identity === currentPage) return;
+	if (identity === currentPage.value) return;
 
 	// A different page is a different thread.  The transcript is cleared
 	// rather than kept, because an answer about the previous page would be
 	// read as an answer about this one.
 	messages.value = [];
 	conversationId.value = "";
-	currentPage = identity;
+	currentPage.value = identity;
 	props.onContext(context);
+	loadPageConversation();
 }
 
 onMounted(() => {
 	const context = resolveContext();
 	onContextChanged(context);
+	loadPageConversation();
 
 	try {
 		if (
@@ -309,6 +772,10 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+	// A turn in flight is left to finish on the server, but this panel is
+	// no longer waiting for it.
+	if (abortController) abortController.abort();
+
 	try {
 		if (
 			window.frappe &&
@@ -326,24 +793,6 @@ onBeforeUnmount(() => {
 <template>
 	<div class="albanna-chat">
 		<header class="albanna-chat__header">
-			<button
-				v-if="view === 'history'"
-				type="button"
-				class="albanna-chat__close"
-				:aria-label="__('Back to the conversation')"
-				@click="showTranscript"
-			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-					<path
-						d="M19 12H5m0 0 6-6m-6 6 6 6"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					/>
-				</svg>
-			</button>
-
 			<div class="albanna-chat__heading">
 				<span class="albanna-chat__title">{{
 					view === "history" ? __("Conversations") : __("Albanna")
@@ -355,56 +804,92 @@ onBeforeUnmount(() => {
 				}}</span>
 			</div>
 
-			<button
-				v-if="view === 'history'"
-				type="button"
-				class="albanna-chat__new"
-				@click="newConversation"
-			>
-				{{ __("New") }}
-			</button>
+			<div class="albanna-chat__actions">
+				<button
+					v-if="view === 'history'"
+					type="button"
+					class="albanna-chat__icon"
+					:aria-label="__('Back to the conversation')"
+					:title="__('Back to the conversation')"
+					@click="showTranscript"
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+						<path
+							d="M19 12H5m0 0 6-6m-6 6 6 6"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+					</svg>
+				</button>
 
-			<button
-				v-else
-				type="button"
-				class="albanna-chat__close"
-				:aria-label="__('Conversations')"
-				:title="__('Conversations')"
-				@click="showHistory"
-			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-					<path
-						d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"
-						stroke="currentColor"
-						stroke-width="1.8"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					/>
-					<path
-						d="M12 8v4l3 2"
-						stroke="currentColor"
-						stroke-width="1.8"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					/>
-				</svg>
-			</button>
+				<!-- A new conversation is one click away in both views.  A
+				     reader in the middle of a thread who wants a fresh one
+				     should not have to go through the list to get it.
+				     It is an icon like the two beside it, so that the
+				     header is three quiet buttons and not a form. -->
+				<button
+					type="button"
+					class="albanna-chat__icon"
+					:aria-label="__('New conversation')"
+					:title="__('New conversation')"
+					@click="newConversation"
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+						<path
+							d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"
+							stroke="currentColor"
+							stroke-width="1.8"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+					</svg>
+				</button>
 
-			<button
-				type="button"
-				class="albanna-chat__close"
-				:aria-label="__('Close')"
-				@click="props.onClose"
-			>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-					<path
-						d="M18 6 6 18M6 6l12 12"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-					/>
-				</svg>
-			</button>
+				<button
+					v-if="view === 'chat'"
+					type="button"
+					class="albanna-chat__icon"
+					:aria-label="__('Conversations')"
+					:title="__('Conversations')"
+					@click="showHistory"
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+						<path
+							d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5"
+							stroke="currentColor"
+							stroke-width="1.8"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+						<path
+							d="M12 8v4l3 2"
+							stroke="currentColor"
+							stroke-width="1.8"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+					</svg>
+				</button>
+
+				<button
+					type="button"
+					class="albanna-chat__icon"
+					:aria-label="__('Close')"
+					:title="__('Close')"
+					@click="props.onClose"
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+						<path
+							d="M18 6 6 18M6 6l12 12"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+						/>
+					</svg>
+				</button>
+			</div>
 		</header>
 
 		<div v-if="locked" class="albanna-chat__locked">
@@ -431,85 +916,235 @@ onBeforeUnmount(() => {
 			@back="showTranscript"
 		/>
 
-		<div
-			v-else
-			ref="transcriptEl"
-			class="albanna-chat__transcript"
-			role="log"
-			aria-live="polite"
-		>
-			<div v-if="!messages.length" class="albanna-chat__empty">
-				<p class="albanna-chat__empty-title">{{ __("Ask a question about this site") }}</p>
-				<p class="albanna-chat__empty-detail">
-					{{
-						__(
-							"For example: which Sales Orders are still open, or what is customer Acme's balance.",
-						)
-					}}
-				</p>
-				<p v-if="toolNames" class="albanna-chat__empty-tools">
-					{{ __("Available tools") }}: {{ toolNames }}
-				</p>
-			</div>
-
+		<div v-else class="albanna-chat__body">
 			<div
-				v-for="message in messages"
-				:key="message.id"
-				class="albanna-chat__message"
-				:class="`albanna-chat__message--${message.role}`"
+				ref="transcriptEl"
+				class="albanna-chat__transcript"
+				role="log"
+				aria-live="off"
+				@scroll="onTranscriptScroll"
 			>
-				<div v-if="message.tools && message.tools.length" class="albanna-chat__tools">
-					<span
-						v-for="(tool, index) in message.tools"
-						:key="index"
-						class="albanna-chat__tool"
-						:class="{
-							'albanna-chat__tool--running': tool.ok === null,
-							'albanna-chat__tool--failed': tool.ok === false,
-						}"
-					>
-						{{ describeTool(tool.name) }} · {{ tool.name }}
-					</span>
+				<div v-if="!messages.length" class="albanna-chat__empty">
+					<p class="albanna-chat__empty-title">
+						{{ __("Ask a question about this site") }}
+					</p>
+					<p v-if="pageContext" class="albanna-chat__empty-context">
+						{{ pageContext }}
+					</p>
+					<div class="albanna-chat__examples">
+						<button
+							v-for="example in examples"
+							:key="example"
+							type="button"
+							class="albanna-chat__example"
+							@click="ask(example)"
+						>
+							{{ example }}
+						</button>
+					</div>
 				</div>
-				<!-- The user's own words are shown literally: `{{ }}` escapes
-				     them, and a user who types `**` meant a literal `**`. -->
+
 				<div
-					v-if="message.role === 'user' && message.content"
-					class="albanna-chat__bubble albanna-chat__bubble--plain"
+					v-for="message in messages"
+					:key="message.id"
+					class="albanna-chat__message"
+					:class="`albanna-chat__message--${message.role}`"
 				>
-					{{ message.content }}
+					<!-- While the turn runs: one line saying what is happening.
+					     Afterwards: one line saying what it did, which opens
+					     into the list of calls. -->
+					<div v-if="message.pending" class="albanna-chat__activity" role="status">
+						<span class="albanna-chat__spinner" aria-hidden="true"></span>
+						<span class="albanna-chat__activity-text">{{ activity }}</span>
+					</div>
+
+					<details
+						v-else-if="message.tools && message.tools.length"
+						class="albanna-chat__tools"
+					>
+						<summary class="albanna-chat__tools-summary">
+							{{ toolSummary(message) }}
+						</summary>
+						<ul class="albanna-chat__tools-list">
+							<li
+								v-for="(tool, index) in message.tools"
+								:key="index"
+								class="albanna-chat__tool"
+								:class="{ 'albanna-chat__tool--failed': tool.ok === false }"
+							>
+								<span class="albanna-chat__tool-label">{{
+									toolLabel(tool.name)
+								}}</span>
+								<span class="albanna-chat__tool-name">{{ tool.name }}</span>
+								<span v-if="tool.summary" class="albanna-chat__tool-summary">{{
+									tool.summary
+								}}</span>
+								<span v-if="tool.ok === false" class="albanna-chat__tool-failed">
+									{{ __("failed") }}
+								</span>
+							</li>
+						</ul>
+					</details>
+
+					<!-- The user's own words are shown literally: `{{ }}` escapes
+					     them, and a user who types `**` meant a literal `**`. -->
+					<div
+						v-if="message.role === 'user' && message.content"
+						class="albanna-chat__bubble albanna-chat__bubble--plain"
+					>
+						{{ message.content }}
+					</div>
+					<!-- The assistant's answer is markdown.  `renderMarkdown`
+					     escapes before it builds any markup, so this is safe. -->
+					<div
+						v-else-if="message.content"
+						class="albanna-chat__bubble"
+						v-html="message.html"
+					></div>
+
+					<div class="albanna-chat__footer">
+						<button
+							v-if="message.role === 'assistant' && message.content"
+							type="button"
+							class="albanna-chat__copy"
+							:aria-label="__('Copy the answer')"
+							:title="__('Copy the answer')"
+							@click="copyAnswer(message)"
+						>
+							<svg
+								v-if="copiedId !== message.id"
+								width="13"
+								height="13"
+								viewBox="0 0 24 24"
+								fill="none"
+								aria-hidden="true"
+							>
+								<rect
+									x="9"
+									y="9"
+									width="12"
+									height="12"
+									rx="2"
+									stroke="currentColor"
+									stroke-width="1.8"
+								/>
+								<path
+									d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+									stroke="currentColor"
+									stroke-width="1.8"
+									stroke-linecap="round"
+								/>
+							</svg>
+							<svg
+								v-else
+								width="13"
+								height="13"
+								viewBox="0 0 24 24"
+								fill="none"
+								aria-hidden="true"
+							>
+								<path
+									d="m5 13 4 4L19 7"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
+							</svg>
+						</button>
+						<button
+							v-if="message.role === 'assistant' && hasTable(message.content)"
+							type="button"
+							class="albanna-chat__copy albanna-chat__copy--table"
+							:aria-label="__('Copy the table')"
+							:title="__('Copy the table')"
+							@click="copyTable(message)"
+						>
+							{{ copiedTableId === message.id ? __("Copied") : __("Copy table") }}
+						</button>
+						<span class="albanna-chat__time">{{ messageTime(message) }}</span>
+					</div>
 				</div>
-				<!-- The assistant's answer is markdown.  `renderMarkdown`
-				     escapes before it builds any markup, so this is safe. -->
-				<div
-					v-else-if="message.content"
-					class="albanna-chat__bubble"
-					v-html="renderMarkdown(message.content)"
-				></div>
 			</div>
-		</div>
 
-		<div v-if="error" class="albanna-chat__error" role="alert">{{ error }}</div>
-
-		<div v-if="view === 'chat'" class="albanna-chat__composer">
-			<textarea
-				ref="composerEl"
-				v-model="draft"
-				class="albanna-chat__input"
-				rows="2"
-				:placeholder="__('Ask about your data…')"
-				:disabled="busy || !canChat"
-				:aria-label="__('Your question')"
-				@keydown="onKeydown"
-			></textarea>
 			<button
+				v-if="showScrollButton"
 				type="button"
-				class="btn btn-primary albanna-chat__send"
-				:disabled="busy || !draft.trim() || !canChat"
-				@click="send"
+				class="albanna-chat__scroll-bottom"
+				:aria-label="__('Jump to the latest')"
+				:title="__('Jump to the latest')"
+				@click="jumpToBottom"
 			>
-				{{ busy ? status || __("Working…") : __("Send") }}
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+					<path
+						d="M12 5v14m0 0 6-6m-6 6-6-6"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+				</svg>
 			</button>
 		</div>
+
+		<!-- The transcript is not a live region: it changes on every token,
+		     and a live region that changes that often re-announces the whole
+		     answer, again and again.  The answer is announced once, here,
+		     when the turn is over. -->
+		<p class="albanna-chat__announce" role="status" aria-live="polite">
+			{{ announcement }}
+		</p>
+
+		<div v-if="error" class="albanna-chat__error" role="alert">
+			<span class="albanna-chat__error-text">{{ error }}</span>
+			<button v-if="lastQuestion" type="button" class="albanna-chat__retry" @click="retry">
+				{{ __("Try again") }}
+			</button>
+			<button
+				type="button"
+				class="albanna-chat__dismiss"
+				:aria-label="__('Dismiss')"
+				:title="__('Dismiss')"
+				@click="error = ''"
+			>
+				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+					<path
+						d="M18 6 6 18M6 6l12 12"
+						stroke="currentColor"
+						stroke-width="2.2"
+						stroke-linecap="round"
+					/>
+				</svg>
+			</button>
+		</div>
+
+		<div v-else-if="notice" class="albanna-chat__notice">
+			<span class="albanna-chat__notice-text">{{ notice }}</span>
+			<button
+				type="button"
+				class="albanna-chat__dismiss"
+				:aria-label="__('Dismiss')"
+				:title="__('Dismiss')"
+				@click="notice = ''"
+			>
+				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+					<path
+						d="M18 6 6 18M6 6l12 12"
+						stroke="currentColor"
+						stroke-width="2.2"
+						stroke-linecap="round"
+					/>
+				</svg>
+			</button>
+		</div>
+
+		<Composer
+			v-if="view === 'chat' && !locked"
+			v-model="draft"
+			:busy="busy"
+			:can-chat="canChat"
+			@send="send"
+			@stop="stop"
+		/>
 	</div>
 </template>
