@@ -17,10 +17,10 @@ the side chat can reach:
 
 Why the manifest lives here and the implementations live elsewhere
 -----------------------------------------------------------------
-``core/`` may not import Frappe, and it may not import ``erpnext_mcp``.  So
-the *implementations* — the functions in ``erpnext_mcp`` that actually read
-and write documents — sit behind the :mod:`albanna.tools` port, and only the
-contract the model sees lives here.
+``core/`` may not import Frappe, and it may not import the
+implementations.  So the functions that actually read and write documents
+sit behind the :mod:`albanna.tools` port, and only the contract the model
+sees lives here.
 
 The cost of that split is that the two halves could drift: a manifest that
 promises a tool the adapter cannot call, or an adapter that can call a tool

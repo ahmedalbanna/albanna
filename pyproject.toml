@@ -4,17 +4,24 @@ authors = [
     { name = "Albanna Software Solutions", email = "admin@albanna.dev"}
 ]
 description = "ERPNext side chat — ask about your data in plain language"
+license = "MIT"
+classifiers = [
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: Frappe",
+    "License :: OSI Approved :: MIT License",
+]
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
-    # `frappe` is installed and managed by the bench.
+    # `frappe` is installed and managed by the bench, and is deliberately
+    # not listed here: it is not on PyPI, and the bench provides it.
     #
-    # `erpnext-mcp` supplies the tool layer: the ERPNext operations this app
-    # calls in-process.  It is a plain library here — Albanna never starts the
-    # MCP server, so FastMCP, the licence gate and the HTTP transport are all
-    # unused weight that simply never gets imported.
-    "erpnext-mcp>=3.77",
+    # The ERPNext tools are implemented in this app (albanna/tools/erpnext.py)
+    # rather than pulled from a package, so the app installs anywhere.
+    #
     # LLM provider transport.
     "requests>=2.31.0",
     # JSON Schema validation of tool arguments, before a call reaches Frappe.

@@ -151,7 +151,9 @@ async function send() {
 					return;
 				}
 				if (event.event === "tool_done") {
-					const pending = answer.tools.find((tool) => tool.ok === null && tool.name === event.name);
+					const pending = answer.tools.find(
+						(tool) => tool.ok === null && tool.name === event.name,
+					);
 					if (pending) pending.ok = event.ok !== false;
 					scrollToBottom();
 					return;
@@ -167,7 +169,7 @@ async function send() {
 		}
 
 		if (result && result.status === "error") {
-			error.value = result.error || "Something went wrong.";
+			error.value = result.error || __("Something went wrong.");
 			if (!answer.content) {
 				messages.value = messages.value.filter((message) => message.id !== answer.id);
 			}
@@ -178,7 +180,9 @@ async function send() {
 			answer.content = result.reply;
 		}
 	} catch (failure) {
-		error.value = String((failure && failure.message) || failure || "Something went wrong.");
+		error.value = String(
+			(failure && failure.message) || failure || __("Something went wrong."),
+		);
 		messages.value = messages.value.filter((message) => message.id !== answer.id);
 	} finally {
 		busy.value = false;
@@ -232,7 +236,9 @@ async function openConversation(conversation) {
 		view.value = "chat";
 		scrollToBottom();
 	} catch (failure) {
-		error.value = String((failure && failure.message) || failure || __("Could not open that conversation."));
+		error.value = String(
+			(failure && failure.message) || failure || __("Could not open that conversation."),
+		);
 	}
 }
 
@@ -242,19 +248,25 @@ async function renameConversation(name, title) {
 		const item = conversations.value.find((conversation) => conversation.name === name);
 		if (item) item.title = title;
 	} catch (failure) {
-		error.value = String((failure && failure.message) || failure || __("Could not rename that conversation."));
+		error.value = String(
+			(failure && failure.message) || failure || __("Could not rename that conversation."),
+		);
 	}
 }
 
 async function removeConversation(conversation) {
 	try {
-		await call("albanna.api.conversations.delete_conversation", { conversation: conversation.name });
+		await call("albanna.api.conversations.delete_conversation", {
+			conversation: conversation.name,
+		});
 		conversations.value = conversations.value.filter((item) => item.name !== conversation.name);
 		if (conversationId.value === conversation.name) {
 			newConversation();
 		}
 	} catch (failure) {
-		error.value = String((failure && failure.message) || failure || __("Could not delete that conversation."));
+		error.value = String(
+			(failure && failure.message) || failure || __("Could not delete that conversation."),
+		);
 	}
 }
 
@@ -284,7 +296,11 @@ onMounted(() => {
 	onContextChanged(context);
 
 	try {
-		if (window.frappe && window.frappe.router && typeof window.frappe.router.on === "function") {
+		if (
+			window.frappe &&
+			window.frappe.router &&
+			typeof window.frappe.router.on === "function"
+		) {
 			window.frappe.router.on("route-change", onRouteChange);
 		}
 	} catch (error) {
@@ -294,7 +310,11 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
 	try {
-		if (window.frappe && window.frappe.router && typeof window.frappe.router.off === "function") {
+		if (
+			window.frappe &&
+			window.frappe.router &&
+			typeof window.frappe.router.off === "function"
+		) {
 			window.frappe.router.off("route-change", onRouteChange);
 		}
 	} catch (error) {
@@ -329,7 +349,9 @@ onBeforeUnmount(() => {
 					view === "history" ? __("Conversations") : __("Albanna")
 				}}</span>
 				<span class="albanna-chat__subtitle">{{
-					view === "history" ? __("Your questions and answers") : __("Ask about this site")
+					view === "history"
+						? __("Your questions and answers")
+						: __("Ask about this site")
 				}}</span>
 			</div>
 
@@ -386,9 +408,15 @@ onBeforeUnmount(() => {
 		</header>
 
 		<div v-if="locked" class="albanna-chat__locked">
-			<p class="albanna-chat__locked-title">{{ __("The assistant is not available for your account") }}</p>
+			<p class="albanna-chat__locked-title">
+				{{ __("The assistant is not available for your account") }}
+			</p>
 			<p class="albanna-chat__locked-detail">
-				{{ __("Ask an administrator to add your role to the chat roles in Albanna Settings.") }}
+				{{
+					__(
+						"Ask an administrator to add your role to the chat roles in Albanna Settings.",
+					)
+				}}
 			</p>
 		</div>
 
@@ -403,11 +431,21 @@ onBeforeUnmount(() => {
 			@back="showTranscript"
 		/>
 
-		<div v-else ref="transcriptEl" class="albanna-chat__transcript" role="log" aria-live="polite">
+		<div
+			v-else
+			ref="transcriptEl"
+			class="albanna-chat__transcript"
+			role="log"
+			aria-live="polite"
+		>
 			<div v-if="!messages.length" class="albanna-chat__empty">
 				<p class="albanna-chat__empty-title">{{ __("Ask a question about this site") }}</p>
 				<p class="albanna-chat__empty-detail">
-					{{ __("For example: which Sales Orders are still open, or what is customer Acme's balance.") }}
+					{{
+						__(
+							"For example: which Sales Orders are still open, or what is customer Acme's balance.",
+						)
+					}}
 				</p>
 				<p v-if="toolNames" class="albanna-chat__empty-tools">
 					{{ __("Available tools") }}: {{ toolNames }}
@@ -438,7 +476,9 @@ onBeforeUnmount(() => {
 				<div
 					v-if="message.role === 'user' && message.content"
 					class="albanna-chat__bubble albanna-chat__bubble--plain"
-				>{{ message.content }}</div>
+				>
+					{{ message.content }}
+				</div>
 				<!-- The assistant's answer is markdown.  `renderMarkdown`
 				     escapes before it builds any markup, so this is safe. -->
 				<div
@@ -473,4 +513,3 @@ onBeforeUnmount(() => {
 		</div>
 	</div>
 </template>
-

@@ -2,10 +2,10 @@
 
 One function, one answer, and every call site uses it.
 
-The reason this needs to exist at all: the ``erpnext_mcp`` tool functions
-resolve their site through ``get_site()``, which reads ``FRAPPE_SITE`` and
-then ``sites/currentsite.txt`` — and on this bench that file names the
-*production* site.  ``get_site()`` does prefer ``frappe.local.site`` when
+The reason this needs to exist at all: a tool that resolves its site from
+the environment — ``FRAPPE_SITE``, then ``sites/currentsite.txt`` — can be
+pointed at the *production* site while the request is for another one.  On
+this bench that file names the production site.  ``get_site()`` does prefer ``frappe.local.site`` when
 the Frappe context is initialised, which covers a web request, but it does
 not cover a worker thread whose ``frappe.local`` is fresh.
 

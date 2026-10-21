@@ -1,4 +1,10 @@
+<div align="center">
+  <img src="albanna/public/images/albanna.svg" alt="Albanna" width="120" height="120">
+</div>
+
 # Albanna
+
+**Ask your ERPNext data questions in plain language, and have it act on them.**
 
 An ERPNext side chat: a panel that lives in the Desk, understands what page
 you are looking at, and answers questions about the site's data — and acts on
@@ -22,6 +28,29 @@ roles and the same permissions as the person who asked the question.
 │                                    └────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+<img src="docs/images/side-chat-arabic.png" alt="The side chat, in Arabic, answering a question about the open sales orders" width="640">
+
+## Install
+
+```bash
+bench get-app https://github.com/ahmedalbanna/albanna --branch main
+bench --site <your-site> install-app albanna
+bench --site <your-site> migrate
+bench build --app albanna
+```
+
+Then open **Albanna Settings** and put a model provider's key in it. The
+chat is off for everybody except System Managers until you widen it.
+
+The app needs a model provider.  Any OpenAI-compatible endpoint works
+(OpenRouter, OpenAI, Groq, vLLM, LM Studio, or a relay), as do Ollama and
+Anthropic.  It has no other runtime dependency.
+
+> **Frappe Cloud:** the Marketplace installs the app for you.  If you
+> install it by hand on a Cloud site, use the `main` branch and run
+> `bench --site <your-site> migrate` afterwards — the app ships its DocTypes
+> in the repository, so the migration creates them.
 
 ## What it does
 
@@ -93,7 +122,7 @@ named place to change:
 
 | What will change | Where it changes |
 |---|---|
-| a sixth tool | one `ToolSpec` in `core/tools.py` + one mapping in `tools/erpnext_mcp.py` |
+| a sixth tool | one `ToolSpec` in `core/tools.py` + one function in `tools/erpnext.py` |
 | a remote MCP backend instead of in-process | a new `tools/<name>.py` implementing the same port |
 | a new model vendor | a new `providers/<name>.py` implementing `ChatProvider` |
 | document Q&A / retrieval | a new source behind `services/context_service.py` |

@@ -5,11 +5,12 @@ Date: 2026-10-21
 
 ## Context
 
-The `erpnext_mcp` tool functions resolve their site through `get_site()`,
-which reads `FRAPPE_SITE` and then `sites/currentsite.txt`.  On this bench
-that file names **`frappe.localhost` — the production site.**
+A tool that resolves its site from the environment — `FRAPPE_SITE`, then
+`sites/currentsite.txt` — can be pointed at the *production* site while the
+request is for another one.  On this bench that file names
+**`frappe.localhost` — the production site.**
 
-`get_site()` does prefer `frappe.local.site` when the Frappe context is
+The framework prefers `frappe.local.site` when the Frappe context is
 initialised, which covers a web request.  It does **not** cover a worker
 thread, whose `frappe.local` is fresh.
 
@@ -20,8 +21,8 @@ the production site's data, in the production site's schema, while the user
 is looking at a different site entirely.
 
 There is also a subtler variant of the same thing inside the Frappe context
-itself: `ensure_frappe()` re-initialises the context when the site it
-resolves to is not the site already bound.  A mismatch there tears down the
+itself: the framework re-initialises the context when the site it resolves
+to is not the site already bound.  A mismatch there tears down the
 request's own context and rebuilds it on the wrong site.
 
 ## Decision
@@ -33,7 +34,7 @@ tool call.**
   reads `frappe.local.site` and **raises** if there is none — it never falls
   back to the environment or to `currentsite.txt`.  A worker that has not
   initialised a site is a bug, and it is reported as one.
-* `albanna/tools/erpnext_mcp.py` compares the Frappe context's site with
+* `albanna/tools/backend.py` compares the Frappe context's site with
   the one the request was resolved for, before every call, and refuses on a
   mismatch.  The check is cheap, it runs on every call, and it fails closed.
 * A background job is enqueued with its site, and Frappe's own worker

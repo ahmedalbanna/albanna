@@ -15,13 +15,17 @@ using it ask questions about the site's data — and act on it.
 It is the combination of two projects that used to meet over the network:
 
 * **`erpnext_mcp`** — the tool layer. ~500 ERPNext operations implemented as
-  plain Python functions, each returning a JSON envelope.
+  plain Python functions, each returning a JSON envelope.  Albanna uses five
+  of them, and **implements them itself** (`tools/erpnext.py`), because
+  `erpnext-mcp` on PyPI is a *different* project — an earlier release by
+  another author — so the version this app needed could never be installed
+  by a site that was not handed it by hand.
 * **`erpnext_mcp_connector`** — the chat layer. A floating side-chat widget,
   a provider abstraction for Ollama / OpenAI-compatible / Anthropic, and a
   tool-calling loop.
 
-Albanna does not run either as a service.  It calls the tool functions
-in-process.  See [ADR-0001](docs/adr/0001-in-process-tools.md).
+Albanna runs neither as a service, and depends on neither.  See
+[ADR-0001](docs/adr/0001-in-process-tools.md).
 
 ## The vocabulary
 

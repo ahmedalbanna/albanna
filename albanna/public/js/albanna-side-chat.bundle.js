@@ -71,7 +71,9 @@ function paintBootError(el, config, options) {
 			<div class="albanna-boot-error__title">${tr("The assistant could not start")}</div>
 			<div class="albanna-boot-error__detail">${tr("The widget bundle failed to load.")}</div>
 			<div class="albanna-boot-error__hint">${tr("Run: bench build --app albanna")}</div>
-			<button class="btn btn-primary btn-sm albanna-boot-error__retry" type="button">${tr("Retry")}</button>
+			<button class="btn btn-primary btn-sm albanna-boot-error__retry" type="button">${tr(
+				"Retry",
+			)}</button>
 		</div>`;
 	const retry = el.querySelector(".albanna-boot-error__retry");
 	if (retry) {
@@ -123,7 +125,8 @@ async function boot() {
 	try {
 		config = await fetchWidgetOptions();
 	} catch (error) {
-		if (window.console && window.console.warn) window.console.warn("albanna: unavailable", error);
+		if (window.console && window.console.warn)
+			window.console.warn("albanna: unavailable", error);
 		return;
 	}
 	if (!config || config.visible !== true) return;

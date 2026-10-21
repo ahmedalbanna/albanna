@@ -15,7 +15,10 @@ const script = renderMarkdown("<script>alert(1)</script>");
 assert.ok(!script.includes("<script"), script);
 
 // Inline code keeps its asterisks.
-assert.ok(renderMarkdown("`**not bold**`").includes("<code>**not bold**</code>"), renderMarkdown("`**not bold**`"));
+assert.ok(
+	renderMarkdown("`**not bold**`").includes("<code>**not bold**</code>"),
+	renderMarkdown("`**not bold**`"),
+);
 
 // A fenced code block keeps its asterisks and its newlines.
 const code = renderMarkdown("```\n**raw**\nline two\n```");

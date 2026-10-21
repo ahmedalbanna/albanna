@@ -171,3 +171,6 @@ msgstr "لا يمكن تغيير مالك المحادثة."
 
 msgid "The value in {0} is stored in plain text. Clear the field, save, and enter the key again."
 msgstr "القيمة في {0} مخزّنة كنص صريح. امسح الحقل واحفظ ثم أعد إدخال المفتاح."
+
+msgid "Something went wrong."
+msgstr "حدث خطأ ما."

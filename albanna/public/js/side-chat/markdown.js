@@ -84,10 +84,9 @@ function renderTable(lines) {
 	const rows = lines.slice(2).map(tableCells);
 
 	const head = `<thead><tr>${header.map((cell) => `<th>${cell}</th>`).join("")}</tr></thead>`;
-	const body =
-		`<tbody>${rows
-			.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`)
-			.join("")}</tbody>`;
+	const body = `<tbody>${rows
+		.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`)
+		.join("")}</tbody>`;
 
 	return `<table>${head}${body}</table>`;
 }
@@ -188,8 +187,14 @@ export function renderMarkdown(text) {
 	let rendered = blocks.map((block) => renderBlock(block, codes)).join("");
 
 	// The code goes back, with its contents still escaped.
-	rendered = rendered.replace(/ CODE(\d+) /g, (_match, index) => `<code>${codes[Number(index)]}</code>`);
-	rendered = rendered.replace(/ FENCE(\d+) /g, (_match, index) => `<pre><code>${fences[Number(index)]}</code></pre>`);
+	rendered = rendered.replace(
+		/ CODE(\d+) /g,
+		(_match, index) => `<code>${codes[Number(index)]}</code>`,
+	);
+	rendered = rendered.replace(
+		/ FENCE(\d+) /g,
+		(_match, index) => `<pre><code>${fences[Number(index)]}</code></pre>`,
+	);
 
 	return rendered;
 }

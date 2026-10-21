@@ -56,8 +56,9 @@ from albanna.services.conversation_service import (
     ensure_conversation,
     load_messages,
 )
+from albanna.services.settings_service import get_settings
+from albanna.tools.backend import ErpnextBackend
 from albanna.tools.base import ToolContext
-from albanna.tools.erpnext_mcp import PER_CALL_USER_ATTR, ErpnextMcpBackend
 
 SALES_USER = "albanna.test.sales@albanna.dev"
 ACCOUNTS_USER = "albanna.test.accounts@albanna.dev"
@@ -82,7 +83,7 @@ class TestToolPath(FrappeTestCase):
         super().setUp()
         self.sales_user = self._make_user(SALES_USER, "Sales User")
         self.accounts_user = self._make_user(ACCOUNTS_USER, "Accounts User")
-        self.backend = ErpnextMcpBackend()
+        self.backend = ErpnextBackend()
 
     def _as(self, email: str):
         """Act as *email*, the way a request for that user would."""
@@ -162,14 +163,20 @@ class TestToolPath(FrappeTestCase):
         self.assertTrue(name, result.content)
         self.assertEqual(frappe.db.get_value("Sales Invoice", name, "owner"), self.accounts_user)
 
-    def test_the_per_call_user_marker_is_cleaned_up(self):
-        """The marker must not outlive the call that set it."""
-        self.assertFalse(hasattr(frappe.local, PER_CALL_USER_ATTR))
+    def test_the_tool_runs_as_the_caller_and_leaves_the_session_alone(self):
+        """The tool runs as the caller, and does not change who is logged in.
 
+        The tools are the app's own, so they run in the request's own
+        session and the framework applies that person's permissions to
+        every read and write.  There is no marker to leave behind, and no
+        window in which the tool could run as somebody else.
+        """
         context = self._context(self.sales_user)
-        self.backend.call(TOOL_MANIFEST.get("list_docs"), {"doctype": "Item"}, context)
 
-        self.assertFalse(hasattr(frappe.local, PER_CALL_USER_ATTR))
+        result = self.backend.call(TOOL_MANIFEST.get("list_docs"), {"doctype": "Item"}, context)
+
+        self.assertTrue(result.ok, result.content)
+        self.assertEqual(frappe.session.user, self.sales_user)
 
     # -- the permission engine ---------------------------------------------
 
@@ -295,6 +302,28 @@ class TestConversationOwnership(FrappeTestCase):
                 user.insert()
                 user.add_roles("Sales User")
         frappe.db.commit()
+
+        # The conversation endpoints refuse anybody who may not chat, and on
+        # a fresh site nobody may: the chat roles are empty until an
+        # administrator sets them.  The suite sets them, so it does not
+        # depend on how the site happens to be configured.
+        self._original_chat_roles = frappe.db.get_single_value("Albanna Settings", "chat_roles")
+        self._allow_chat()
+
+    def tearDown(self):
+        frappe.db.set_single_value("Albanna Settings", "chat_roles", self._original_chat_roles or "")
+        frappe.db.commit()
+        get_settings(refresh=True)
+        super().tearDown()
+
+    def _allow_chat(self):
+        """Let a Desk User chat, which is the shipped configuration."""
+        doc = frappe.get_single("Albanna Settings")
+        doc.chat_roles = "Desk User"
+        doc.flags.ignore_permissions = True
+        doc.save(ignore_permissions=True)
+        frappe.db.commit()
+        get_settings(refresh=True)
 
     def _as(self, email):
         frappe.set_user(email)

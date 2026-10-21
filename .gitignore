@@ -15,6 +15,8 @@ node_modules/
 albanna/public/dist/
 
 # Playwright and screenshot artefacts.  They are evidence for a report, not
-# source, and they are large.
+# source, and they are large.  The images under docs/ are the exception: they
+# are the screenshots the README shows.
 .playwright-mcp/
 *.png
+!docs/images/*.png

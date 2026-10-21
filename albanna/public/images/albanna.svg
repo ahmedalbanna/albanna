@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Albanna">
+  <title>Albanna</title>
+  <defs>
+    <linearGradient id="albanna-mark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b3a55"/>
+      <stop offset="1" stop-color="#141d2e"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="200" height="200" rx="44" fill="url(#albanna-mark)"/>
+
+  <!-- A speech bubble: the assistant, on the page you are looking at. -->
+  <path d="M58 62h84a14 14 0 0 1 14 14v44a14 14 0 0 1-14 14H92l-26 22v-22H58a14 14 0 0 1-14-14V76a14 14 0 0 1 14-14z"
+        fill="none" stroke="#f3f6fa" stroke-width="7" stroke-linejoin="round"/>
+
+  <!-- Three dots: the assistant answering. -->
+  <circle cx="76" cy="98" r="7" fill="#7fd1c1"/>
+  <circle cx="100" cy="98" r="7" fill="#7fd1c1"/>
+  <circle cx="124" cy="98" r="7" fill="#7fd1c1"/>
+</svg>

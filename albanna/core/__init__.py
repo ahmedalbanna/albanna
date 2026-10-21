@@ -20,9 +20,9 @@ The dependency arrow points one way, downwards:
 tool types they speak in; neither depends on the other, and neither depends
 on ``services/``.
 
-``core/`` also never imports ``erpnext_mcp``.  The tool *implementations*
-live behind the :mod:`albanna.tools` port, and the tool *manifest* — the
-names, descriptions, schemas, tiers and role requirements the model sees —
-lives here, in plain data.  The two are checked against each other by a
+``core/`` also never imports the tool implementations.  The
+*implementations* live behind the :mod:`albanna.tools` port, and the tool
+*manifest* — the names, descriptions, schemas, tiers and role requirements
+the model sees — lives here, in plain data.  The two are checked against each other by a
 test, so neither can drift from the other without the suite going red.
 """

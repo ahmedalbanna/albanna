@@ -25,7 +25,10 @@ const MAX_SELECTION = 500;
  * identity that looks like a typo.
  */
 export function currentRoute() {
-	const route = window.frappe && typeof window.frappe.get_route === "function" ? window.frappe.get_route() : "";
+	const route =
+		window.frappe && typeof window.frappe.get_route === "function"
+			? window.frappe.get_route()
+			: "";
 	if (Array.isArray(route)) return route.filter(Boolean).join("/");
 	return String(route || "");
 }

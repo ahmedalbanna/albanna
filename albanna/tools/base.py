@@ -5,11 +5,11 @@ a name, a schema and a tier, and that running it produces a result — a
 string of text the model will read, plus a flag saying whether it worked.
 
 That indirection is what makes the app's central decision reversible.  Today
-the only implementation is :mod:`albanna.tools.erpnext_mcp`, which calls the
-ERPNext tool functions in-process.  A second implementation that speaks MCP
-over HTTP to a remote server would satisfy the same port, and the chat
-service, the authority layer and the model-facing manifest would not change
-by a line.
+the only implementation is :mod:`albanna.tools.backend`, which calls the
+ERPNext tools in :mod:`albanna.tools.erpnext`.  A second implementation that
+spoke MCP over HTTP to a remote server would satisfy the same port, and the
+chat service, the authority layer and the model-facing manifest would not
+change by a line.
 """
 
 from __future__ import annotations

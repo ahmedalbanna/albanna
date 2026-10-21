@@ -1,14 +1,16 @@
-"""The manifest and the adapter must agree.
+"""The tool manifest and the tool implementations must agree.
 
-The manifest (``albanna.core.tools``) is the contract the model sees; the
-adapter (``albanna.tools.erpnext_mcp``) is the code that runs.  They live
-in different packages on purpose — the manifest may not import Frappe, and
-the adapter must — and the cost of that split is that they can drift.
+The manifest (``albanna.core.tools``) is the contract the model sees: the
+name, the description, and the JSON Schema of the arguments.  The
+implementations (``albanna.tools.erpnext``) are what actually runs.
 
-A tool the manifest describes but the adapter cannot run is a tool the model
-is told about and then cannot use.  A tool the adapter can run but the
-manifest never described is a tool that is reachable but invisible.  Both
-are bugs, and both are caught here.
+They live in different packages on purpose — the manifest may not import
+Frappe, and the implementations must — so they could drift.  A manifest that
+promises an argument the implementation does not accept is a tool that
+fails on every call, and it fails in the middle of a turn, where it costs
+the most.
+
+The cost of that split is one test file, and it is here.
 """
 
 from __future__ import annotations
@@ -18,73 +20,66 @@ import inspect
 import pytest
 
 from albanna.core.tools import TOOL_MANIFEST, validate_arguments
-from albanna.tools.erpnext_mcp import _BOUND_TOOLS, ErpnextMcpBackend
+from albanna.tools.backend import ErpnextBackend
+
+#: The model's arguments and the implementation's parameters are the same
+#: contract, so they must have the same names.
+IMPLEMENTATIONS = {
+    "list_docs": "list_docs",
+    "get_doc": "get_doc",
+    "get_doctype_meta": "get_doctype_meta",
+    "run_report": "run_report",
+    "create_doc": "create_doc",
+}
 
 
-def test_the_manifest_and_the_adapter_name_the_same_tools():
-    adapter_names = set(ErpnextMcpBackend().bound_names)
-    manifest_names = set(TOOL_MANIFEST.names())
-    assert manifest_names == adapter_names
+def test_the_manifest_and_the_backend_name_the_same_tools():
+    backend = ErpnextBackend()
+    assert set(TOOL_MANIFEST.names()) == set(backend.bound_names)
 
 
-def test_every_bound_tool_resolves_to_a_function():
-    erpnext_mcp = pytest.importorskip("erpnext_mcp")
-    assert erpnext_mcp is not None
+def test_every_tool_in_the_manifest_is_implemented():
+    from albanna.tools import erpnext
 
-    for name, (target, _translator) in _BOUND_TOOLS.items():
-        module_name, _, attribute = target.partition(":")
-        module = __import__(module_name, fromlist=[attribute])
-        handler = getattr(module, attribute)
-        assert callable(handler), f"{name} does not resolve to a callable"
-        assert inspect.isfunction(handler) or callable(handler)
+    for name in TOOL_MANIFEST.names():
+        assert hasattr(erpnext, name), f"{name} has no implementation"
 
 
-def test_the_translators_produce_arguments_the_backend_accepts():
-    pytest.importorskip("erpnext_mcp")
+def test_the_implementation_accepts_exactly_what_the_schema_declares():
+    """The schema's properties and the function's parameters must match.
 
-    from albanna.tools.erpnext_mcp import _translate_create_doc, _translate_list_docs
+    This is the drift the split allows: a schema that gains a property the
+    function does not accept fails on every call, and a function that
+    accepts a parameter the schema does not declare is a parameter the model
+    can never fill.
+    """
+    from albanna.tools import erpnext
 
-    translated = _translate_list_docs(
-        {"doctype": "Item", "filters": [["item_group", "=", "X"]], "limit": 5, "offset": 10}
-    )
-    assert translated["doctype"] == "Item"
-    assert translated["filters_json"] == '[["item_group", "=", "X"]]'
-    assert translated["limit_page_length"] == 5
-    assert translated["limit_start"] == 10
+    for name, attribute in IMPLEMENTATIONS.items():
+        spec = TOOL_MANIFEST.get(name)
+        function = getattr(erpnext, attribute)
+        parameters = set(inspect.signature(function).parameters) - {"self"}
 
-    translated = _translate_create_doc({"doctype": "Item", "data": {"item_code": "X"}})
-    assert translated["data_json"] == '{"item_code": "X"}'
-    assert translated["submit"] is False
+        declared = set(spec.parameters.get("properties") or {})
+        required = set(spec.parameters.get("required") or [])
 
+        # Everything the schema declares, the function must accept.
+        assert declared <= parameters, f"{name}: the schema declares {declared - parameters}, which the function does not accept"
 
-def test_the_backend_signatures_accept_what_the_translators_produce():
-    """The translated argument names must be real parameters of the backend function."""
-    pytest.importorskip("erpnext_mcp")
+        # Everything the function *requires* must be in the schema, or the
+        # model is asked for a document without being told what it needs.
+        needed = {
+            name_
+            for name_, parameter in inspect.signature(function).parameters.items()
+            if parameter.default is inspect.Parameter.empty and parameter.kind
+            not in (parameter.VAR_POSITIONAL, parameter.VAR_KEYWORD)
+        }
+        assert needed <= declared, f"{name}: the function requires {needed - declared}, which the schema does not declare"
+        assert required <= declared
 
-    from albanna.tools.erpnext_mcp import (
-        _translate_get_doc,
-        _translate_get_doctype_meta,
-        _translate_list_docs,
-        _translate_run_report,
-    )
-
-    cases = {
-        "list_docs": _translate_list_docs,
-        "get_doc": _translate_get_doc,
-        "get_doctype_meta": _translate_get_doctype_meta,
-        "run_report": _translate_run_report,
-    }
-
-    for name, translator in cases.items():
-        target, _ = _BOUND_TOOLS[name]
-        module_name, _, attribute = target.partition(":")
-        module = __import__(module_name, fromlist=[attribute])
-        handler = getattr(module, attribute)
-        parameters = set(inspect.signature(handler).parameters)
-
-        translated = translator({"doctype": "X", "name": "Y", "report": "Z", "filters": {}})
-        unknown = set(translated) - parameters
-        assert not unknown, f"{name} would be called with unknown arguments: {sorted(unknown)}"
+        # And the required ones must be the ones the function cannot do
+        # without.
+        assert required <= needed, f"{name}: the schema requires {required - needed}, which the function can do without"
 
 
 def test_the_manifest_schemas_reject_a_missing_required_argument():
@@ -137,3 +132,43 @@ def test_every_tool_is_classified():
 def test_exactly_one_tool_writes():
     writers = [spec.name for spec in TOOL_MANIFEST.all() if spec.mutating]
     assert writers == ["create_doc"]
+
+
+def test_the_manifest_does_not_import_the_implementations():
+    """``core/`` may not import Frappe, and it certainly may not import the
+    implementations — that is the boundary the layering exists to hold."""
+    import ast
+    import pathlib
+
+    import albanna.core as core
+
+    core_path = pathlib.Path(core.__file__).parent
+    for path in core_path.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names = [node.module]
+            for name in names:
+                assert not name.startswith("frappe"), f"{path.name} imports {name}"
+                assert "tools.erpnext" not in name, f"{path.name} imports {name}"
+
+
+@pytest.mark.parametrize("name", sorted(IMPLEMENTATIONS))
+def test_the_implementation_is_callable_with_the_manifests_required_arguments(name):
+    """Every tool can be called with only its required arguments.
+
+    A tool that cannot be called with the minimum is a tool the model can
+    only use wrongly.
+    """
+    from albanna.tools import erpnext
+
+    spec = TOOL_MANIFEST.get(name)
+    function = getattr(erpnext, IMPLEMENTATIONS[name])
+    parameters = inspect.signature(function).parameters
+
+    required = set(spec.parameters.get("required") or [])
+    missing = [p for p in required if p not in parameters]
+    assert not missing

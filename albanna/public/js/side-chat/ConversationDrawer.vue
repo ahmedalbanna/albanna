@@ -96,7 +96,13 @@ function commitRename(conversation, event) {
 						:title="__('Rename')"
 						@click="startRename(conversation)"
 					>
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 24 24"
+							fill="none"
+							aria-hidden="true"
+						>
 							<path
 								d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"
 								stroke="currentColor"
@@ -113,7 +119,13 @@ function commitRename(conversation, event) {
 						:title="__('Delete')"
 						@click="emit('remove', conversation)"
 					>
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 24 24"
+							fill="none"
+							aria-hidden="true"
+						>
 							<path
 								d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6M10 11v6M14 11v6"
 								stroke="currentColor"

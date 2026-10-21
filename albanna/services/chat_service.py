@@ -68,8 +68,8 @@ from albanna.providers.base import (
     Usage,
     build_provider,
 )
+from albanna.tools.backend import ErpnextBackend
 from albanna.tools.base import ToolContext, ToolResult
-from albanna.tools.erpnext_mcp import ErpnextMcpBackend
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ class ChatService:
     """Runs one turn of the chat."""
 
     def __init__(self, backend=None) -> None:
-        self._backend = backend or ErpnextMcpBackend()
+        self._backend = backend or ErpnextBackend()
 
     # -- the turn ---------------------------------------------------------
 
