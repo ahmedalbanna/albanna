@@ -1,0 +1,20 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+.DS_Store
+*.env
+*.pem
+*.key
+
+# bench/esbuild output — rebuild with
+#   bench build --app albanna
+albanna/public/dist/
+
+# Playwright and screenshot artefacts.  They are evidence for a report, not
+# source, and they are large.
+.playwright-mcp/
+*.png

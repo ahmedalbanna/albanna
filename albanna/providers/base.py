@@ -1,0 +1,157 @@
+"""The provider port and its value types.
+
+This module defines what a model provider *is* to the rest of the app: a
+pair of methods, ``complete`` and ``stream``, plus the configuration that
+says which endpoint and which model to talk to.
+
+Nothing here performs I/O.  The adapters in this package do; this module
+defines the shape they must have, so the chat service can be written against
+the shape and tested against a stub.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import Any, Protocol, runtime_checkable
+
+from albanna.core.messages import Message
+from albanna.core.tools import ToolSpec
+
+#: The provider kinds this app knows.
+OPENAI = "openai"
+OLLAMA = "ollama"
+ANTHROPIC = "anthropic"
+
+PROVIDER_KINDS = (OPENAI, OLLAMA, ANTHROPIC)
+
+
+@dataclass(frozen=True)
+class ProviderConfig:
+    """One model endpoint."""
+
+    kind: str
+    base_url: str
+    model: str
+    api_key: str = ""
+    max_tokens: int = 4096
+    timeout: int = 120
+    temperature: float = 0.2
+    supports_tools: bool = True
+
+    @property
+    def usable(self) -> bool:
+        """True when this endpoint has enough configuration to be called."""
+        return bool(self.base_url.strip() and self.model.strip() and self.kind in PROVIDER_KINDS)
+
+    @property
+    def label(self) -> str:
+        return f"{self.kind}:{self.model}"
+
+
+@dataclass(frozen=True)
+class LLMConfig:
+    """A primary provider and an optional fallback."""
+
+    primary: ProviderConfig
+    fallback: ProviderConfig | None = None
+    retries: int = 1
+
+    def chain(self) -> list[ProviderConfig]:
+        """The providers to try, in order."""
+        providers = [self.primary]
+        if self.fallback is not None and self.fallback.usable:
+            providers.append(self.fallback)
+        return [provider for provider in providers if provider.usable]
+
+
+@dataclass(frozen=True)
+class Usage:
+    """What one model call cost."""
+
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost: float = 0.0
+    #: True when the token counts are an estimate rather than a number the
+    #: provider reported.  The ledger says so, because a number that looks
+    #: measured but is not is worse than no number.
+    estimated: bool = False
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+
+@dataclass(frozen=True)
+class Completion:
+    """One model answer, in the canonical shape."""
+
+    message: Message
+    provider: str
+    model: str
+    usage: Usage | None = None
+    fell_back: bool = False
+
+
+@dataclass(frozen=True)
+class StreamDelta:
+    """A fragment of the answer, as it arrives."""
+
+    text: str
+
+
+@dataclass(frozen=True)
+class StreamDone:
+    """The terminal event of a stream: the assembled answer."""
+
+    completion: Completion
+
+
+StreamEvent = StreamDelta | StreamDone
+
+
+@runtime_checkable
+class ChatProvider(Protocol):
+    """What the chat service needs from a model provider."""
+
+    kind: str
+
+    def complete(
+        self,
+        config: ProviderConfig,
+        messages: list[Message],
+        tools: list[ToolSpec],
+    ) -> Completion:
+        """Run one completion and return the assembled answer."""
+        ...
+
+    def stream(
+        self,
+        config: ProviderConfig,
+        messages: list[Message],
+        tools: list[ToolSpec],
+    ) -> Iterator[StreamEvent]:
+        """Run one completion, yielding deltas and then a terminal event."""
+        ...
+
+
+def build_provider(kind: str) -> ChatProvider:
+    """The adapter for a provider kind.
+
+    Imported lazily so that a site which only ever talks to one vendor does
+    not pay for the other two adapters' imports.
+    """
+    kind = (kind or "").strip().lower()
+    if kind == OPENAI:
+        from albanna.providers.openai import OpenAIProvider
+
+        return OpenAIProvider()
+    if kind == OLLAMA:
+        from albanna.providers.ollama import OllamaProvider
+
+        return OllamaProvider()
+    if kind == ANTHROPIC:
+        from albanna.providers.anthropic import AnthropicProvider
+
+        return AnthropicProvider()
+    raise ValueError(f"Unknown provider kind: {kind!r}. Known kinds: {', '.join(PROVIDER_KINDS)}.")

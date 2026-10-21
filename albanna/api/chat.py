@@ -1,0 +1,218 @@
+"""The chat endpoints.
+
+Three ways to run a turn, and they differ only in how the answer comes
+back:
+
+``ask``
+    One request, one response, the whole turn.  Simple, and the right shape
+    for a script or a test.
+
+``ask_stream``
+    Returns immediately with a stream id and runs the turn in a background
+    worker.  Progress is pushed over socket.io; the final answer is also
+    parked in the cache so that a client whose socket died still gets it.
+
+``status``
+    Reads that parked answer back.
+
+Why the background worker exists at all: a turn is a model call plus
+several tool calls, and each of those can take seconds.  Gunicorn's request
+timeout is minutes, not hours, and a browser that waits on a request that
+long will have it cut off.  The worker moves the wait off the request.
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+import uuid
+from typing import Any
+
+import frappe
+from frappe import _
+
+from albanna.core.prompt import build_page_context
+from albanna.permissions import require_chat_access
+
+logger = logging.getLogger(__name__)
+
+#: The socket.io event the client listens on.
+STREAM_EVENT = "albanna_chat_progress"
+
+#: Where a finished turn is parked for the polling fallback.
+TURN_CACHE_KEY = "albanna:turn:{stream_id}"
+
+#: How long a parked "running" marker is trusted before the turn is declared
+#: lost.  The worker's own timeout is the yardstick, with a minute of slack
+#: for the job to be picked up and for the result to be written.
+STALE_GRACE_SECONDS = 90
+
+
+def _render_page_context(raw: Any) -> str:
+    """Turn the client's page description into the untrusted block.
+
+    The client sends a description of what the user is looking at.  It is
+    attacker-controlled — it is whatever the browser says it is — so it is
+    rendered here, truncated, and framed as data.  Nothing from the browser
+    reaches the model as an instruction.
+    """
+    if not raw:
+        return ""
+
+    if isinstance(raw, str):
+        try:
+            import json
+
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            return build_page_context(selection=raw[:500])
+
+    if not isinstance(raw, dict):
+        return ""
+
+    return build_page_context(
+        view=str(raw.get("route") or raw.get("view") or "")[:120],
+        doctype=str(raw.get("doctype") or "")[:120],
+        name=str(raw.get("name") or "")[:140],
+        title=str(raw.get("title") or "")[:200],
+        filters=str(raw.get("filters") or "")[:300],
+        selection=str(raw.get("selection") or "")[:500],
+        recent_questions=str(raw.get("recent_questions") or "")[:300],
+    )
+
+
+@frappe.whitelist()
+def ask(
+    question: str = "",
+    conversation_id: str = "",
+    page: str = "",
+    page_context: Any = None,
+) -> dict[str, Any]:
+    """Ask a question and wait for the answer."""
+    require_chat_access()
+
+    from albanna.services.rate_limit import SURFACE_ASK, check_turn_allowed
+
+    check_turn_allowed(str(frappe.session.user or ""), SURFACE_ASK)
+
+    from albanna.services.chat_service import ChatService, TurnRequest
+
+    request = TurnRequest(
+        question=question or "",
+        conversation_id=conversation_id or "",
+        page=page or "",
+        page_context=_render_page_context(page_context),
+        stream=False,
+    )
+    outcome = ChatService().run(request)
+
+    return {
+        "status": "ok" if outcome.ok else "error",
+        "reply": outcome.reply,
+        "conversation_id": outcome.conversation_id,
+        "provider": outcome.provider,
+        "model": outcome.model,
+        "rounds": outcome.rounds,
+        "tool_calls": outcome.tool_calls,
+        "capped": outcome.capped,
+        "error": outcome.error,
+    }
+
+
+@frappe.whitelist()
+def ask_stream(
+    question: str = "",
+    conversation_id: str = "",
+    page: str = "",
+    page_context: Any = None,
+) -> dict[str, Any]:
+    """Ask a question and get the answer as it happens.
+
+    Returns a stream id straight away.  The turn runs in a worker, publishes
+    its progress over socket.io, and parks its final answer in the cache.
+    """
+    require_chat_access()
+
+    from albanna.services.rate_limit import SURFACE_STREAM, check_turn_allowed
+    from albanna.services.settings_service import get_settings
+
+    check_turn_allowed(str(frappe.session.user or ""), SURFACE_STREAM)
+
+    settings = get_settings()
+    stream_id = uuid.uuid4().hex
+
+    # A "running" marker, written before the job is queued.  It exists for
+    # one reason: a job that dies before it can park its answer — a worker
+    # that cannot import the app, a worker killed mid-turn — would
+    # otherwise leave the client polling a turn that will never finish, for
+    # ever.  The marker is what lets `status` notice that the turn is gone.
+    frappe.cache().set_value(
+        TURN_CACHE_KEY.format(stream_id=stream_id),
+        {"status": "running", "started_at": time.time()},
+        user=frappe.session.user,
+        expires_in_sec=settings.turn_timeout + STALE_GRACE_SECONDS,
+    )
+
+    frappe.enqueue(
+        "albanna.services.chat_job.run_turn_job",
+        queue="short",
+        timeout=settings.turn_timeout,
+        job_id=f"albanna-turn-{stream_id}",
+        stream_id=stream_id,
+        question=question or "",
+        conversation_id=conversation_id or "",
+        page=page or "",
+        page_context=_render_page_context(page_context),
+    )
+
+    return {"status": "queued", "stream_id": stream_id, "event": STREAM_EVENT}
+
+
+@frappe.whitelist()
+def status(stream_id: str = "") -> dict[str, Any]:
+    """Read a turn's result, for a client whose socket did not deliver it.
+
+    Three answers are possible.  The turn finished and its answer is here.
+    The turn is still running.  Or the turn is gone — its worker died, or
+    the job never started — and the client is told so instead of polling
+    for an answer that will never arrive.
+    """
+    require_chat_access()
+
+    if not stream_id:
+        return {"status": "unknown"}
+
+    payload = frappe.cache().get_value(
+        TURN_CACHE_KEY.format(stream_id=stream_id),
+        user=frappe.session.user,
+    )
+
+    if not payload:
+        # The marker expired, which means the turn outlived its own budget.
+        return _lost_turn()
+
+    if payload.get("status") == "running":
+        age = time.time() - float(payload.get("started_at") or time.time())
+        if age > _turn_deadline():
+            return _lost_turn()
+        return {"status": "running"}
+
+    return payload
+
+
+def _lost_turn() -> dict[str, Any]:
+    """The answer for a turn that will never finish."""
+    return {
+        "status": "error",
+        "error": _(
+            "The assistant did not finish this question — the background worker "
+            "did not complete the turn. It may have been restarted. Please try again."
+        ),
+    }
+
+
+def _turn_deadline() -> float:
+    """How long a turn may run before it is declared lost."""
+    from albanna.services.settings_service import get_settings
+
+    return get_settings().turn_timeout + STALE_GRACE_SECONDS

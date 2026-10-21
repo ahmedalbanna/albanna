@@ -1,0 +1,267 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "creation": "2026-10-21 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "enabled",
+  "provider_section",
+  "provider_kind",
+  "base_url",
+  "model",
+  "api_key",
+  "column_break_provider",
+  "temperature",
+  "max_tokens",
+  "timeout",
+  "fallback_section",
+  "fallback_enabled",
+  "fallback_kind",
+  "fallback_base_url",
+  "fallback_model",
+  "fallback_api_key",
+  "column_break_fallback",
+  "access_section",
+  "chat_roles",
+  "widget_roles",
+  "column_break_access",
+  "widget_enabled",
+  "widget_position",
+  "limits_section",
+  "max_tool_rounds",
+  "history_limit",
+  "turn_timeout",
+  "turns_per_minute",
+  "disabled_tools",
+  "column_break_limits",
+  "allow_writes",
+  "system_prompt",
+  "prompt_section"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "description": "Turn the side chat off site-wide. The widget still renders in its locked state so the reason is visible rather than mysterious.",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Enabled"
+  },
+  {
+   "fieldname": "provider_section",
+   "fieldtype": "Section Break",
+   "label": "Model Provider"
+  },
+  {
+   "description": "Which API the model is called through. `openai` covers every OpenAI-compatible endpoint — OpenRouter, OpenAI, Groq, vLLM, LM Studio.",
+   "fieldname": "provider_kind",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Provider",
+   "options": "openai\nollama\nanthropic",
+   "default": "openai"
+  },
+  {
+   "description": "The API's base URL, without the trailing path.",
+   "fieldname": "base_url",
+   "fieldtype": "Data",
+   "label": "Base URL",
+   "default": "https://api.hcnsec.cn/v1"
+  },
+  {
+   "description": "The model id, exactly as the provider knows it.",
+   "fieldname": "model",
+   "fieldtype": "Data",
+   "label": "Model",
+   "default": "MiniMax-M3.1-Flash"
+  },
+  {
+   "description": "The provider's API key. Stored encrypted; it is never sent to the browser and never written to a log.",
+   "fieldname": "api_key",
+   "fieldtype": "Password",
+   "label": "API Key"
+  },
+  {
+   "fieldname": "column_break_provider",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0.2",
+   "description": "Lower is more literal. Keep it low for a tool-using assistant: a high temperature turns a schema into a guess.",
+   "fieldname": "temperature",
+   "fieldtype": "Float",
+   "label": "Temperature"
+  },
+  {
+   "default": "8192",
+   "description": "The largest answer the model may produce, in tokens. Generous on purpose: a ceiling that cuts an answer off mid-sentence makes the assistant look as though it has run out of words. Lower it only if a provider refuses a request as too expensive.",
+   "fieldname": "max_tokens",
+   "fieldtype": "Int",
+   "label": "Max Tokens"
+  },
+  {
+   "default": "120",
+   "description": "How long a single provider call may take, in seconds.",
+   "fieldname": "timeout",
+   "fieldtype": "Int",
+   "label": "Timeout (s)"
+  },
+  {
+   "fieldname": "fallback_section",
+   "fieldtype": "Section Break",
+   "label": "Fallback Provider"
+  },
+  {
+   "description": "When the primary provider fails, try this one before giving up. A fallback on a different vendor is worth much more than one on the same vendor.",
+   "fieldname": "fallback_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Fallback"
+  },
+  {
+   "fieldname": "fallback_kind",
+   "fieldtype": "Select",
+   "label": "Fallback Provider",
+   "options": "openai\nollama\nanthropic",
+   "default": "openai"
+  },
+  {
+   "description": "The fallback's base URL, without the trailing path.",
+   "fieldname": "fallback_base_url",
+   "fieldtype": "Data",
+   "label": "Fallback Base URL",
+   "default": "https://api.hcnsec.cn/v1"
+  },
+  {
+   "description": "The fallback's model id, exactly as the provider knows it.",
+   "fieldname": "fallback_model",
+   "fieldtype": "Data",
+   "label": "Fallback Model",
+   "default": "longcat-2.5"
+  },
+  {
+   "fieldname": "fallback_api_key",
+   "fieldtype": "Password",
+   "label": "Fallback API Key"
+  },
+  {
+   "fieldname": "column_break_fallback",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "access_section",
+   "fieldtype": "Section Break",
+   "label": "Access"
+  },
+  {
+   "description": "Roles allowed to use the chat, one per line. Leave empty to allow only System Managers.",
+   "fieldname": "chat_roles",
+   "fieldtype": "Small Text",
+   "label": "Chat Roles"
+  },
+  {
+   "description": "Roles allowed to see the side-chat widget, one per line. Leave empty to allow every user who may chat.",
+   "fieldname": "widget_roles",
+   "fieldtype": "Small Text",
+   "label": "Widget Roles"
+  },
+  {
+   "fieldname": "column_break_access",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "description": "Show the side-chat widget on every Desk page.",
+   "fieldname": "widget_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Widget"
+  },
+  {
+   "default": "bottom-right",
+   "description": "Which corner the widget sits in. On an Arabic interface it mirrors automatically.",
+   "fieldname": "widget_position",
+   "fieldtype": "Select",
+   "label": "Widget Position",
+   "options": "bottom-right\nbottom-left"
+  },
+  {
+   "fieldname": "limits_section",
+   "fieldtype": "Section Break",
+   "label": "Limits"
+  },
+  {
+   "default": "25",
+   "description": "How many tool rounds one question may take. A backstop against a runaway loop, not a budget: the assistant answers with what it has found when it is reached, rather than apologising for stopping.",
+   "fieldname": "max_tool_rounds",
+   "fieldtype": "Int",
+   "label": "Max Tool Rounds"
+  },
+  {
+   "default": "50",
+   "description": "How many past messages are replayed to the model as context. Generous, so a long conversation does not make the assistant forget what it was told.",
+   "fieldname": "history_limit",
+   "fieldtype": "Int",
+   "label": "History Limit"
+  },
+  {
+   "default": "600",
+   "description": "How long one turn may run, in seconds.",
+   "fieldname": "turn_timeout",
+   "fieldtype": "Int",
+   "label": "Turn Timeout (s)"
+  },
+  {
+   "default": "6",
+   "description": "How many questions one person may ask per minute, per surface. 0 means no limit.",
+   "fieldname": "turns_per_minute",
+   "fieldtype": "Int",
+   "label": "Turns / Minute"
+  },
+  {
+   "description": "Tool names to switch off, one per line. A tool that is off is never mentioned to the model, so it is never called.",
+   "fieldname": "disabled_tools",
+   "fieldtype": "Small Text",
+   "label": "Disabled Tools"
+  },
+  {
+   "fieldname": "column_break_limits",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Let the assistant create documents. When this is off, the write tool is not in the tool set at all — the model is never told it exists — so nothing can be created through the chat. Switch it on when you want the assistant to be able to write.",
+   "fieldname": "allow_writes",
+   "fieldtype": "Check",
+   "label": "Allow Writes"
+  },
+  {
+   "description": "Replaces the built-in instructions. Leave empty to use the defaults.",
+   "fieldname": "system_prompt",
+   "fieldtype": "Small Text",
+   "label": "System Prompt"
+  },
+  {
+   "fieldname": "prompt_section",
+   "fieldtype": "Section Break",
+   "label": " "
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-10-21 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Albanna",
+ "name": "Albanna Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "read": 1,
+   "role": "System Manager",
+   "write": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

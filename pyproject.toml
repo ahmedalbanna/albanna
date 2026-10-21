@@ -1,0 +1,82 @@
+[project]
+name = "albanna"
+authors = [
+    { name = "Albanna Software Solutions", email = "admin@albanna.dev"}
+]
+description = "ERPNext side chat — ask about your data in plain language"
+requires-python = ">=3.10"
+readme = "README.md"
+dynamic = ["version"]
+dependencies = [
+    # `frappe` is installed and managed by the bench.
+    #
+    # `erpnext-mcp` supplies the tool layer: the ERPNext operations this app
+    # calls in-process.  It is a plain library here — Albanna never starts the
+    # MCP server, so FastMCP, the licence gate and the HTTP transport are all
+    # unused weight that simply never gets imported.
+    "erpnext-mcp>=3.77",
+    # LLM provider transport.
+    "requests>=2.31.0",
+    # JSON Schema validation of tool arguments, before a call reaches Frappe.
+    "jsonschema>=4.0.0",
+]
+
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "pytest-cov>=5.0", "ruff>=0.4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q -m 'not integration'"
+markers = [
+    "integration: needs a live bench site (opt-in; run with `bench --site test.localhost run-tests --app albanna`)",
+]
+
+[tool.bench.dev-dependencies]
+# package_name = "~=1.1.0"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "F",
+    "E",
+    "W",
+    "I",
+    "UP",
+    "B",
+    "C4",
+    "SIM",
+    "C901",
+]
+ignore = [
+    "B017", # assertRaises(Exception) - should be more specific
+    "B018", # useless expression, not assigned to anything
+    "B023", # function doesn't bind loop variable - will have last iteration's value
+    "B904", # raise inside except without from
+    "E101", # indentation contains mixed spaces and tabs
+    "E402", # module level import not at top of file
+    "E501", # line too long
+    "E741", # ambiguous variable name
+    "F401", # "unused" imports
+    "F403", # can't detect undefined names from * import
+    "F405", # can't detect undefined names from * import
+    "F722", # syntax error in forward type annotation
+    "W191", # indentation contains tabs
+]
+typing-modules = ["frappe.types.DF"]
+
+[tool.ruff.lint.per-file-ignores]
+# Frappe generates doctype controllers with tab indentation.
+"albanna/albanna/doctype/**/*.py" = ["W191"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true

@@ -1,0 +1,173 @@
+# Arabic translations for the Albanna side chat.
+# Copyright (C) 2026 Albanna Software Solutions and contributors
+# This file is distributed under the same license as the Albanna app.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Albanna 0.1.0\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-10-21 00:00+0000\n"
+"PO-Revision-Date: 2026-10-21 00:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: Arabic\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : "
+"n%100>=11 ? 4 : 5);\n"
+
+
+msgid "Albanna"
+msgstr "ألبانا"
+
+
+msgid "Ask about this site"
+msgstr "اسأل عن هذا الموقع"
+
+
+msgid "Ask a question about this site"
+msgstr "اطرح سؤالاً عن هذا الموقع"
+
+
+msgid "For example: which Sales Orders are still open, or what is customer Acme's balance."
+msgstr "مثال: ما أوامر البيع التي ما زالت مفتوحة، أو ما رصيد العميل Acme؟"
+
+
+msgid "Available tools"
+msgstr "الأدوات المتاحة"
+
+
+msgid "Close"
+msgstr "إغلاق"
+
+
+msgid "Your question"
+msgstr "سؤالك"
+
+
+msgid "Ask about your data…"
+msgstr "اسأل عن بياناتك…"
+
+
+msgid "Working…"
+msgstr "جارٍ العمل…"
+
+
+msgid "Send"
+msgstr "إرسال"
+
+
+msgid "The assistant is not available for your account"
+msgstr "المساعد غير متاح لحسابك"
+
+
+msgid "Ask an administrator to add your role to the chat roles in Albanna Settings."
+msgstr "اطلب من أحد المشرفين إضافة دورك إلى أدوار المحادثة في إعدادات ألبانا."
+
+
+msgid "Conversations"
+msgstr "المحادثات"
+
+
+msgid "Your questions and answers"
+msgstr "أسئلتك وإجاباتها"
+
+
+msgid "New"
+msgstr "جديد"
+
+
+msgid "Back to the conversation"
+msgstr "العودة إلى المحادثة"
+
+
+msgid "Loading…"
+msgstr "جارٍ التحميل…"
+
+
+msgid "No conversations yet"
+msgstr "لا توجد محادثات بعد"
+
+
+msgid "Questions you ask will be listed here."
+msgstr "ستُدرج الأسئلة التي تطرحها هنا."
+
+
+msgid "Conversation title"
+msgstr "عنوان المحادثة"
+
+
+msgid "Rename"
+msgstr "إعادة تسمية"
+
+
+msgid "Delete"
+msgstr "حذف"
+
+
+msgid "New conversation"
+msgstr "محادثة جديدة"
+
+
+msgid "Could not load the conversations."
+msgstr "تعذّر تحميل المحادثات."
+
+
+msgid "Could not open that conversation."
+msgstr "تعذّر فتح تلك المحادثة."
+
+
+msgid "Could not rename that conversation."
+msgstr "تعذّرت إعادة تسمية تلك المحادثة."
+
+
+msgid "Could not delete that conversation."
+msgstr "تعذّر حذف تلك المحادثة."
+
+
+msgid "Ask a question."
+msgstr "اطرح سؤالاً."
+
+
+msgid "Thinking"
+msgstr "أفكّر…"
+
+
+msgid "The chat is switched off on this site."
+msgstr "المحادثة معطّلة على هذا الموقع."
+
+
+msgid "The assistant did not finish this question — the background worker did not complete the turn. It may have been restarted. Please try again."
+msgstr "لم يُكمل المساعد هذا السؤال — لم يُكمل العامل الخلفي الدور. ربما أُعيد تشغيله. يرجى المحاولة مرة أخرى."
+
+
+msgid "You do not have access to the chat. Ask an administrator to add your role."
+msgstr "ليس لديك صلاحية استخدام المحادثة. اطلب من أحد المشرفين إضافة دورك."
+
+
+msgid "Too many questions. Wait a minute and try again."
+msgstr "أسئلة كثيرة جداً. انتظر دقيقة ثم حاول مرة أخرى."
+
+
+msgid "A conversation is required."
+msgstr "المحادثة مطلوبة."
+
+
+msgid "A title is required."
+msgstr "العنوان مطلوب."
+
+
+msgid "That conversation does not exist."
+msgstr "تلك المحادثة غير موجودة."
+
+
+msgid "That conversation belongs to somebody else."
+msgstr "تلك المحادثة تخصّ شخصاً آخر."
+
+
+msgid "A conversation's owner cannot be changed."
+msgstr "لا يمكن تغيير مالك المحادثة."
+
+msgid "The value in {0} is stored in plain text. Clear the field, save, and enter the key again."
+msgstr "القيمة في {0} مخزّنة كنص صريح. امسح الحقل واحفظ ثم أعد إدخال المفتاح."
