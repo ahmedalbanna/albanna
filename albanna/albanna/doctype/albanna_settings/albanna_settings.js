@@ -102,9 +102,7 @@ function usage_html(summary) {
 	);
 	rows.push(row(__("Cost"), `${Number(summary.cost || 0).toFixed(4)}`));
 	if (summary.provider_cost) {
-		rows.push(
-			row(__("Provider cost"), `${Number(summary.provider_cost || 0).toFixed(8)}`),
-		);
+		rows.push(row(__("Provider cost"), `${Number(summary.provider_cost || 0).toFixed(8)}`));
 	}
 	rows.push(row(__("Failed turns"), String(summary.errors || 0)));
 
