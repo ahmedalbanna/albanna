@@ -769,3 +769,7 @@ msgstr "كيف انتهى الدور. «truncated» تعني أن المزوّد
 
 msgid "truncated"
 msgstr "مقطوعة"
+
+
+msgid "I could not produce an answer to that."
+msgstr "لم أستطع أن أُنتج جواباً على ذلك."

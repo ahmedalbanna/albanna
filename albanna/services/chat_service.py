@@ -269,7 +269,7 @@ class ChatService:
             if not answer.tool_calls:
                 reply = (answer.content or "").strip()
                 if not reply:
-                    reply = "I could not produce an answer to that."
+                    reply = _("I could not produce an answer to that.")
                 written = append_messages(
                     conversation,
                     [
