@@ -25,7 +25,7 @@
  * already a column of the Desk, and a drawer floating over it would be a
  * second floating thing on a page that has one.
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import Composer from "./Composer.vue";
 import ConversationDrawer from "./ConversationDrawer.vue";
 import { pageIdentity, resolveContext } from "./context.mjs";
@@ -476,6 +476,34 @@ function noticeText(notice) {
 			return "";
 	}
 }
+
+/**
+ * Put the focus in the composer's field.
+ */
+function focusComposer() {
+	nextTick(() => {
+		const input = document.querySelector(".albanna-chat__input");
+		if (input) input.focus();
+	});
+}
+
+/**
+ * The focus follows the view.
+ *
+ * The panel is a column of the Desk rather than a modal, so nothing
+ * moves the focus for us: a reader who opens the conversation list with
+ * the keyboard would find the focus still in the transcript behind it,
+ * and every key they press would go there instead.
+ */
+watch(view, async (next) => {
+	if (next === "history") {
+		// The drawer moves the focus when its list arrives; there is
+		// nothing to focus until then.
+		return;
+	}
+	await nextTick();
+	focusComposer();
+});
 
 /**
  * Pick up a turn that was running when the page was reloaded.
@@ -1173,6 +1201,16 @@ function onRouteChange() {
 onMounted(() => {
 	const context = resolveContext();
 	onContextChanged(context);
+
+	/* The focus comes with the panel.
+	 *
+	 * The launcher tries to focus the panel's field when it opens, but
+	 * the panel's field does not exist yet: the widget is a bundle that
+	 * is fetched and mounted afterwards, so the launcher's query finds
+	 * nothing and the focus is left on a button that has just been
+	 * hidden.  A keyboard reader is then stranded — every key they press
+	 * goes to the Desk, not to the assistant they opened. */
+	focusComposer();
 
 	// The page's thread first, and then any turn that was running when
 	// this page was last loaded: the question of a turn that is still in

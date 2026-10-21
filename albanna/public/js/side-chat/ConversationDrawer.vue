@@ -7,7 +7,7 @@
  * page that already has one.  So the drawer takes the panel's place, and
  * the header's back button returns to the transcript.
  */
-import { computed, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { readablePage, relativeTime } from "./format.mjs";
 import { groupByDate } from "./groups.mjs";
 
@@ -59,6 +59,23 @@ function startRename(conversation) {
 function cancelRename() {
 	editing.value = "";
 }
+
+/**
+ * The focus follows the list.
+ *
+ * The drawer is shown while its list is still being fetched, so the
+ * focus cannot be moved when the view changes — there is nothing to move
+ * it to yet.  It is moved when the list arrives.
+ */
+watch(
+	() => props.conversations,
+	async (rows) => {
+		if (!rows || !rows.length) return;
+		await nextTick();
+		const first = document.querySelector(".albanna-drawer__title");
+		if (first) first.focus();
+	},
+);
 
 function commitRename(conversation, event) {
 	const title = (event.target.value || "").trim();
