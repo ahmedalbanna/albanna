@@ -685,6 +685,9 @@ async function send(question) {
 				// about the table on the screen.
 				filters: context.filters,
 				rows: context.rows,
+				columns: context.columns,
+				sort: context.sort,
+				report: context.report,
 				selection: context.selection,
 				// What the reader has asked lately, so that a follow-up
 				// reads as a follow-up.

@@ -92,6 +92,9 @@ def _render_page_context(raw: Any) -> str:
         selection=str(raw.get("selection") or "")[:500],
         recent_questions=str(raw.get("recent_questions") or "")[:300],
         rows=_as_int(raw.get("rows")),
+        report=str(raw.get("report") or "")[:120],
+        columns=str(raw.get("columns") or "")[:300],
+        sort=str(raw.get("sort") or "")[:120],
     )
 
 

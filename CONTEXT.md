@@ -573,7 +573,29 @@ the question and the page description travel in the cache — where the
 answer is parked already — and the job is given the key.  The log holds
 a stream id instead of a sentence.
 
-### 38. The reader is shown an error they can read
+### 38. The list and the report are read for what they show
+
+A list is the reader's page as much as a form is, and the route says
+only which list — not the filters on it, not how many rows it shows,
+not which columns are in it and not what it is sorted by.  So the list
+view is read for those, and a report is read for its name and its
+filters, because a report *is* a query with filters on it and the
+filters are the question the reader is asking.
+
+And they are read the way the open document is read: **only when the
+route agrees that this is one.**  `cur_list` is cleared when the
+doctype changes and not otherwise, and `frappe.query_report` is built
+and never cleared at all, so on the page the reader walked to they
+still hold the page they walked away from.  The route decides; the live
+object supplies the details.
+
+What the panel sends is a *description*, and the description is capped
+and collapsed before it travels: a list can carry a hundred filters and
+a hundred columns, and a value that carries a newline would be two
+lines in the block — and the second would look like part of the framing
+rather than part of the data.
+
+### 39. The reader is shown an error they can read
 
 A provider that answers in anything but Latin-1 — a Chinese error, an em
 dash — used to arrive as mojibake, because the error path read the body

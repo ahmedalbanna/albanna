@@ -13,8 +13,12 @@ import assert from "node:assert";
 import {
 	classifyRoute,
 	currentRoute,
+	describeListColumns,
 	describeListFilters,
+	describeReportFilters,
+	describeSort,
 	pageIdentity,
+	renderListColumns,
 	renderListFilters,
 	resolveContext,
 } from "./context.mjs";
@@ -25,9 +29,9 @@ import {
  * @param {object} parts the route, the selection, the open document and
  *   the list view
  */
-function desk({ route, frm = null, list = null, selection = "" }) {
+function desk({ route, frm = null, list = null, report = null, selection = "" }) {
 	global.window = {
-		frappe: { get_route: () => route },
+		frappe: { get_route: () => route, query_report: report },
 		cur_frm: frm,
 		cur_list: list,
 		getSelection: () => (selection ? { toString: () => selection } : null),
@@ -141,7 +145,8 @@ console.log("context: all assertions passed");
 {
 	assert.equal(classifyRoute("Form/Sales Invoice/ACC-SINV-2026-00001"), "form");
 	assert.equal(classifyRoute("List/Customer/List"), "list");
-	assert.equal(classifyRoute("List/Customer/Report"), "other", "a report is not a list");
+	assert.equal(classifyRoute("List/Customer/Report"), "report", "a report is not a list");
+	assert.equal(classifyRoute("query-report/General Ledger"), "report");
 	assert.equal(classifyRoute("Workspaces/Home"), "other");
 	assert.equal(classifyRoute(""), "other");
 }
@@ -243,4 +248,95 @@ console.log("context: all assertions passed");
 		many.push(["Sales Order", `field_${index}`, "=", String(index)]);
 	}
 	assert.equal(describeListFilters(many).length, 20);
+}
+
+// The columns a list shows, and the order it shows them in.
+{
+	desk({
+		route: ["List", "Sales Order", "List"],
+		list: {
+			...listView("Sales Order", [], 24),
+			columns: [
+				{ df: { fieldname: "status" } },
+				{ df: { fieldname: "grand_total" } },
+				{ type: "indicator" },
+			],
+			sort_by: "creation",
+			sort_order: "desc",
+		},
+	});
+	const context = resolveContext();
+
+	assert.equal(context.columns, "status, grand_total", "a column that names no field is dropped");
+	assert.equal(context.sort, "creation desc");
+}
+
+// A report: the reader is looking at a query, and the filters on it are
+// the question they are asking.
+{
+	desk({
+		route: ["query-report", "General Ledger"],
+		report: {
+			report_name: "General Ledger",
+			filters: [
+				{ df: { fieldname: "company" }, get_value: () => "Albanna" },
+				{ df: { fieldname: "period" }, get_value: () => "" },
+			],
+		},
+	});
+	const context = resolveContext();
+
+	assert.equal(context.report, "General Ledger");
+	assert.equal(context.filters, "company = Albanna", "a filter with no value is dropped");
+}
+
+// A report the reader has walked away from must not describe the page.
+{
+	desk({
+		route: ["List", "Sales Invoice", "List"],
+		list: listView("Sales Invoice", [], 4),
+		report: { report_name: "General Ledger", filters: [] },
+	});
+	const context = resolveContext();
+
+	assert.equal(context.report, "", "a stale report must not describe the page");
+	assert.equal(context.filters, "");
+}
+
+// The report's filters are normalised: the value may be read through a
+// method, and a control that cannot say is read through its own value.
+{
+	const rows = describeReportFilters([
+		{ df: { fieldname: "company" }, get_value: () => "Albanna" },
+		{ df: { fieldname: "period" }, value: "2026" },
+		{
+			df: { fieldname: "broken" },
+			value: "kept",
+			get_value: () => {
+				throw new Error("no");
+			},
+		},
+		{ df: { fieldname: "blank" }, value: "" },
+	]);
+	assert.deepEqual(rows, [
+		{ field: "company", op: "=", value: "Albanna" },
+		{ field: "period", op: "=", value: "2026" },
+		{ field: "broken", op: "=", value: "kept" },
+	]);
+}
+
+// The sort is a line, and a list that names no field is not sorted.
+{
+	assert.equal(describeSort("creation", "desc"), "creation desc");
+	assert.equal(describeSort("creation", ""), "creation desc");
+	assert.equal(describeSort("", "desc"), "");
+}
+
+// The columns are capped, because a list can carry a hundred of them.
+{
+	const many = [];
+	for (let index = 0; index < 40; index += 1) many.push({ df: { fieldname: `field_${index}` } });
+	assert.equal(describeListColumns(many).length, 30);
+	assert.equal(describeListColumns(null).length, 0);
+	assert.equal(renderListColumns([]), "");
 }

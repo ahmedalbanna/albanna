@@ -186,6 +186,9 @@ def build_page_context(
     selection: str = "",
     recent_questions: str = "",
     rows: int = 0,
+    report: str = "",
+    columns: str = "",
+    sort: str = "",
 ) -> str:
     """Render the user's screen into the untrusted block.
 
@@ -200,27 +203,41 @@ def build_page_context(
     the data.  So every value is collapsed and clipped on the way in, and
     the rule is not applied to some fields and forgotten on others.
     """
+    # The block is a table of fields, and a field that says nothing is
+    # left out: a line for an empty value is a line of noise.
+    #
+    # The order is the order of what the reader is looking at — where
+    # they are, what they are looking at, and what they have been
+    # asking.
+    fields = [
+        ("Page", view, 120),
+        ("DocType", doctype, 120),
+        ("Document", name, 140),
+        ("Title", title, 200),
+        # The reader is looking at a report, which is a query with
+        # filters on it.  Its name says which query.
+        ("Report", report, 120),
+        ("Filters", filters, 300),
+        # How many rows the list on the screen shows.  It is the one
+        # number that answers "how many" without a query, and it is the
+        # number the reader is looking at — the list is filtered, and the
+        # filters are above.
+        ("Rows in view", str(int(rows)) if rows else "", 0),
+        # The columns the list shows: what the reader can see, which is
+        # not the same as what the doctype has.
+        ("Columns", columns, 300),
+        # The order the list is in, which decides what "the first one"
+        # means.
+        ("Sorted by", sort, 120),
+        ("Selected text", selection, 500),
+        ("Recent questions", recent_questions, 300),
+    ]
+
     lines: list[str] = []
-    if view:
-        lines.append(f"Page: {_clip(view, 120)}")
-    if doctype:
-        lines.append(f"DocType: {_clip(doctype, 120)}")
-    if name:
-        lines.append(f"Document: {_clip(name, 140)}")
-    if title:
-        lines.append(f"Title: {_clip(title, 200)}")
-    if filters:
-        lines.append(f"Filters: {_clip(filters, 300)}")
-    if rows:
-        # How many rows the list on the screen shows.  It is the one number
-        # that answers "how many" without a query, and it is the number the
-        # reader is looking at — the list is filtered, and the filters are
-        # above.
-        lines.append(f"Rows in view: {int(rows)}")
-    if selection:
-        lines.append(f"Selected text: {_clip(selection, 500)}")
-    if recent_questions:
-        lines.append(f"Recent questions: {_clip(recent_questions, 300)}")
+    for label, value, limit in fields:
+        if not value:
+            continue
+        lines.append(f"{label}: {value if not limit else _clip(value, limit)}")
 
     if not lines:
         return ""

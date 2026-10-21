@@ -23,11 +23,17 @@
 /** The longest selection that is sent. */
 const MAX_SELECTION = 500;
 
-/** How many filters of a list are carried with a turn. */
+/** How many filters of a list or a report are carried with a turn. */
 export const MAX_LIST_FILTERS = 20;
+
+/** How many columns of a list are carried with a turn. */
+export const MAX_LIST_COLUMNS = 30;
 
 /** How long the rendered filters may be. */
 const MAX_FILTER_TEXT = 300;
+
+/** How long the rendered columns may be. */
+const MAX_COLUMN_TEXT = 300;
 
 /**
  * The current route, as a string.
@@ -102,6 +108,9 @@ export function resolveContext() {
 	let title = "";
 	let filters = "";
 	let rows = 0;
+	let columns = "";
+	let sort = "";
+	let report = "";
 
 	if (onForm) {
 		// A form: the document is the page.
@@ -132,13 +141,37 @@ export function resolveContext() {
 			doctype = String(list.doctype || "");
 			filters = renderListFilters(describeListFilters(listFilters(list)));
 			rows = Number(list.total_count) || 0;
+			columns = renderListColumns(describeListColumns(list.columns));
+			sort = describeSort(list.sort_by, list.sort_order);
+		}
+	} else if (classifyRoute(route) === "report") {
+		// A report: the reader is looking at a query, and the filters on
+		// it are the question they are asking.  The live report is stale
+		// in the same way the list is — the Desk builds it and does not
+		// clear it — so the route decides that this *is* a report.
+		const live = window.frappe && window.frappe.query_report;
+		if (live) {
+			report = String(live.report_name || "");
+			filters = renderListFilters(describeReportFilters(live.filters));
 		}
 	}
 	// A report, a workspace, a dashboard: the route is the page.
 	// The route carries the module and the view ("erpnext/sales-order"),
 	// which is enough to scope a conversation and to tell the model where
 	// the user is.
-	return { view, route, doctype, name, title, filters, rows, selection: currentSelection() };
+	return {
+		view,
+		route,
+		doctype,
+		name,
+		title,
+		filters,
+		rows,
+		columns,
+		sort,
+		report,
+		selection: currentSelection(),
+	};
 }
 
 /**
@@ -160,10 +193,16 @@ export function classifyRoute(route) {
 	const parts = String(route || "").split("/");
 	const head = (parts[0] || "").toLowerCase();
 	if (head === "form") return "form";
-	// A list is "List/<doctype>/List".  The other shapes under "List" —
-	// a report, a kanban, a calendar, a tree — are not lists, and their
-	// filters are not the list's filters.
-	if (head === "list" && (parts[2] || "").toLowerCase() === "list") return "list";
+	if (head === "query-report") return "report";
+	// A list is "List/<doctype>/List" and a report on a doctype is
+	// "List/<doctype>/Report".  The other shapes under "List" — a kanban,
+	// a calendar, a tree — are neither, and their filters are not the
+	// list's filters.
+	if (head === "list") {
+		const sub = (parts[2] || "").toLowerCase();
+		if (sub === "list") return "list";
+		if (sub === "report") return "report";
+	}
 	return "other";
 }
 
@@ -205,6 +244,92 @@ export function renderListFilters(rows) {
 }
 
 /**
+ * Normalise a list view's columns into the field names they show.
+ *
+ * The Desk's list holds a column per field, plus the indicator and
+ * subject columns, which name no field of their own.
+ *
+ * @param {Array} raw the columns, as the list view holds them
+ * @returns {string[]} the field names
+ */
+export function describeListColumns(raw) {
+	if (!Array.isArray(raw)) return [];
+	const names = [];
+	for (const entry of raw) {
+		if (!entry) continue;
+		const df = entry.df || entry;
+		const name = oneLine(df.fieldname);
+		if (!name) continue;
+		names.push(name);
+		if (names.length >= MAX_LIST_COLUMNS) break;
+	}
+	return names;
+}
+
+/**
+ * Normalise a report's filters into `{field, value}` rows.
+ *
+ * A report's filter is a control with a DocField and a value, and the
+ * value may be read through a method rather than a property.  A filter
+ * with no value is dropped: a report ships with most of them empty.
+ *
+ * @param {Array} raw the filter controls
+ * @returns {Array<{field: string, value: string}>} the rows
+ */
+export function describeReportFilters(raw) {
+	if (!Array.isArray(raw)) return [];
+	const rows = [];
+	for (const control of raw) {
+		if (!control) continue;
+		const df = control.df || {};
+		const field = oneLine(df.fieldname || control.fieldname);
+		if (!field) continue;
+
+		let value = control.value;
+		if (typeof control.get_value === "function") {
+			try {
+				value = control.get_value();
+			} catch (error) {
+				/* The control cannot say; its own value will have to do. */
+			}
+		}
+		const text = oneLine(value);
+		if (!text) continue;
+
+		// A report's filter is a value, not a comparison, so it is
+		// carried as one: "company = Albanna" reads the same as the
+		// list's, and a range reads as the range it is.
+		rows.push({ field, op: "=", value: text });
+		if (rows.length >= MAX_LIST_FILTERS) break;
+	}
+	return rows;
+}
+
+/**
+ * The list's sort, as one line.
+ *
+ * @param {string} by the field the list is sorted by
+ * @param {string} order the direction
+ * @returns {string} the line, or "" when the list names no field
+ */
+export function describeSort(by, order) {
+	const field = oneLine(by);
+	if (!field) return "";
+	return `${field} ${oneLine(order) || "desc"}`;
+}
+
+/**
+ * The columns, as the one line the prompt carries.
+ *
+ * @param {string[]} names the field names
+ * @returns {string} the line, or "" when there are none
+ */
+export function renderListColumns(names) {
+	if (!Array.isArray(names) || !names.length) return "";
+	return names.join(", ").slice(0, MAX_COLUMN_TEXT);
+}
+
+/**
  * The filters of the live list view.
  *
  * @param {object} list the list view
@@ -233,6 +358,15 @@ function listFilters(list) {
  */
 function oneLine(value) {
 	if (value === null || value === undefined) return "";
+	// A range filter is an object, and "[object Object]" says nothing
+	// about it.
+	if (typeof value === "object") {
+		try {
+			return JSON.stringify(value);
+		} catch (error) {
+			return "";
+		}
+	}
 	return String(value).replace(/\s+/g, " ").trim();
 }
 

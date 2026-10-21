@@ -99,3 +99,44 @@ def test_a_value_carrying_a_newline_stays_on_one_line():
     would look like part of the framing rather than part of the data."""
     context = build_page_context(filters="status = To Deliver\nDocType: Item")
     assert context.count("\n") == 0
+
+
+def test_the_report_the_reader_is_looking_at_is_carried():
+    context = build_page_context(report="General Ledger", filters="company = Albanna")
+    assert "General Ledger" in context
+    assert "company = Albanna" in context
+
+
+def test_the_columns_the_list_shows_are_carried():
+    context = build_page_context(doctype="Sales Order", columns="status, grand_total")
+    assert "status, grand_total" in context
+
+
+def test_the_order_the_list_is_in_is_carried():
+    context = build_page_context(sort="creation desc")
+    assert "creation desc" in context
+
+
+def test_a_field_that_says_nothing_is_left_out():
+    context = build_page_context(doctype="Sales Order", columns="", sort="", report="")
+    assert "Columns" not in context
+    assert "Sorted" not in context
+    assert "Report" not in context
+    assert "Rows" not in context
+
+
+def test_every_field_is_clipped():
+    """Every value is one line, and a value that is not is a value that
+    cannot be allowed to break the framing."""
+    context = build_page_context(
+        view="v" * 500,
+        doctype="d" * 500,
+        name="n" * 500,
+        title="t" * 500,
+        filters="f" * 900,
+        report="r" * 500,
+        columns="c" * 900,
+        sort="s" * 500,
+    )
+    assert len(context) <= 2000
+    assert context.count("\n") == len(context.split("\n")) - 1
