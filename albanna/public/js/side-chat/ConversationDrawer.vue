@@ -7,8 +7,9 @@
  * page that already has one.  So the drawer takes the panel's place, and
  * the header's back button returns to the transcript.
  */
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { readablePage, relativeTime } from "./format.mjs";
+import { groupByDate } from "./groups.mjs";
 
 const props = defineProps({
 	/** The conversations, newest first. */
@@ -22,6 +23,34 @@ const props = defineProps({
 const emit = defineEmits(["open", "rename", "remove", "new", "back"]);
 
 const editing = ref("");
+
+/**
+ * The conversations, grouped by the day they were last used.
+ *
+ * A drawer that lists thirty conversations in one column is a list the
+ * reader scans rather than reads.  Grouping them by day turns it into
+ * something a person can navigate.
+ */
+const groups = computed(() => groupByDate(props.conversations));
+
+/**
+ * The heading of a group, in the reader's language.
+ *
+ * @param {string} key the group's key
+ * @returns {string} the heading
+ */
+function groupLabel(key) {
+	switch (key) {
+		case "today":
+			return __("Today");
+		case "yesterday":
+			return __("Yesterday");
+		case "week":
+			return __("This week");
+		default:
+			return __("Earlier");
+	}
+}
 
 function startRename(conversation) {
 	editing.value = conversation.name;
@@ -51,92 +80,99 @@ function commitRename(conversation, event) {
 			</p>
 		</div>
 
-		<ul v-else class="albanna-drawer__list">
-			<li
-				v-for="conversation in conversations"
-				:key="conversation.name"
-				class="albanna-drawer__item"
-				:class="{ 'albanna-drawer__item--active': conversation.name === props.active }"
-			>
-				<div class="albanna-drawer__item-main">
-					<input
-						v-if="editing === conversation.name"
-						class="albanna-drawer__rename"
-						type="text"
-						:value="conversation.title"
-						:aria-label="__('Conversation title')"
-						@keydown.enter.prevent="commitRename(conversation, $event)"
-						@keydown.esc.prevent="cancelRename"
-						@blur="commitRename(conversation, $event)"
-					/>
-					<button
-						v-else
-						type="button"
-						class="albanna-drawer__title"
-						@click="emit('open', conversation)"
+		<div v-else class="albanna-drawer__list">
+			<section v-for="group in groups" :key="group.key" class="albanna-drawer__group">
+				<h3 class="albanna-drawer__group-title">{{ groupLabel(group.key) }}</h3>
+				<ul class="albanna-drawer__group-list">
+					<li
+						v-for="conversation in group.conversations"
+						:key="conversation.name"
+						class="albanna-drawer__item"
+						:class="{
+							'albanna-drawer__item--active': conversation.name === props.active,
+						}"
 					>
-						{{ conversation.title || __("New conversation") }}
-					</button>
-
-					<p class="albanna-drawer__meta">
-						<span v-if="readablePage(conversation.page)">{{
-							readablePage(conversation.page)
-						}}</span>
-						<span v-if="conversation.last_activity_ts">{{
-							relativeTime(conversation.last_activity_ts)
-						}}</span>
-					</p>
-				</div>
-
-				<div class="albanna-drawer__actions">
-					<button
-						type="button"
-						class="albanna-drawer__action"
-						:aria-label="__('Rename')"
-						:title="__('Rename')"
-						@click="startRename(conversation)"
-					>
-						<svg
-							width="14"
-							height="14"
-							viewBox="0 0 24 24"
-							fill="none"
-							aria-hidden="true"
-						>
-							<path
-								d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"
-								stroke="currentColor"
-								stroke-width="1.8"
-								stroke-linecap="round"
-								stroke-linejoin="round"
+						<div class="albanna-drawer__item-main">
+							<input
+								v-if="editing === conversation.name"
+								class="albanna-drawer__rename"
+								type="text"
+								:value="conversation.title"
+								:aria-label="__('Conversation title')"
+								@keydown.enter.prevent="commitRename(conversation, $event)"
+								@keydown.esc.prevent="cancelRename"
+								@blur="commitRename(conversation, $event)"
 							/>
-						</svg>
-					</button>
-					<button
-						type="button"
-						class="albanna-drawer__action albanna-drawer__action--danger"
-						:aria-label="__('Delete')"
-						:title="__('Delete')"
-						@click="emit('remove', conversation)"
-					>
-						<svg
-							width="14"
-							height="14"
-							viewBox="0 0 24 24"
-							fill="none"
-							aria-hidden="true"
-						>
-							<path
-								d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6M10 11v6M14 11v6"
-								stroke="currentColor"
-								stroke-width="1.8"
-								stroke-linecap="round"
-								stroke-linejoin="round"
-							/>
-						</svg>
-					</button>
-				</div>
-			</li>
-		</ul>
+							<button
+								v-else
+								type="button"
+								class="albanna-drawer__title"
+								@click="emit('open', conversation)"
+							>
+								{{ conversation.title || __("New conversation") }}
+							</button>
+
+							<p class="albanna-drawer__meta">
+								<span v-if="readablePage(conversation.page)">{{
+									readablePage(conversation.page)
+								}}</span>
+								<span v-if="conversation.last_activity_ts">{{
+									relativeTime(conversation.last_activity_ts)
+								}}</span>
+							</p>
+						</div>
+
+						<div class="albanna-drawer__actions">
+							<button
+								type="button"
+								class="albanna-drawer__action"
+								:aria-label="__('Rename')"
+								:title="__('Rename')"
+								@click="startRename(conversation)"
+							>
+								<svg
+									width="14"
+									height="14"
+									viewBox="0 0 24 24"
+									fill="none"
+									aria-hidden="true"
+								>
+									<path
+										d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"
+										stroke="currentColor"
+										stroke-width="1.8"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								</svg>
+							</button>
+							<button
+								type="button"
+								class="albanna-drawer__action albanna-drawer__action--danger"
+								:aria-label="__('Delete')"
+								:title="__('Delete')"
+								@click="emit('remove', conversation)"
+							>
+								<svg
+									width="14"
+									height="14"
+									viewBox="0 0 24 24"
+									fill="none"
+									aria-hidden="true"
+								>
+									<path
+										d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m3 0v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6M10 11v6M14 11v6"
+										stroke="currentColor"
+										stroke-width="1.8"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								</svg>
+							</button>
+						</div>
+					</li>
+				</ul>
+			</section>
+		</div>
 	</div>
 </template>

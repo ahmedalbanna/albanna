@@ -352,3 +352,16 @@ msgstr "تنزيل"
 
 msgid "Download the table"
 msgstr "تنزيل الجدول"
+
+
+msgid "Today"
+msgstr "اليوم"
+
+msgid "Yesterday"
+msgstr "أمس"
+
+msgid "This week"
+msgstr "هذا الأسبوع"
+
+msgid "Earlier"
+msgstr "في وقت سابق"

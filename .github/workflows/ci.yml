@@ -70,6 +70,9 @@ jobs:
       - name: The turn that is in flight
         run: node albanna/public/js/side-chat/inflight.test.mjs
 
+      - name: The conversations, grouped by day
+        run: node albanna/public/js/side-chat/groups.test.mjs
+
   server:
     name: Server tests
     runs-on: ubuntu-latest

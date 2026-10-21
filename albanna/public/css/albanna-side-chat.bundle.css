@@ -1083,6 +1083,32 @@ body.albanna-side-chat-docked-inline-start {
 }
 
 .albanna-drawer__list {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+/* A group of conversations: a heading, and the list under it.
+ *
+ * The heading is quiet — it says which day the conversations below it
+ * belong to, and the list below it already says how long ago each one
+ * was. */
+.albanna-drawer__group {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.albanna-drawer__group-title {
+	margin: 0;
+	padding: 0 9px;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	color: var(--albanna-muted, #6c7680);
+}
+
+.albanna-drawer__group-list {
 	list-style: none;
 	margin: 0;
 	padding: 0;
