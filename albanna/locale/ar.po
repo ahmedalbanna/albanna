@@ -365,3 +365,44 @@ msgstr "هذا الأسبوع"
 
 msgid "Earlier"
 msgstr "في وقت سابق"
+
+
+msgid "By model"
+msgstr "حسب النموذج"
+
+msgid "By user"
+msgstr "حسب المستخدم"
+
+msgid "Chat usage"
+msgstr "استهلاك المحادثة"
+
+msgid "Cost"
+msgstr "التكلفة"
+
+msgid "Failed turns"
+msgstr "الأدوار الفاشلة"
+
+msgid "Name"
+msgstr "الاسم"
+
+msgid "No turns have been run this month."
+msgstr "لم يُنفَّذ أي دور هذا الشهر."
+
+msgid "Only a System Manager may do that."
+msgstr "هذا متاح لمدير النظام وحده."
+
+msgid "Reading the ledger…"
+msgstr "جارٍ قراءة السجل…"
+
+msgid "Tokens"
+msgstr "الرموز"
+
+msgid "Turns"
+msgstr "الأدوار"
+
+msgid "{0} turn(s) had no cost reported by the provider."
+msgstr "لم يُبلّغ المزوّد عن تكلفة {0} دور."
+
+
+msgid "The cost is what the provider reported, in the provider's own currency."
+msgstr "التكلفة هي ما أبلغ عنه المزوّد، بعملة المزوّد."

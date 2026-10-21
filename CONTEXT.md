@@ -595,7 +595,28 @@ a hundred columns, and a value that carries a newline would be two
 lines in the block — and the second would look like part of the framing
 rather than part of the data.
 
-### 39. The reader is shown an error they can read
+### 39. The ledger says what it does not know
+
+Every turn writes a row: the model, the tokens, the cost, the duration,
+whether it worked.  A ledger is a list of rows, and an operator does not
+want a list of rows — they want the month's total, and they want to
+know which model and which user it went to.  So the settings page sums
+the month, and the sum is a **System Manager's**: a reader who may use
+the chat has no business knowing what the site spends on it.
+
+Two numbers in that sum are honest about their limits.
+
+**A cost of zero is not a free turn** when the tokens are not zero: it
+is a cost the provider did not report, and the turns like that are
+counted apart.  A ledger that shows a zero and says nothing is saying
+something the operator would believe.
+
+**The cost is the provider's own** — its currency, its own reckoning —
+and not the site's.  A provider that bills in dollars and a site that
+keeps its books in riyals are two currencies, and the ledger records
+the number the provider sent because that is the number there is.
+
+### 40. The reader is shown an error they can read
 
 A provider that answers in anything but Latin-1 — a Chinese error, an em
 dash — used to arrive as mojibake, because the error path read the body

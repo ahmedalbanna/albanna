@@ -1234,3 +1234,120 @@ class TestRequestPrivacy(FrappeTestCase):
             ask(question="a secret question")
 
         self.assertEqual(frappe.local.form_dict["question"], "[redacted]")
+
+
+@pytest.mark.integration
+class TestUsageSummary(FrappeTestCase):
+    """What the chat has cost, and where it went.
+
+    The ledger is written by every turn.  The summary is the read side
+    of it, and it is the operator's: a System Manager, and nobody else.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.user = "albanna.test.usage@albanna.dev"
+        if not frappe.db.exists("User", self.user):
+            user = frappe.new_doc("User")
+            user.email = self.user
+            user.first_name = "Albanna"
+            user.last_name = "Usage"
+            user.flags.ignore_permissions = True
+            user.insert()
+            user.add_roles("Sales User")
+        frappe.db.commit()
+        self._clear_ledger()
+
+    def tearDown(self):
+        self._clear_ledger()
+        frappe.db.commit()
+        super().tearDown()
+
+    def _clear_ledger(self):
+        frappe.db.sql("delete from `tabAlbanna Chat Log`")
+
+    def _turn(self, model="a-model", cost=1.0, tokens=100, status="ok", estimated=0):
+        doc = frappe.new_doc("Albanna Chat Log")
+        doc.user = self.user
+        doc.provider = "a-provider"
+        doc.model = model
+        doc.status = status
+        doc.input_tokens = tokens
+        doc.output_tokens = 0
+        doc.cost = cost
+        doc.estimated = estimated
+        doc.flags.ignore_permissions = True
+        doc.insert()
+
+    def test_a_month_with_no_turns_says_so(self):
+        from albanna.services.usage_service import usage_summary
+
+        summary = usage_summary()
+
+        self.assertEqual(summary["turns"], 0)
+        self.assertEqual(summary["cost"], 0)
+        self.assertEqual(summary["by_model"], [])
+
+    def test_the_totals_are_the_months(self):
+        from albanna.services.usage_service import usage_summary
+
+        self._turn(model="a-model", cost=1.5, tokens=100)
+        self._turn(model="a-model", cost=2.5, tokens=200)
+        self._turn(model="another-model", cost=1.0, tokens=50, status="error")
+
+        summary = usage_summary()
+
+        self.assertEqual(summary["turns"], 3)
+        self.assertEqual(summary["cost"], 5.0)
+        self.assertEqual(summary["tokens"], 350)
+        self.assertEqual(summary["errors"], 1)
+
+    def test_the_breakdown_says_which_model_and_which_user(self):
+        from albanna.services.usage_service import usage_summary
+
+        self._turn(model="a-model", cost=1.0)
+        self._turn(model="a-model", cost=3.0)
+        self._turn(model="another-model", cost=2.0)
+
+        summary = usage_summary()
+
+        models = {entry["name"]: entry for entry in summary["by_model"]}
+        self.assertEqual(models["a-model"]["turns"], 2)
+        self.assertEqual(models["a-model"]["cost"], 4.0)
+        self.assertEqual(models["another-model"]["cost"], 2.0)
+
+        users = {entry["name"]: entry for entry in summary["by_user"]}
+        self.assertIn(self.user, users)
+
+    def test_a_turn_the_provider_did_not_price_is_counted_apart(self):
+        """A cost of zero is not a free turn when the tokens are not
+        zero: it is a cost nobody knows."""
+        from albanna.services.usage_service import usage_summary
+
+        self._turn(model="a-model", cost=0.0, tokens=100)
+        self._turn(model="a-model", cost=2.0, tokens=100)
+
+        summary = usage_summary()
+
+        self.assertEqual(summary["uncosted_turns"], 1)
+        self.assertEqual(summary["cost"], 2.0)
+
+    def test_an_estimated_count_says_so(self):
+        from albanna.services.usage_service import usage_summary
+
+        self._turn(estimated=1)
+
+        summary = usage_summary()
+
+        self.assertTrue(summary["estimated"], "an estimate must not look measured")
+
+    def test_only_a_system_manager_may_read_the_ledger(self):
+        from albanna.api.usage import summary as api_summary
+
+        frappe.set_user(self.user)
+        frappe.local.session.user = self.user
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+        with self.assertRaises(frappe.PermissionError):
+            api_summary()

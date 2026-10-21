@@ -17,8 +17,145 @@ frappe.ui.form.on("Albanna Settings", {
 		// The form re-renders, so the handler is bound once and not once
 		// per refresh.
 		button.$input.off("click").on("click", () => test_provider(frm));
+
+		// The ledger is a list of rows, and the operator does not want a
+		// list of rows: they want the month's total, and they want to
+		// know which model and which user it went to.  It is a custom
+		// button rather than a field, because it is a reading and not a
+		// setting — and a setting that is never edited does not belong
+		// in the form.
+		//
+		// No group: a group becomes the label of the menu it opens, and
+		// the operator would be reading "albanna_usage" instead of
+		// "Chat usage".
+		frm.remove_custom_button(__("Chat usage"));
+		frm.add_custom_button(__("Chat usage"), () => show_usage(frm));
 	},
 });
+
+/**
+ * Show what the chat has cost this month.
+ *
+ * The numbers are the ledger's, and the ledger says which of them are
+ * estimates: a total that looks measured but is not is worse than no
+ * total at all.
+ */
+async function show_usage(frm) {
+	const dialog = new frappe.ui.Dialog({
+		title: __("Chat usage"),
+		size: "small",
+		fields: [
+			{
+				fieldtype: "HTML",
+				fieldname: "usage",
+			},
+		],
+		primary_action_label: __("Close"),
+		primary_action: () => dialog.hide(),
+	});
+
+	dialog.show();
+	dialog.set_value("usage", __("Reading the ledger…"));
+
+	try {
+		const response = await frappe.call({
+			method: "albanna.api.usage.summary",
+			args: {},
+		});
+		const summary = response.message || {};
+
+		if (!summary.turns) {
+			dialog.set_value(
+				"usage",
+				`<p>${frappe.utils.escape_html(__("No turns have been run this month."))}</p>`,
+			);
+			return;
+		}
+
+		dialog.set_value("usage", usage_html(summary));
+	} catch (error) {
+		dialog.set_value(
+			"usage",
+			`<p class="text-danger">${frappe.utils.escape_html(
+				(error && error.message) || __("Unknown error."),
+			)}</p>`,
+		);
+	}
+}
+
+/**
+ * The usage, as the dialog shows it.
+ *
+ * @param {object} summary the summary, as the server sent it
+ * @returns {string} the markup
+ */
+function usage_html(summary) {
+	const escape = frappe.utils.escape_html;
+	const rows = [];
+
+	rows.push(row(__("Turns"), String(summary.turns || 0)));
+	rows.push(
+		row(
+			__("Tokens"),
+			`${Number(summary.tokens || 0).toLocaleString()}${summary.estimated ? " ≈" : ""}`,
+		),
+	);
+	rows.push(row(__("Cost"), `${Number(summary.cost || 0).toFixed(4)}`));
+	rows.push(row(__("Failed turns"), String(summary.errors || 0)));
+
+	let html = `<table class="table table-sm" style="width: 100%"><tbody>${rows.join(
+		"",
+	)}</tbody></table>`;
+
+	if (summary.uncosted_turns) {
+		html += `<p class="text-muted" style="font-size: 12px">${escape(
+			__("{0} turn(s) had no cost reported by the provider.", [summary.uncosted_turns]),
+		)}</p>`;
+	}
+
+	html += `<p class="text-muted" style="font-size: 12px">${escape(
+		__("The cost is what the provider reported, in the provider's own currency."),
+	)}</p>`;
+
+	html += breakdown(__("By model"), summary.by_model);
+	html += breakdown(__("By user"), summary.by_user);
+
+	return html;
+}
+
+/**
+ * One line of the totals.
+ */
+function row(label, value) {
+	return `<tr><td>${frappe.utils.escape_html(
+		label,
+	)}</td><td style="text-align: end"><b>${frappe.utils.escape_html(value)}</b></td></tr>`;
+}
+
+/**
+ * A breakdown: what it was, and what it cost.
+ */
+function breakdown(title, entries) {
+	if (!entries || !entries.length) return "";
+	const escape = frappe.utils.escape_html;
+	const rows = entries
+		.map(
+			(entry) =>
+				`<tr><td>${escape(entry.name)}</td><td>${escape(
+					String(entry.turns),
+				)}</td><td style="text-align: end">${escape(
+					Number(entry.cost || 0).toFixed(4),
+				)}</td></tr>`,
+		)
+		.join("");
+	return `<p style="margin: 12px 0 4px"><b>${escape(title)}</b></p>
+		<table class="table table-sm" style="width: 100%">
+			<thead><tr><th>${escape(__("Name"))}</th><th>${escape(
+		__("Turns"),
+	)}</th><th style="text-align: end">${escape(__("Cost"))}</th></tr></thead>
+			<tbody>${rows}</tbody>
+		</table>`;
+}
 
 async function test_provider(frm) {
 	const values = {

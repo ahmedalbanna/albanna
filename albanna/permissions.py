@@ -35,6 +35,21 @@ def is_system_manager() -> bool:
         return False
 
 
+def require_system_manager() -> None:
+    """Refuse the call when the session user is not a System Manager.
+
+    The counterpart to :func:`require_chat_access`: the chat's gate is
+    about the reader, and this one is about the operator.  They are not
+    the same question — a reader may use the chat without being allowed
+    to know what the site spends on it — so they are not the same gate.
+    """
+    if not is_system_manager():
+        frappe.throw(
+            _("Only a System Manager may do that."),
+            frappe.PermissionError,
+        )
+
+
 def chat_roles() -> set[str]:
     """The roles allowed to use the chat.
 

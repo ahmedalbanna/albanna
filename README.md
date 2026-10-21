@@ -92,6 +92,10 @@ Anthropic.  It has no other runtime dependency.
   direction, and the whole Desk in Arabic is a first-class case rather than
   an afterthought — the widget sits on the reading end of the screen, so it
   never covers the text being read.
+* **A ledger the operator can read.** Every turn is recorded — the model,
+  the tokens, the cost, whether it worked — and the settings page sums
+  the month: the turns, the tokens, the cost, and where they went, by
+  model and by user.
 * **An audit trail.** Every turn is recorded: who, which model, how many
   rounds, how many tool calls, what it cost. No question text, no answer
   text.
