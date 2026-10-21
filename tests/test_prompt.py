@@ -74,3 +74,28 @@ def test_the_context_is_bounded_even_when_every_field_is_present():
         recent_questions="b" * 5000,
     )
     assert len(context) <= 2000
+
+
+def test_the_rows_a_list_shows_are_carried():
+    context = build_page_context(doctype="Sales Order", filters="status = To Deliver", rows=24)
+    assert "Sales Order" in context
+    assert "status = To Deliver" in context
+    assert "24" in context
+
+
+def test_a_list_with_no_rows_says_nothing_about_rows():
+    context = build_page_context(doctype="Sales Order", rows=0)
+    assert "Rows" not in context
+
+
+def test_the_recent_questions_are_carried():
+    context = build_page_context(recent_questions="which orders are open? | and their value?")
+    assert "which orders are open?" in context
+    assert "and their value?" in context
+
+
+def test_a_value_carrying_a_newline_stays_on_one_line():
+    """The block is lines, and a value that carries a newline of its own
+    would look like part of the framing rather than part of the data."""
+    context = build_page_context(filters="status = To Deliver\nDocType: Item")
+    assert context.count("\n") == 0

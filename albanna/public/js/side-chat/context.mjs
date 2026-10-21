@@ -23,6 +23,12 @@
 /** The longest selection that is sent. */
 const MAX_SELECTION = 500;
 
+/** How many filters of a list are carried with a turn. */
+export const MAX_LIST_FILTERS = 20;
+
+/** How long the rendered filters may be. */
+const MAX_FILTER_TEXT = 300;
+
 /**
  * The current route, as a string.
  *
@@ -40,17 +46,36 @@ export function currentRoute() {
 	return String(route || "");
 }
 
-/** The route's identity — the same string, used for scoping a conversation. */
-export function pageIdentity() {
-	const context = resolveContext();
-	return [context.view, context.doctype, context.name].filter(Boolean).join("|");
+/**
+ * The identity of a page — the string a conversation is scoped by.
+ *
+ * It is computed from the *kind* of page, not from the whole description.
+ * The description grows — it carries the filters of a list, the rows it
+ * shows, the questions the reader has asked — and a conversation scoped by
+ * a growing description would be re-scoped every time the description
+ * grows, and the reader would lose their thread.
+ *
+ * So the shape is fixed: a form is `form|<doctype>|<name>` and every
+ * other page is its route.  The conversations already on a site were
+ * scoped by these strings, and they are still found.
+ *
+ * @param {object} [context] the description, read from the page if absent
+ * @returns {string} the identity
+ */
+export function pageIdentity(context) {
+	const page = context || resolveContext();
+	if (page.view === "form") {
+		return ["form", page.doctype, page.name].filter(Boolean).join("|");
+	}
+	return page.view;
 }
 
 /**
  * Describe the current page.
  *
- * @returns {{view: string, doctype: string, name: string, title: string,
- *   filters: string, selection: string}} the description
+ * @returns {{view: string, route: string, doctype: string, name: string,
+ *   title: string, filters: string, rows: number, selection: string}}
+ *   the description
  */
 export function resolveContext() {
 	const route = currentRoute();
@@ -76,6 +101,7 @@ export function resolveContext() {
 	let name = "";
 	let title = "";
 	let filters = "";
+	let rows = 0;
 
 	if (onForm) {
 		// A form: the document is the page.
@@ -91,12 +117,123 @@ export function resolveContext() {
 			title = documentTitle(frm.doc);
 			if (frm.doc.name) name = frm.doc.name;
 		}
+	} else if (classifyRoute(route) === "list") {
+		// A list: the page is the list the reader is looking at, and the
+		// route says only which list — not the filters on it, and not how
+		// many rows it shows.  So the list view is read for those, and
+		// only because the route agrees that this *is* a list.
+		//
+		// `cur_list` is stale in the same way `cur_frm` is: the Desk
+		// clears it when the doctype changes, and not otherwise, so on the
+		// form the reader walked to it still holds the list they walked
+		// away from.
+		const list = window.cur_list;
+		if (list) {
+			doctype = String(list.doctype || "");
+			filters = renderListFilters(describeListFilters(listFilters(list)));
+			rows = Number(list.total_count) || 0;
+		}
 	}
-	// A list, a report, a workspace, a dashboard: the route is the page.
+	// A report, a workspace, a dashboard: the route is the page.
 	// The route carries the module and the view ("erpnext/sales-order"),
 	// which is enough to scope a conversation and to tell the model where
 	// the user is.
-	return { view, route, doctype, name, title, filters, selection: currentSelection() };
+	return { view, route, doctype, name, title, filters, rows, selection: currentSelection() };
+}
+
+/**
+ * The kind of page the reader is on, from the route alone.
+ *
+ * The route is the Desk's own statement of what is on the screen, and
+ * the live objects are not: the Desk sets `cur_frm` and `cur_list` when a
+ * view opens and does not always clear them when the reader walks away.
+ *
+ * So the route decides *which* live object may be read, and the live
+ * object only supplies the details.  A widget that reads them
+ * unconditionally is a widget that describes the page the reader has
+ * just left.
+ *
+ * @param {string} route the route, as "Form/Sales Invoice/SINV-0001"
+ * @returns {string} "form", "list" or "other"
+ */
+export function classifyRoute(route) {
+	const parts = String(route || "").split("/");
+	const head = (parts[0] || "").toLowerCase();
+	if (head === "form") return "form";
+	// A list is "List/<doctype>/List".  The other shapes under "List" —
+	// a report, a kanban, a calendar, a tree — are not lists, and their
+	// filters are not the list's filters.
+	if (head === "list" && (parts[2] || "").toLowerCase() === "list") return "list";
+	return "other";
+}
+
+/**
+ * Normalise a list view's filters into `{field, op, value}` rows.
+ *
+ * The Desk's `get_filters_for_args()` answers with
+ * `[doctype, fieldname, operator, value]` quadruples.  A filter with no
+ * field is dropped: it is a row of the filter area that says nothing.
+ *
+ * @param {Array} raw the quadruples, as the list view gives them
+ * @returns {Array<{field: string, op: string, value: string}>} the rows
+ */
+export function describeListFilters(raw) {
+	if (!Array.isArray(raw)) return [];
+	const rows = [];
+	for (const entry of raw) {
+		if (!Array.isArray(entry)) continue;
+		const field = oneLine(entry[1]);
+		if (!field) continue;
+		rows.push({ field, op: oneLine(entry[2]) || "=", value: oneLine(entry[3]) });
+		if (rows.length >= MAX_LIST_FILTERS) break;
+	}
+	return rows;
+}
+
+/**
+ * The filters, as the one line the prompt carries.
+ *
+ * @param {Array<{field: string, op: string, value: string}>} rows the rows
+ * @returns {string} the line, or "" when there are none
+ */
+export function renderListFilters(rows) {
+	if (!Array.isArray(rows) || !rows.length) return "";
+	return rows
+		.map((row) => `${row.field} ${row.op} ${row.value}`.trim())
+		.join("; ")
+		.slice(0, MAX_FILTER_TEXT);
+}
+
+/**
+ * The filters of the live list view.
+ *
+ * @param {object} list the list view
+ * @returns {Array} the quadruples, or [] when the list cannot say
+ */
+function listFilters(list) {
+	if (!list || typeof list.get_filters_for_args !== "function") return [];
+	try {
+		return list.get_filters_for_args() || [];
+	} catch (error) {
+		// A list that cannot say what it is filtered by is a list whose
+		// filters are unknown, not a list with no filters.
+		return [];
+	}
+}
+
+/**
+ * One line of text: whitespace collapsed.
+ *
+ * The page context is carried as lines, and a value that carries a
+ * newline of its own would be two lines — and the second one would look
+ * like part of the framing rather than part of the data.
+ *
+ * @param {*} value the value
+ * @returns {string} the value, on one line
+ */
+function oneLine(value) {
+	if (value === null || value === undefined) return "";
+	return String(value).replace(/\s+/g, " ").trim();
 }
 
 /**

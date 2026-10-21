@@ -48,6 +48,18 @@ TURN_CACHE_KEY = "albanna:turn:{stream_id}"
 STALE_GRACE_SECONDS = 90
 
 
+def _as_int(value: Any) -> int:
+    """A number from the browser, or zero.
+
+    The browser's value is untrusted, and ``int("abc")`` raises — which
+    would turn a wrong value into a failed turn.
+    """
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _render_page_context(raw: Any) -> str:
     """Turn the client's page description into the untrusted block.
 
@@ -78,6 +90,7 @@ def _render_page_context(raw: Any) -> str:
         filters=str(raw.get("filters") or "")[:300],
         selection=str(raw.get("selection") or "")[:500],
         recent_questions=str(raw.get("recent_questions") or "")[:300],
+        rows=_as_int(raw.get("rows")),
     )
 
 

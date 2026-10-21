@@ -185,6 +185,7 @@ def build_page_context(
     filters: str = "",
     selection: str = "",
     recent_questions: str = "",
+    rows: int = 0,
 ) -> str:
     """Render the user's screen into the untrusted block.
 
@@ -192,18 +193,30 @@ def build_page_context(
     request, and the whole block is truncated, because a page can hold an
     arbitrarily long selection and a long block is a long way for a
     prompt injection to travel.
+
+    **Every value is one line.**  The block is lines, and the values come
+    from the browser — a filter the reader typed can carry a newline, and
+    a second line would look like part of the framing rather than part of
+    the data.  So every value is collapsed and clipped on the way in, and
+    the rule is not applied to some fields and forgotten on others.
     """
     lines: list[str] = []
     if view:
-        lines.append(f"Page: {view}")
+        lines.append(f"Page: {_clip(view, 120)}")
     if doctype:
-        lines.append(f"DocType: {doctype}")
+        lines.append(f"DocType: {_clip(doctype, 120)}")
     if name:
-        lines.append(f"Document: {name}")
+        lines.append(f"Document: {_clip(name, 140)}")
     if title:
-        lines.append(f"Title: {title}")
+        lines.append(f"Title: {_clip(title, 200)}")
     if filters:
-        lines.append(f"Filters: {filters}")
+        lines.append(f"Filters: {_clip(filters, 300)}")
+    if rows:
+        # How many rows the list on the screen shows.  It is the one number
+        # that answers "how many" without a query, and it is the number the
+        # reader is looking at — the list is filtered, and the filters are
+        # above.
+        lines.append(f"Rows in view: {int(rows)}")
     if selection:
         lines.append(f"Selected text: {_clip(selection, 500)}")
     if recent_questions:

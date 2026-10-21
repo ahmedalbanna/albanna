@@ -32,6 +32,8 @@ import { pageIdentity, resolveContext } from "./context.mjs";
 import { clockTime } from "./format.mjs";
 import { hasTable, renderMarkdown, tableAsTsv } from "./markdown.js";
 import { watchRoute } from "./page.mjs";
+import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
+import { takeRetryQuestion } from "./retry.mjs";
 import {
 	beginTurn,
 	canSend,
@@ -91,6 +93,20 @@ const currentPage = ref("");
 
 /** The controller of the turn in flight, so that it can be stopped. */
 const abortController = ref(null);
+
+/**
+ * The questions the reader has asked, oldest first.
+ *
+ * They are sent with the turn so that a follow-up can be understood as a
+ * follow-up: a reader who asks "which orders are open?" and then "and what
+ * are they worth?" means the second question to continue the first, and the
+ * assistant cannot know that unless it is told.
+ *
+ * It is not called `asked`, because that is the question *message* — a
+ * different thing, and two things with one name in one file is a bug
+ * waiting for a quiet afternoon.
+ */
+const recentQuestions = ref([]);
 
 /** Stops the panel hearing the Desk's route. */
 let unwatch = () => {};
@@ -473,6 +489,15 @@ async function send(question) {
 	 * panel its label and not the assistant its question. */
 	const context = resolveContext();
 	const page = pageIdentity();
+
+	/* The questions asked *before* this one.
+	 *
+	 * The current question is the question, and repeating it in the
+	 * context would take the room that the questions before it need.  So
+	 * the list is rendered first and the question is added to it after. */
+	const recent = renderRecentQuestions(recentQuestions.value);
+	recentQuestions.value = addQuestion(recentQuestions.value, text);
+
 	const controller = new AbortController();
 	abortController.value = controller;
 
@@ -487,8 +512,16 @@ async function send(question) {
 				doctype: context.doctype,
 				name: context.name,
 				title: context.title,
+				// The list the reader is looking at: the filters they
+				// applied and the rows the list shows.  Without them the
+				// assistant answers about the whole table rather than
+				// about the table on the screen.
 				filters: context.filters,
+				rows: context.rows,
 				selection: context.selection,
+				// What the reader has asked lately, so that a follow-up
+				// reads as a follow-up.
+				recent_questions: recent,
 			},
 			signal: controller.signal,
 			onEvent: (event) => {
@@ -596,6 +629,22 @@ async function send(question) {
 }
 
 /**
+ * Remember the questions of a thread that was just opened.
+ *
+ * They are the reader's recent questions — the ones that explain the
+ * question they are about to ask — and a thread that was opened a moment
+ * ago is still the thread the reader is in.
+ *
+ * @param {object[]} messages the loaded messages
+ */
+function rememberQuestions(messages) {
+	const questions = (messages || [])
+		.filter((message) => message.role === "user")
+		.map((message) => message.content);
+	recentQuestions.value = questions.reduce((list, question) => addQuestion(list, question), []);
+}
+
+/**
  * Take a message out of the transcript.
  *
  * @param {object} message the message
@@ -621,6 +670,12 @@ function stop() {
 function retry() {
 	const question = state.asked;
 	if (!question) return;
+
+	// The failed attempt goes, whole: the question that failed and the
+	// answer that failed with it.  A retry is one attempt, not two, and a
+	// transcript that shows the same question twice leaves the reader
+	// looking at two answers and not knowing which one is the answer.
+	takeRetryQuestion(state.messages, question);
 	send(question);
 }
 
@@ -715,6 +770,7 @@ async function openConversation(conversation) {
 		state.messages = (result.messages || []).map((message) => {
 			return messageFromServer(message);
 		});
+		rememberQuestions(state.messages);
 		view.value = "chat";
 		followBottom.value = true;
 		scrollToBottom(true);
@@ -859,6 +915,7 @@ async function newConversation() {
 		});
 		conversationId.value = result.conversation || "";
 		state.messages = [];
+		recentQuestions.value = [];
 		view.value = "chat";
 		state.notice = "started";
 		scrollToBottom(true);
@@ -898,6 +955,7 @@ async function loadPageConversation() {
 		state.messages = (result.messages || []).map((message) => {
 			return messageFromServer(message);
 		});
+		rememberQuestions(state.messages);
 		followBottom.value = true;
 		scrollToBottom(true);
 	} catch (failure) {

@@ -58,6 +58,12 @@ jobs:
       - name: What the widget thinks the page is
         run: node albanna/public/js/side-chat/context.test.mjs
 
+      - name: The questions the reader has asked
+        run: node albanna/public/js/side-chat/recent-questions.test.mjs
+
+      - name: The rule of a retry
+        run: node albanna/public/js/side-chat/retry.test.mjs
+
   server:
     name: Server tests
     runs-on: ubuntu-latest

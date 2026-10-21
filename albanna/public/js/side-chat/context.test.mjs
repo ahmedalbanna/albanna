@@ -10,17 +10,26 @@
 // authority, and these are the tests that hold it to being so.
 
 import assert from "node:assert";
-import { currentRoute, pageIdentity, resolveContext } from "./context.mjs";
+import {
+	classifyRoute,
+	currentRoute,
+	describeListFilters,
+	pageIdentity,
+	renderListFilters,
+	resolveContext,
+} from "./context.mjs";
 
 /**
  * A Desk, as far as the widget is concerned.
  *
- * @param {object} parts the route, the selection and the open document
+ * @param {object} parts the route, the selection, the open document and
+ *   the list view
  */
-function desk({ route, frm = null, selection = "" }) {
+function desk({ route, frm = null, list = null, selection = "" }) {
 	global.window = {
 		frappe: { get_route: () => route },
 		cur_frm: frm,
+		cur_list: list,
 		getSelection: () => (selection ? { toString: () => selection } : null),
 	};
 }
@@ -30,6 +39,15 @@ const invoice = {
 	doctype: "Sales Invoice",
 	doc: { name: "ACC-SINV-2026-00001", customer: "Cafe AGRO" },
 };
+
+/** A list view, filtered and counted. */
+function listView(doctype, filters, count) {
+	return {
+		doctype,
+		total_count: count,
+		get_filters_for_args: () => filters,
+	};
+}
 
 // The route is joined with slashes, not commas.
 {
@@ -118,3 +136,111 @@ const invoice = {
 }
 
 console.log("context: all assertions passed");
+
+// The route says what kind of page this is.
+{
+	assert.equal(classifyRoute("Form/Sales Invoice/ACC-SINV-2026-00001"), "form");
+	assert.equal(classifyRoute("List/Customer/List"), "list");
+	assert.equal(classifyRoute("List/Customer/Report"), "other", "a report is not a list");
+	assert.equal(classifyRoute("Workspaces/Home"), "other");
+	assert.equal(classifyRoute(""), "other");
+}
+
+// A list's filters are the ones the reader applied, and the rows are the
+// rows the list shows.  Without them the assistant answers about the
+// whole table rather than about the table on the screen.
+{
+	desk({
+		route: ["List", "Sales Order", "List"],
+		list: listView("Sales Order", [["Sales Order", "status", "=", "To Deliver"]], 24),
+	});
+	const context = resolveContext();
+
+	assert.equal(context.doctype, "Sales Order");
+	assert.equal(context.filters, "status = To Deliver");
+	assert.equal(context.rows, 24);
+}
+
+// A list view that cannot say what it is filtered by is a list whose
+// filters are unknown — not a list with no filters.
+{
+	desk({
+		route: ["List", "Sales Order", "List"],
+		list: {
+			doctype: "Sales Order",
+			total_count: 3,
+			get_filters_for_args: () => {
+				throw new Error("no filters here");
+			},
+		},
+	});
+	const context = resolveContext();
+
+	assert.equal(context.filters, "");
+	assert.equal(context.rows, 3);
+}
+
+// A list the reader has walked away from must not describe the page.
+//
+// `cur_list` is cleared when the doctype changes and not otherwise, so
+// on the form the reader walked to it still holds the list they walked
+// away from — the same trap as `cur_frm`.
+{
+	desk({
+		route: ["Form", "Sales Invoice", "ACC-SINV-2026-00001"],
+		frm: invoice,
+		list: listView("Customer", [["Customer", "name", "like", "%Cafe%"]], 12),
+	});
+	const context = resolveContext();
+
+	assert.equal(context.filters, "", "a stale list must not filter the page");
+	assert.equal(context.rows, 0);
+	assert.equal(context.doctype, "Sales Invoice", "the form still names the page");
+}
+
+// A list's identity is its route — the description grows, and a
+// conversation scoped by a growing description would be re-scoped every
+// time it grows.
+{
+	desk({
+		route: ["List", "Sales Order", "List"],
+		list: listView("Sales Order", [["Sales Order", "status", "=", "To Deliver"]], 24),
+	});
+	const context = resolveContext();
+
+	assert.equal(pageIdentity(context), "List/Sales Order/List");
+}
+
+// A form's identity is the document.
+{
+	desk({ route: ["Form", "Sales Invoice", "ACC-SINV-2026-00001"], frm: invoice });
+	assert.equal(pageIdentity(resolveContext()), "form|Sales Invoice|ACC-SINV-2026-00001");
+}
+
+// The filters are normalised: a row with no field is dropped, the
+// operator defaults to "=", and a value is carried on one line.
+{
+	const rows = describeListFilters([
+		["Sales Order", "status", "=", "To Deliver"],
+		["Sales Order", "", "=", "ignored"],
+		["Sales Order", "company", "", "Albanna"],
+		"not a row",
+	]);
+	assert.deepEqual(rows, [
+		{ field: "status", op: "=", value: "To Deliver" },
+		{ field: "company", op: "=", value: "Albanna" },
+	]);
+	assert.equal(renderListFilters(rows), "status = To Deliver; company = Albanna");
+	assert.equal(renderListFilters([]), "");
+	assert.equal(renderListFilters(null), "");
+}
+
+// The filters are capped, because a list can carry a hundred of them and
+// a model does not need them.
+{
+	const many = [];
+	for (let index = 0; index < 40; index += 1) {
+		many.push(["Sales Order", `field_${index}`, "=", String(index)]);
+	}
+	assert.equal(describeListFilters(many).length, 20);
+}
