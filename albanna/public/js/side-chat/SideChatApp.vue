@@ -30,7 +30,7 @@ import Composer from "./Composer.vue";
 import ConversationDrawer from "./ConversationDrawer.vue";
 import { pageIdentity, resolveContext } from "./context.mjs";
 import { clockTime } from "./format.mjs";
-import { hasTable, renderMarkdown, tableAsTsv } from "./markdown.js";
+import { hasTable, renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js";
 import { watchRoute } from "./page.mjs";
 import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
 import { takeRetryQuestion } from "./retry.mjs";
@@ -848,6 +848,44 @@ async function copyTable(message) {
 }
 
 /**
+ * Download the table in the answer, as a CSV.
+ *
+ * Copying puts the table on the clipboard, which is where a table goes
+ * when it is going into a spreadsheet that is already open.  Sometimes
+ * the reader wants the file itself — to attach to something, or to keep.
+ *
+ * The file is built here, in the browser, because the answer is already
+ * here: the table is in the markdown the model wrote, and a round trip
+ * to the server would move text that never needed to move.
+ *
+ * @param {object} message the message
+ */
+function downloadTable(message) {
+	const text = tableAsCsv(message.content);
+	if (!text) {
+		state.notice = "no-table";
+		return;
+	}
+
+	try {
+		// A byte order mark, so that a spreadsheet opens the Arabic in
+		// the right order: without it, the columns are read right to
+		// left and the numbers are not numbers.
+		const blob = new Blob(["\ufeff" + text], { type: "text/csv;charset=utf-8" });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = "table.csv";
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		URL.revokeObjectURL(url);
+	} catch (failure) {
+		state.notice = "copy-failed";
+	}
+}
+
+/**
  * Copy an answer.
  *
  * @param {object} message the message
@@ -1445,6 +1483,16 @@ onBeforeUnmount(() => {
 							@click="copyTable(message)"
 						>
 							{{ copiedTableId === message.id ? __("Copied") : __("Copy table") }}
+						</button>
+						<button
+							v-if="message.role === 'assistant' && message.hasTable"
+							type="button"
+							class="albanna-chat__copy albanna-chat__copy--table"
+							:aria-label="__('Download the table')"
+							:title="__('Download the table')"
+							@click="downloadTable(message)"
+						>
+							{{ __("Download") }}
 						</button>
 						<button
 							v-if="message.role === 'user' && message.name"

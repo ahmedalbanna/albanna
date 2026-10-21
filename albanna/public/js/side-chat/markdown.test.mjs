@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { escapeHtml, hasTable, renderMarkdown, tableAsTsv } from "./markdown.js";
+import { escapeHtml, hasTable, renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js";
 
 assert.equal(escapeHtml("<b>&'\"</b>"), "&lt;b&gt;&amp;&#39;&quot;&lt;/b&gt;");
 
@@ -214,3 +214,36 @@ assert.equal(renderMarkdown(""), "");
 assert.equal(renderMarkdown(null), "");
 
 console.log("markdown: all assertions passed");
+
+// The table, as a file the reader can open.
+{
+	const answer = [
+		"## أوامر البيع المفتوحة",
+		"",
+		"| الحالة | العدد | الإجمالي |",
+		"|---|---|---|",
+		"| To Deliver | 6 | 666,450 |",
+		"| **الإجمالي** | 24 | 4,401,850 |",
+	].join("\n");
+
+	// A number with a thousands separator carries a comma, so it is
+	// quoted: a spreadsheet reads it as one cell, not as two.
+	assert.equal(
+		tableAsCsv(answer),
+		'الحالة,العدد,الإجمالي\nTo Deliver,6,"666,450"\nالإجمالي,24,"4,401,850"',
+	);
+}
+
+// A cell that carries a comma or a quote is quoted, and the quote is
+// doubled inside it — the rules a spreadsheet reads.
+{
+	const answer = ["| Name | Note |", "|---|---|", '| Acme, Inc. | say "hi" |'].join("\n");
+
+	assert.equal(tableAsCsv(answer), 'Name,Note\n"Acme, Inc.","say ""hi"""');
+}
+
+// A table that is not there is not a table.
+{
+	assert.equal(tableAsCsv("no table here"), "");
+	assert.equal(tableAsCsv(null), "");
+}

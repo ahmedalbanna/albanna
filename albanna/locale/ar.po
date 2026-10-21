@@ -345,3 +345,10 @@ msgstr "اعرض الرسائل السابقة"
 
 msgid "Loading…"
 msgstr "جارٍ التحميل…"
+
+
+msgid "Download"
+msgstr "تنزيل"
+
+msgid "Download the table"
+msgstr "تنزيل الجدول"

@@ -398,7 +398,7 @@ function linkDocuments(text, documents, links) {
  * @param {string} text the answer
  * @returns {string} the table, as tab-separated values
  */
-export function tableAsTsv(text) {
+export function tableRows(text) {
 	const rows = [];
 	let inside = false;
 
@@ -423,10 +423,50 @@ export function tableAsTsv(text) {
 		// The separator row is structure, not data.
 		if (cells.every((cell) => SEPARATOR_CELL.test(cell))) continue;
 
-		rows.push(cells.join("\t"));
+		rows.push(cells);
 	}
 
-	return rows.join("\n");
+	return rows;
+}
+
+/**
+ * The table, as tab-separated values.
+ *
+ * @param {string} text the answer
+ * @returns {string} the table, as tab-separated values
+ */
+export function tableAsTsv(text) {
+	return tableRows(text)
+		.map((cells) => cells.join("\t"))
+		.join("\n");
+}
+
+/**
+ * The table, as comma-separated values.
+ *
+ * A cell that carries a comma or a quote is quoted, and the quote is
+ * doubled inside it — the rules a spreadsheet reads, so the file opens
+ * with the values in the columns rather than in one long line.
+ *
+ * @param {string} text the answer
+ * @returns {string} the table, as comma-separated values
+ */
+export function tableAsCsv(text) {
+	return tableRows(text)
+		.map((cells) => cells.map(csvCell).join(","))
+		.join("\n");
+}
+
+/**
+ * One cell, as a CSV field.
+ *
+ * @param {string} value the cell
+ * @returns {string} the field
+ */
+function csvCell(value) {
+	const text = String(value == null ? "" : value);
+	if (!/[",\n\r]/.test(text)) return text;
+	return `"${text.replace(/"/g, '""')}"`;
 }
 
 /**
