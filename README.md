@@ -230,10 +230,10 @@ Chat access starts closed: System Managers only. Roles are one per line.
 
 ### The two switches
 
-**`Allow Writes`** is off by default.  While it is off the write tool is not
-in the tool set *at all* — the model is never told it exists, so there is
-nothing for it to ask for, and a call to it by name is refused.  It is a
-kill switch for the one capability that can change the site, and it is one
+**`Allow Writes`** is off by default.  While it is off neither write tool is
+in the tool set *at all* — the model is never told they exist, so there is
+nothing for it to ask for, and a call to one by name is refused.  It is a
+kill switch for the capability that can change the site, and it is one
 click either way.
 
 **`Turns / Minute`** caps how many questions one person may ask per minute,

@@ -171,7 +171,7 @@ ACC-SINV-2026-00008".
 
 ### 11. The write capability is a switch, and it is off by default
 
-While `Allow Writes` is off the write tool is not in the tool set at all.
+While `Allow Writes` is off neither write tool is in the tool set at all.
 The model is never told it exists, so there is nothing for it to ask for,
 and a call to it by name is refused.  The system prompt's instruction not
 to write without being asked is a second line of defence, not the first.

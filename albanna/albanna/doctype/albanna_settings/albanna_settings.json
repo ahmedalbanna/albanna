@@ -252,7 +252,7 @@
   },
   {
    "default": "0",
-   "description": "Let the assistant create documents. When this is off, the write tool is not in the tool set at all — the model is never told it exists — so nothing can be created through the chat. Switch it on when you want the assistant to be able to write.",
+   "description": "Let the assistant create and change documents. When this is off, neither write tool is in the tool set at all — the model is never told they exist — so nothing can be written through the chat. Switch it on when you want the assistant to be able to write.",
    "fieldname": "allow_writes",
    "fieldtype": "Check",
    "label": "Allow Writes"
