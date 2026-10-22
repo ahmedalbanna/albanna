@@ -20,7 +20,6 @@ from typing import Any
 import frappe
 
 from albanna.core.authority import Authority
-from albanna.core.tools import TOOL_MANIFEST
 from albanna.services.toolset import tool_registry
 
 
