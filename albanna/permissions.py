@@ -6,7 +6,7 @@ things that come *before* that:
 
   * who the principal is (the session user, their roles),
   * whether they may use the chat at all,
-  * whether they may create or read a given DocType.
+  * whether they may create, change or read a given DocType.
 
 The permission checker lives here rather than in ``core/`` because it calls
 Frappe, and ``core/`` may not.
@@ -98,15 +98,14 @@ def require_chat_access() -> None:
         )
 
 
-def creatable_doctypes(user: str) -> list[str]:
-    """The DocTypes this account may create.
-
-    The answer the assistant needs *before* it starts, so it does not spend
-    a dozen calls discovering it.  A request to create a Sales Invoice,
-    made by an account that has no Accounts role, is not going to work — and
-    the assistant can know that in the first round if it is told.
+def _doctypes_for_permission(user: str, ptype: str) -> list[str]:
+    """The DocTypes this account holds *ptype* on.
 
     One query over the permission table, and it takes milliseconds.
+
+    Only the rows at the top level count: a permission recorded at a deeper
+    level (``permlevel``) is not the same right, and offering it as the way
+    in would be wrong.
     """
     try:
         roles = tuple(set(frappe.get_roles(user)) - {"Guest", "All"})
@@ -118,14 +117,40 @@ def creatable_doctypes(user: str) -> list[str]:
     try:
         names = frappe.db.sql_list(
             "select distinct parent from tabDocPerm "
-            "where role in %s and `create` = 1 and permlevel = 0",
+            f"where role in %s and `{ptype}` = 1 and permlevel = 0",
             (roles,),
         )
     except Exception:
-        logger.exception("Could not read the creatable DocTypes for %s", user)
+        logger.exception("Could not read the %s DocTypes for %s", ptype, user)
         return []
 
     return sorted({str(name) for name in names if name})
+
+
+def creatable_doctypes(user: str) -> list[str]:
+    """The DocTypes this account may create.
+
+    The answer the assistant needs *before* it starts, so it does not spend
+    a dozen calls discovering it.  A request to create a Sales Invoice,
+    made by an account that has no Accounts role, is not going to work — and
+    the assistant can know that in the first round if it is told.
+    """
+    return _doctypes_for_permission(user, "create")
+
+
+def writable_doctypes(user: str) -> list[str]:
+    """The DocTypes this account may change.
+
+    The same answer as :func:`creatable_doctypes`, asked about a different
+    right, and for the same reason: a person who says "change the phone
+    number on this customer" should not be answered with a refusal, and
+    should not have to be told what they already know.
+
+    This is a statement about *kinds* of document, not about particular
+    ones.  A User Permission can still limit the account to some rows and
+    not others, and when it does, the refusal says so.
+    """
+    return _doctypes_for_permission(user, "write")
 
 
 def current_principal() -> Principal:
@@ -153,6 +178,9 @@ class FrappePermissionChecker:
 
     def can_create(self, doctype: str) -> bool:
         return self._has_permission(doctype, "create")
+
+    def can_write(self, doctype: str) -> bool:
+        return self._has_permission(doctype, "write")
 
     def can_read(self, doctype: str) -> bool:
         return self._has_permission(doctype, "read")

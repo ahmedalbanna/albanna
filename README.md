@@ -54,8 +54,9 @@ Anthropic.  It has no other runtime dependency.
 
 ## What it does
 
-* **Five tools.** `list_docs`, `get_doc`, `get_doctype_meta`, `run_report`,
-  `create_doc`. The model is told about five tools, and only five.
+* **Six tools.** `list_docs`, `get_doc`, `get_doctype_meta`, `run_report`,
+  `create_doc`, `update_doc`. The model is told about six tools, and only
+  six.
 * **One model provider at a time, with a fallback.** OpenAI-compatible
   (OpenRouter, OpenAI, Groq, vLLM, LM Studio), Ollama, or Anthropic.
 * **A side chat, not a page.** A launcher on every Desk page; the panel
@@ -167,7 +168,7 @@ named place to change:
 `tests/test_tool_manifest.py` fails if the manifest and the adapter name
 different tools, so the first two rows of that table cannot drift.
 
-## The five tools
+## The six tools
 
 | Tool | Tier | What it does |
 |---|---|---|
@@ -176,6 +177,18 @@ different tools, so the first two rows of that table cannot drift.
 | `get_doctype_meta` | read | the fieldnames of a DocType |
 | `run_report` | read | run an ERPNext report |
 | `create_doc` | write | create a document |
+| `update_doc` | write | change the fields of a document that exists |
+
+The two writes are different rights, and the manifest says which:
+`create_doc` is authorised against Frappe's `create` permission, and
+`update_doc` against `write`. A role model that grants one does not
+necessarily grant the other.
+
+`update_doc` changes a document's **own** fields. It will not touch the
+framework's fields (`owner`, `docstatus`, `name`), it will not touch a
+read-only field, and it will not change a **submitted** document — the
+form will not let a person do that either, and the refusal says so rather
+than apologising for it.
 
 `run_sql_query` is deliberately **absent**: it bypasses Frappe's permission
 engine, including User Permissions and every row-level rule built on them.
@@ -193,11 +206,13 @@ raises are all a "no".
 A tool the user may not reach is never *mentioned* to the model, so a turn
 cannot be spent discovering that a tool is off-limits.
 
-Writes run under the caller's real permissions. The mechanism is the
-backend's own per-call-user marker, which makes the tool functions apply
-the requesting user's roles rather than Administrator's — so a Sales User
-cannot create a Sales Invoice through the chat even if the authority layer
-were bypassed, because Frappe's permission engine refuses the insert too.
+Writes run under the caller's real permissions. The tools are the app's
+own, and they call the framework's own functions — `frappe.get_list`,
+`frappe.get_doc`, `doc.insert()`, `doc.save()` — so the requesting user's
+roles and User Permissions apply to every read and every write. A Sales
+User cannot create a Sales Invoice through the chat even if the authority
+layer were bypassed, because Frappe's permission engine refuses the insert
+too.
 
 ## Configuration
 

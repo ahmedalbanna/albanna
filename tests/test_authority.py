@@ -17,14 +17,25 @@ from albanna.core.tools import CREATE_DOC, GET_DOC, LIST_DOCS, TOOL_MANIFEST, To
 class Checker:
     """A permission checker that answers from a fixed table."""
 
-    def __init__(self, creatable: set[str] | None = None, raises: bool = False):
+    def __init__(
+        self,
+        creatable: set[str] | None = None,
+        writable: set[str] | None = None,
+        raises: bool = False,
+    ):
         self.creatable = creatable or set()
+        self.writable = writable or set()
         self.raises = raises
 
     def can_create(self, doctype: str) -> bool:
         if self.raises:
             raise RuntimeError("the permission engine is on fire")
         return doctype in self.creatable
+
+    def can_write(self, doctype: str) -> bool:
+        if self.raises:
+            raise RuntimeError("the permission engine is on fire")
+        return doctype in self.writable
 
     def can_read(self, doctype: str) -> bool:
         if self.raises:
@@ -100,6 +111,59 @@ def test_a_write_tool_is_allowed_when_the_user_may_create_the_doctype():
     assert decision.allowed
 
 
+def test_an_update_is_refused_when_the_user_may_not_write_the_doctype():
+    """Changing a document is checked against the *write* permission.
+
+    Not the create permission: a role model that grants one does not
+    necessarily grant the other, and asking the wrong question is how a
+    write path ends up more permissive than it was meant to be.
+    """
+    authority = Authority(
+        TOOL_MANIFEST,
+        principal(),
+        Checker(creatable={"Sales Invoice"}, writable=set()),
+    )
+    decision = authority.authorize(
+        "update_doc",
+        {"doctype": "Sales Invoice", "name": "ACC-SINV-0001", "data": {"remarks": "x"}},
+    )
+    assert not decision.allowed
+    assert decision.code == "not_permitted"
+
+
+def test_an_update_is_allowed_when_the_user_may_write_the_doctype():
+    authority = Authority(
+        TOOL_MANIFEST,
+        principal(),
+        Checker(creatable=set(), writable={"Customer"}),
+    )
+    decision = authority.authorize(
+        "update_doc",
+        {"doctype": "Customer", "name": "CUST-0001", "data": {"customer_name": "x"}},
+    )
+    assert decision.allowed
+
+
+def test_the_refusal_for_an_update_asks_for_an_edit_and_not_a_creation():
+    """The refusal names the right the caller does not hold.
+
+    "Creating a 'Customer' is done by these roles" would be the wrong
+    sentence entirely when the assistant was asked to *change* one.
+    """
+    authority = Authority(
+        TOOL_MANIFEST,
+        principal(),
+        Checker(creatable={"Customer"}, writable=set()),
+    )
+    decision = authority.authorize(
+        "update_doc",
+        {"doctype": "Customer", "name": "CUST-0001", "data": {"customer_name": "x"}},
+    )
+    assert not decision.allowed
+    assert "Editing a 'Customer'" in decision.reason
+    assert "create" not in decision.reason.lower()
+
+
 def test_a_broken_permission_checker_denies_rather_than_allows():
     authority = Authority(TOOL_MANIFEST, principal(), Checker(raises=True))
     decision = authority.authorize("create_doc", {"doctype": "Item", "data": {}})
@@ -107,9 +171,29 @@ def test_a_broken_permission_checker_denies_rather_than_allows():
     assert decision.code == "permission_check_failed"
 
 
+def test_a_broken_permission_checker_denies_an_update_rather_than_allows():
+    authority = Authority(TOOL_MANIFEST, principal(), Checker(raises=True))
+    decision = authority.authorize(
+        "update_doc",
+        {"doctype": "Item", "name": "X", "data": {"description": "x"}},
+    )
+    assert not decision.allowed
+    assert decision.code == "permission_check_failed"
+
+
 def test_without_a_checker_a_write_tool_is_refused():
     authority = Authority(TOOL_MANIFEST, principal(), None)
     decision = authority.authorize("create_doc", {"doctype": "Item", "data": {}})
+    assert not decision.allowed
+    assert decision.code == "no_permission_checker"
+
+
+def test_without_a_checker_an_update_is_refused():
+    authority = Authority(TOOL_MANIFEST, principal(), None)
+    decision = authority.authorize(
+        "update_doc",
+        {"doctype": "Item", "name": "X", "data": {"description": "x"}},
+    )
     assert not decision.allowed
     assert decision.code == "no_permission_checker"
 

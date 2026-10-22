@@ -13,7 +13,10 @@ the side chat can reach:
                            (``required_roles``); which argument names the
                            target DocType, when the permission of the call
                            depends on a document the arguments choose
-                           (``doctype_arg``))
+                           (``doctype_arg``); and which *right* a write is
+                           authorised against (``write_permission`` — the
+                           Frappe permission type: ``create`` makes a new
+                           document, ``write`` changes an existing one)
 
 Why the manifest lives here and the implementations live elsewhere
 -----------------------------------------------------------------
@@ -61,6 +64,7 @@ class ToolSpec:
     tier: str = READ
     required_roles: tuple[str, ...] = ()
     doctype_arg: str = ""
+    write_permission: str = "create"
     max_result_chars: int = MAX_RESULT_CHARS
     enabled: bool = True
 
@@ -148,6 +152,7 @@ class ToolRegistry:
                 tier=spec.tier,
                 required_roles=spec.required_roles,
                 doctype_arg=spec.doctype_arg,
+                write_permission=spec.write_permission,
                 max_result_chars=spec.max_result_chars,
                 enabled=enabled.get(spec.name, spec.enabled),
             )
@@ -158,10 +163,18 @@ class ToolRegistry:
 # --------------------------------------------------------------------------
 # The manifest.
 #
-# The five tools are the whole surface.  They were chosen to cover the three
+# The six tools are the whole surface.  They were chosen to cover the three
 # questions a side chat actually gets asked — *what do I have*, *what is this
-# one*, and *what does the numbers say* — plus one write, so the write path
-# exists and is exercised from the first release.
+# one*, and *what does the numbers say* — plus the three things a person
+# actually asks a desk to *do*: make it, change it, and put it live.
+#
+# The two writes are deliberately different kinds of write, and the manifest
+# says which: ``create_doc`` is authorised against the ``create`` permission
+# and makes a new document; ``update_doc`` is authorised against ``write``
+# and changes one that already exists.  A tool set that could only make
+# things and never change them would leave the person who mistyped a field
+# with no way to fix it, and they would ask — and they would ask of the
+# assistant, because it is the one that made the mistake.
 #
 # Deliberately absent:
 #
@@ -411,8 +424,68 @@ CREATE_DOC = ToolSpec(
     doctype_arg="doctype",
 )
 
+UPDATE_DOC = ToolSpec(
+    name="update_doc",
+    description=(
+        "Change the fields of a document that already exists. Use this when "
+        "the user names a document and asks for something to be different — "
+        "a customer's phone number, an item's description, a sales order's "
+        "delivery date. Give only the fields that should change; every other "
+        "field is left exactly as it is. A submitted document cannot be "
+        "edited this way — it has to be cancelled and amended, which this "
+        "tool does not do. Say so rather than trying. Never change a field "
+        "the user did not ask about, and never change a document the user "
+        "did not name."
+    ),
+    parameters={
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "doctype": {
+                "type": "string",
+                "description": (
+                    "The DocType of the document to change, e.g. 'Customer', "
+                    "'Item', 'Sales Order'."
+                ),
+            },
+            "name": {
+                "type": "string",
+                "description": (
+                    "The document's name, exactly as the site knows it — e.g. "
+                    "'SAL-ORD-00042'. Get it from list_docs or get_doc; do "
+                    "not guess it."
+                ),
+            },
+            "data": {
+                "type": "object",
+                "description": (
+                    "The field values to change, as an object. Give only the "
+                    "fields to change, using the fieldnames from "
+                    "get_doctype_meta. A field that is read-only, or that "
+                    "the framework owns, is refused."
+                ),
+                "additionalProperties": True,
+            },
+            "submit": {
+                "type": "boolean",
+                "description": (
+                    "Submit the document after the change, for a submittable "
+                    "DocType that is still in draft. Only when the user asked "
+                    "for a submitted document."
+                ),
+            },
+        },
+        "required": ["doctype", "name", "data"],
+    },
+    tier=WRITE,
+    doctype_arg="doctype",
+    write_permission="write",
+)
+
 #: Every tool the app knows about.
-TOOL_MANIFEST = ToolRegistry([LIST_DOCS, GET_DOC, GET_DOCTYPE_META, RUN_REPORT, CREATE_DOC])
+TOOL_MANIFEST = ToolRegistry(
+    [LIST_DOCS, GET_DOC, GET_DOCTYPE_META, RUN_REPORT, CREATE_DOC, UPDATE_DOC]
+)
 
 
 def truncate_result(text: str, max_chars: int = MAX_RESULT_CHARS) -> str:

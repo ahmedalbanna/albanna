@@ -9,21 +9,22 @@ another author — so the version this app needs can never be installed by a
 site that was not handed it by hand.  An app that cannot be installed is not
 an app.
 
-So the five tools are implemented here, against the framework's own APIs.
+So the six tools are implemented here, against the framework's own APIs.
 They are the small part of that project this app ever used, and they return
 the same envelopes the chat service already speaks:
 ``{"status", "message", "data", "hints"}``.
 
 The permissions are the framework's, and they are the *caller's*: a read
 goes through ``frappe.get_list``/``frappe.get_doc``, which apply the
-caller's roles and User Permissions, and a write goes through
-``doc.insert()``, which applies the caller's create permission.  Nothing
-here bypasses the permission engine.
+caller's roles and User Permissions; a write goes through ``doc.insert()``
+or ``doc.save()``, which apply the caller's create or write permission.
+Nothing here bypasses the permission engine.
 """
 
 from __future__ import annotations
 
 import difflib
+import itertools
 import json
 import logging
 from typing import Any
@@ -52,8 +53,36 @@ STANDARD_DOC_FIELDS = frozenset(
     }
 )
 
+#: The fields the framework owns.
+#:
+#: They are not the assistant's to set, and a document whose ``owner`` or
+#: ``docstatus`` had been rewritten by a chat would be a document nobody
+#: could reason about afterwards.  ``name`` is here for a second reason:
+#: ``Document.update()`` assigns ``name`` *first*, so a data object that
+#: carried one would rename the document rather than change it.
+PROTECTED_FIELDS = frozenset(
+    {
+        "name",
+        "doctype",
+        "owner",
+        "creation",
+        "modified",
+        "modified_by",
+        "docstatus",
+        "amended_from",
+        "parent",
+        "parenttype",
+        "parentfield",
+        "idx",
+    }
+)
+
 #: The largest a listing may return.
 MAX_LIMIT = 500
+
+#: The savepoints are numbered, because a savepoint name can only be used
+#: once in a transaction: a second attempt with the same name is an error.
+_savepoints = itertools.count(1)
 
 
 # --------------------------------------------------------------------------
@@ -143,6 +172,43 @@ def _validate_fields(meta, doctype: str, fields: list[str]) -> str | None:
         doctype=doctype,
         actionable="Call get_doctype_meta for this DocType to see its fieldnames.",
     )
+
+
+def _savepoint(label: str) -> str:
+    """Take a savepoint for this write, and name it.
+
+    The savepoint is *taken* here, not merely named: a name that was
+    never created cannot be rolled back to, and a rollback that fails
+    quietly leaves the failed write's state in the transaction.
+
+    The label is part of the name so that a failure to roll back says
+    *which* write it was — a name nobody can read is a name nobody can
+    act on.
+    """
+    name = f"albanna_{label}_{next(_savepoints)}"
+    frappe.db.savepoint(name)
+    return name
+
+
+def _rollback_to(savepoint: str) -> None:
+    """Undo this write, and only this write.
+
+    A rollback is transaction-wide unless it is given a savepoint, and a
+    transaction-wide rollback in the middle of a turn undoes *everything*
+    the turn has done so far — including a document the assistant has
+    already told the reader it created.  So every write takes a savepoint
+    first, and a failure rolls back to it.
+
+    Only the database is undone: a savepoint does not run Frappe's rollback
+    watchers.  Nothing here writes to the filesystem.
+    """
+    try:
+        frappe.db.rollback(save_point=savepoint)
+    except Exception:
+        # The savepoint is gone when the transaction was committed or
+        # rolled back underneath it — a report that commits, say.  There is
+        # then nothing left to undo, so this is not a failure of the write.
+        logger.warning("Could not roll back to the savepoint %s", savepoint, exc_info=True)
 
 
 def _normalise_filters(filters: Any) -> list:
@@ -324,13 +390,17 @@ def run_report(
         return bounds
     limit, offset = bounds
 
+    # A report is a read, and some reports write as they go.  The savepoint
+    # is what lets those writes be discarded without a transaction-wide
+    # rollback undoing the turn's own writes.
+    savepoint = _savepoint("run_report")
     try:
         raw = _execute_report(report_doc, report_filters)
     except Exception as exc:
+        _rollback_to(savepoint)
         return error(f"Report '{report}' failed: {exc}", report=report)
 
-    # A report is a read; it must not leave a transaction open.
-    frappe.db.rollback()
+    _rollback_to(savepoint)
 
     columns, rows = _report_shape(raw)
     formatted = _as_dicts(columns, rows)
@@ -495,33 +565,34 @@ def create_doc(doctype: str, data: Any, submit: bool = False) -> str:
         return error("A doctype is required.")
     if not isinstance(data, dict) or not data:
         return error("The document's data is required, as an object of field values.")
+    if "doctype" in data:
+        # The DocType is the first argument, and the authority layer
+        # authorised *that* one.  A DocType inside the data would be a
+        # second, unchecked answer to the same question.
+        return error(
+            "The document's data must not name a doctype: the doctype is the "
+            "first argument.",
+            doctype=doctype,
+        )
 
+    savepoint = _savepoint("create_doc")
     try:
         document = frappe.get_doc({"doctype": doctype, **data})
         document.insert()
-    except frappe.PermissionError as exc:
-        return error(
-            f"Failed to create {doctype}: {exc}",
-            doctype=doctype,
-            actionable="This account may not create this kind of document.",
-        )
-    except frappe.DuplicateEntryError as exc:
-        frappe.db.rollback()
-        return error(f"Duplicate entry: {exc}", doctype=doctype)
-    except frappe.ValidationError as exc:
-        frappe.db.rollback()
-        return error(f"Validation failed: {exc}", doctype=doctype)
     except Exception as exc:
-        frappe.db.rollback()
-        return error(f"Failed to create {doctype}: {exc}", doctype=doctype)
+        return _create_refusal(exc, doctype, savepoint)
 
     submitted = False
     if submit:
+        # A savepoint of its own, taken after the insert: rolling back to
+        # the insert's savepoint would undo the creation as well, and the
+        # message below says the document was created.
+        submit_savepoint = _savepoint("create_submit")
         try:
             document.submit()
             submitted = True
         except Exception as exc:
-            frappe.db.rollback()
+            _rollback_to(submit_savepoint)
             return error(f"Created {doctype} '{document.name}' but could not submit it: {exc}", doctype=doctype)
 
     message = f"Created {doctype} '{document.name}'"
@@ -533,6 +604,297 @@ def create_doc(doctype: str, data: Any, submit: bool = False) -> str:
         doctype=doctype,
         name=document.name,
     )
+
+
+def _create_refusal(exc: Exception, doctype: str, savepoint: str) -> str:
+    """The envelope for a create that failed.
+
+    The order of the tests is the order of the exception classes:
+    ``DuplicateEntryError`` is a ``ValidationError``, and a duplicate is
+    worth more to the reader than "validation failed".
+    """
+    _rollback_to(savepoint)
+
+    if isinstance(exc, frappe.PermissionError):
+        return error(
+            f"Failed to create {doctype}: {exc}",
+            doctype=doctype,
+            actionable="This account may not create this kind of document.",
+        )
+    if isinstance(exc, frappe.DuplicateEntryError):
+        return error(f"Duplicate entry: {exc}", doctype=doctype)
+    if isinstance(exc, frappe.ValidationError):
+        return error(f"Validation failed: {exc}", doctype=doctype)
+    return error(f"Failed to create {doctype}: {exc}", doctype=doctype)
+
+
+def update_doc(doctype: str, name: str, data: Any, submit: bool = False) -> str:
+    """Change the fields of a document that already exists.
+
+    Args:
+        doctype: The DocType of the document, e.g. "Customer".
+        name: The document's name, e.g. "CUST-0001".
+        data: The field values to change, as an object.
+        submit: Submit it afterwards, for a submittable DocType in draft.
+    """
+    if not doctype:
+        return error("A doctype is required.")
+    if not name:
+        return error("A document name is required.")
+    if not isinstance(data, dict) or not data:
+        return error("The changes are required, as an object of field values.")
+
+    document = _load_for_update(doctype, name, data)
+    if isinstance(document, str):
+        return document
+
+    if document.docstatus:
+        # A submitted document is read-only in the form, and the framework
+        # would let a server-side save rewrite it: the guard is in the
+        # client, not in `db_update`.  So the guard is here, where the chat
+        # can state it, and the answer names the way a person does it.
+        return error(
+            f"{doctype} '{name}' is submitted and cannot be changed.",
+            doctype=doctype,
+            name=name,
+            actionable=(
+                "A submitted document is changed by cancelling it and amending "
+                "it, which this tool does not do. Say so rather than trying "
+                "again."
+            ),
+        )
+
+    changes = _actual_changes(document, data)
+    if not changes:
+        return ok(
+            f"{doctype} '{name}' already has those values; nothing was changed.",
+            data={"doctype": doctype, "name": name, "changed": {}},
+            doctype=doctype,
+            name=name,
+        )
+
+    lines_before = _table_lengths(document, changes)
+
+    refusal = _apply_update(document, changes, doctype, name)
+    if refusal is not None:
+        return refusal
+
+    submitted = False
+    if submit:
+        refusal = _submit_update(document, doctype, name)
+        if refusal is not None:
+            return refusal
+        submitted = True
+
+    return ok(
+        _update_message(doctype, name, changes, document, lines_before, submitted),
+        data={
+            "doctype": doctype,
+            "name": name,
+            "changed": changes,
+            "submitted": submitted,
+        },
+        doctype=doctype,
+        name=name,
+    )
+
+
+def _load_for_update(doctype: str, name: str, data: dict[str, Any]):
+    """The document to change, or an error envelope saying why there is not one.
+
+    The refusals that do not need the document come first: a field that does
+    not exist, a field the framework owns, a field the form would not let a
+    person change.  They are cheaper, and they are the ones a model most
+    often gets wrong.
+    """
+    meta = _meta(doctype)
+    if isinstance(meta, str):
+        return meta
+
+    invalid = _validate_fields(meta, doctype, list(data))
+    if invalid:
+        return invalid
+
+    protected = sorted(set(data) & PROTECTED_FIELDS)
+    if protected:
+        return error(
+            f"These field(s) belong to the framework and cannot be set: "
+            f"{', '.join(protected)}.",
+            doctype=doctype,
+            name=name,
+            actionable="Give only the fields the user asked to change.",
+        )
+
+    readonly = _read_only_fields(meta, data)
+    if readonly:
+        return error(
+            f"These field(s) are read-only and cannot be changed: "
+            f"{', '.join(readonly)}.",
+            doctype=doctype,
+            name=name,
+            actionable="Give only the fields the user asked to change.",
+        )
+
+    try:
+        return frappe.get_doc(doctype, name)
+    except frappe.DoesNotExistError:
+        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
+    except Exception as exc:
+        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+
+
+def _apply_update(document, changes: dict[str, Any], doctype: str, name: str) -> str | None:
+    """Save the change, or say why it could not be saved.
+
+    ``None`` means it saved.  The refusals name what happened, because a
+    failure the model cannot act on is a failure it will retry identically.
+    """
+    savepoint = _savepoint("update_doc")
+    try:
+        # `update` assigns `name` first when it is present, so it is never
+        # present: the protected fields were refused above.
+        document.update(changes)
+        document.save()
+    except frappe.PermissionError as exc:
+        _rollback_to(savepoint)
+        return error(
+            f"Failed to update {doctype} '{name}': {exc}",
+            doctype=doctype,
+            name=name,
+            actionable=(
+                "This account's roles allow this kind of document but not this "
+                "one — a User Permission limits which rows it may change. Say "
+                "that as a fact about the account, and do not apologise for it."
+            ),
+        )
+    except frappe.ValidationError as exc:
+        _rollback_to(savepoint)
+        return error(
+            f"Validation failed for {doctype} '{name}': {exc}",
+            doctype=doctype,
+            name=name,
+        )
+    except Exception as exc:
+        _rollback_to(savepoint)
+        return error(f"Failed to update {doctype} '{name}': {exc}", doctype=doctype, name=name)
+    return None
+
+
+def _submit_update(document, doctype: str, name: str) -> str | None:
+    """Submit the changed document, or say why it could not be submitted.
+
+    The savepoint is taken *after* the change was saved, so a failure here
+    undoes the submission and leaves the change — which is what the message
+    says.
+    """
+    savepoint = _savepoint("update_submit")
+    try:
+        document.submit()
+    except Exception as exc:
+        _rollback_to(savepoint)
+        return error(
+            f"Updated {doctype} '{name}' but could not submit it: {exc}",
+            doctype=doctype,
+            name=name,
+        )
+    return None
+
+
+def _read_only_fields(meta, data: dict[str, Any]) -> list[str]:
+    """The fields in *data* that the DocType marks read-only.
+
+    A read-only field is a field the *form* will not let a person change.
+    The chat must not be a way around that: it would make the assistant the
+    only actor on the site who can set a field nobody else can.
+    """
+    readonly = []
+    for field in data:
+        try:
+            field_def = meta.get_field(field)
+        except Exception:
+            continue
+        if field_def is None:
+            continue
+        if getattr(field_def, "read_only", 0):
+            readonly.append(field)
+    return sorted(readonly)
+
+
+def _actual_changes(document, data: dict[str, Any]) -> dict[str, Any]:
+    """The values in *data* that are not already the document's.
+
+    A change that changes nothing is not a change.  Saving a document to
+    write the value it already has would touch its modified timestamp, run
+    every hook on it, and tell the reader that something was done when
+    nothing was.
+    """
+    changes = {}
+    for field, value in data.items():
+        if _same(document.get(field), value):
+            continue
+        changes[field] = value
+    return changes
+
+
+def _same(current: Any, value: Any) -> bool:
+    """Whether a value is already the document's.
+
+    Compared as text, because the model sends text and the document holds
+    whatever the framework keeps: a date is a ``date`` in one and a string
+    in the other, and "2026-10-21" is the same date either way.
+    """
+    if current is None or current == "":
+        return value is None or value == ""
+    if value is None or value == "":
+        return False
+    return str(current) == str(value)
+
+
+def _table_lengths(document, data: dict[str, Any]) -> dict[str, int]:
+    """How many lines each table field in *data* has.
+
+    A table field is replaced whole, so the number of lines before and
+    after is the only way to say plainly what the change did.
+    """
+    lengths = {}
+    for field in data:
+        value = document.get(field)
+        if isinstance(value, list):
+            lengths[field] = len(value)
+    return lengths
+
+
+def _update_message(
+    doctype: str,
+    name: str,
+    changes: dict[str, Any],
+    document,
+    lines_before: dict[str, int],
+    submitted: bool,
+) -> str:
+    """What the update did, in a sentence the reader can check.
+
+    The changed fields are named, because "something was updated" is not
+    something anybody can check, and a table that lost a line is named too,
+    because a replacement is not a change of one field.
+    """
+    message = f"Updated {doctype} '{name}': {', '.join(sorted(changes))}"
+
+    for field in sorted(lines_before):
+        before = lines_before.get(field, 0)
+        after = len(document.get(field) or [])
+        if after == before:
+            continue
+        message += f". Replaced the {before} line(s) of '{field}' with {after}"
+        if after < before:
+            message += (
+                f" — the {before - after} line(s) that were not in the new "
+                f"list are gone"
+            )
+
+    if submitted:
+        message += ", and submitted it"
+    return message
 
 
 def list_doctypes(

@@ -39,6 +39,7 @@ _BOUND_TOOLS: dict[str, Callable[..., str]] = {
     "get_doctype_meta": erpnext.get_doctype_meta,
     "run_report": erpnext.run_report,
     "create_doc": erpnext.create_doc,
+    "update_doc": erpnext.update_doc,
 }
 
 

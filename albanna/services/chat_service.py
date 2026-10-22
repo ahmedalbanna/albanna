@@ -167,6 +167,7 @@ class ChatService:
             FrappePermissionChecker,
             creatable_doctypes,
             current_principal,
+            writable_doctypes,
         )
         from albanna.services.conversation_service import (
             append_messages,
@@ -204,6 +205,7 @@ class ChatService:
             currency=default_currency(company),
             user=principal.user,
             creatable=tuple(creatable_doctypes(principal.user)),
+            writable=tuple(writable_doctypes(principal.user)),
             page_context=request.page_context,
         )
 

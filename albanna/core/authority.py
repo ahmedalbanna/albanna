@@ -18,11 +18,16 @@ The answer does not depend on what the model asked for, so it is computed
 once per turn and used to decide what the model is even told about.
 
 *Authorisation* is dynamic.  It asks whether this person may make *this*
-call.  A write tool names its target in the arguments — ``create_doc``
-carries a ``doctype`` — and whether the person may create a Sales Invoice is
-a different question from whether they may create a Customer.  The answer
-depends on the arguments, so it is computed per call, against the DocType
-the arguments selected.
+call.  A write tool names its target in the arguments — ``create_doc`` and
+``update_doc`` both carry a ``doctype`` — and whether the person may create
+a Sales Invoice is a different question from whether they may create a
+Customer.  The answer depends on the arguments, so it is computed per call,
+against the DocType the arguments selected.
+
+The two kinds of write are authorised against different rights.
+``create_doc`` is checked against ``create`` and ``update_doc`` against
+``write``, because a role model that grants one does not necessarily grant
+the other.
 
 The rule that falls out of this, and that the chat service obeys: a tool the
 principal may not reach is never mentioned to the model.  Not "mentioned and
@@ -73,6 +78,16 @@ class PermissionChecker(Protocol):
         """True when the principal may create a document of *doctype*."""
         ...
 
+    def can_write(self, doctype: str) -> bool:
+        """True when the principal may change documents of *doctype*.
+
+        The same question as :meth:`can_create`, asked about a different
+        right.  Creating a Sales Invoice and changing one are different
+        permissions, and a role model that grants the first does not
+        necessarily grant the second.
+        """
+        ...
+
     def can_read(self, doctype: str) -> bool:
         """True when the principal may read documents of *doctype*."""
         ...
@@ -86,6 +101,23 @@ class PermissionChecker(Protocol):
         the assistant can state plainly, without apologising for anything.
         """
         ...
+
+
+#: How each kind of write is named when it is refused.
+#:
+#: A refusal is handed to the *model*, which then tells the reader, so the
+#: wording has to be a fact about the organisation rather than a failure of
+#: the assistant.  "Creating a 'Sales Invoice' is done by these roles" is a
+#: fact; "you may not create this" is a wall.
+WRITE_VERBS = {
+    "create": {"infinitive": "create", "verb": "Creating", "participle": "created"},
+    "write": {"infinitive": "edit", "verb": "Editing", "participle": "changed"},
+}
+
+
+def write_verb(ptype: str) -> dict[str, str]:
+    """The vocabulary for a write authorised against *ptype*."""
+    return WRITE_VERBS.get(ptype, WRITE_VERBS["create"])
 
 
 @dataclass(frozen=True)
@@ -222,56 +254,70 @@ class Authority:
             )
 
         doctype = doctype.strip()
+        verb = write_verb(spec.write_permission)
+
         if self._checker is None:
             return Decision.deny(
                 "no_permission_checker",
-                f"Cannot establish whether '{doctype}' may be created.",
+                f"Cannot establish whether '{doctype}' may be "
+                f"{verb['infinitive']}ed.",
             )
 
         try:
-            allowed = self._checker.can_create(doctype)
+            if spec.write_permission == "create":
+                allowed = self._checker.can_create(doctype)
+            else:
+                allowed = self._checker.can_write(doctype)
         except Exception:
             # A checker that fails is a checker that says no.  Letting the
             # exception through would turn a broken permission query into an
             # open door.
             return Decision.deny(
                 "permission_check_failed",
-                f"Could not establish permission to create '{doctype}'.",
+                f"Could not establish permission to {verb['infinitive']} "
+                f"'{doctype}'.",
             )
 
         if not allowed:
             return Decision.deny(
                 "not_permitted",
-                self._refusal(spec.name, doctype),
+                self._refusal(spec.name, doctype, spec.write_permission),
             )
 
         return Decision.allow()
 
-    def _refusal(self, tool: str, doctype: str) -> str:
+    def _refusal(self, tool: str, doctype: str, ptype: str = "create") -> str:
         """Why the write was refused, stated as a fact.
 
         The wording matters more here than anywhere else in the app.  This
         string is handed to the *model*, which then tells the reader.  If it
         reads like the assistant's own failure, the assistant apologises for
         it, and the reader concludes the tool is broken.  It is not: it is a
-        fact about who may create this kind of document, and the reader is
+        fact about who may change this kind of document, and the reader is
         told it as one — with the roles that could, so the answer is
         actionable.
+
+        The wording follows the kind of write: a refused *edit* is not a
+        refused *creation*, and telling the reader they may not create a
+        document when the assistant tried to change one is its own small
+        kind of wrong.
         """
-        roles = self.roles_for(doctype, "create")
+        verb = write_verb(ptype)
+        roles = self.roles_for(doctype, ptype)
 
         if roles:
             listed = ", ".join(roles)
             return (
-                f"Creating a '{doctype}' is done by these roles: {listed}. "
+                f"{verb['verb']} a '{doctype}' is done by these roles: {listed}. "
                 f"This account does not hold one of them, so the document was "
-                f"not created. Say who can create it, and do not apologise for it."
+                f"not {verb['participle']}. Say who can {verb['infinitive']} it, "
+                f"and do not apologise for it."
             )
 
         return (
-            f"This account is not permitted to create a '{doctype}', so the "
-            f"document was not created. State that as a fact about the account, "
-            f"and do not apologise for it."
+            f"This account is not permitted to {verb['infinitive']} a "
+            f"'{doctype}', so the document was not {verb['participle']}. State "
+            f"that as a fact about the account, and do not apologise for it."
         )
 
     def roles_for(self, doctype: str, ptype: str) -> list[str]:

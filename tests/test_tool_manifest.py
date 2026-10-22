@@ -30,6 +30,7 @@ IMPLEMENTATIONS = {
     "get_doctype_meta": "get_doctype_meta",
     "run_report": "run_report",
     "create_doc": "create_doc",
+    "update_doc": "update_doc",
 }
 
 
@@ -129,9 +130,36 @@ def test_every_tool_is_classified():
         assert spec.parameters.get("properties") is not None
 
 
-def test_exactly_one_tool_writes():
+def test_the_write_surface_is_exactly_two_tools():
+    """The writes are few, and each one is a thing a person asks for.
+
+    A tool set that could make things and never change them would leave
+    the person who mistyped a field with no way to fix it.  A tool set that
+    could also delete things would be a different kind of application, and
+    the one that matters is that this list is short enough to read.
+    """
     writers = [spec.name for spec in TOOL_MANIFEST.all() if spec.mutating]
-    assert writers == ["create_doc"]
+    assert writers == ["create_doc", "update_doc"]
+
+
+def test_the_two_writes_are_authorised_against_different_rights():
+    """Creating a document and changing one are different permissions.
+
+    A role model that grants the first does not necessarily grant the
+    second, so the manifest has to say which right each write is checked
+    against — otherwise the authority layer would ask the wrong question.
+    """
+    assert TOOL_MANIFEST.get("create_doc").write_permission == "create"
+    assert TOOL_MANIFEST.get("update_doc").write_permission == "write"
+
+
+def test_a_read_tool_is_not_a_write():
+    for spec in TOOL_MANIFEST.all():
+        if spec.tier == "read":
+            assert spec.write_permission == "create", (
+                f"{spec.name} is a read, so the write permission it carries "
+                f"is never consulted"
+            )
 
 
 def test_the_manifest_does_not_import_the_implementations():

@@ -65,6 +65,7 @@ from albanna.services.conversation_service import (
 from albanna.services.settings_service import get_settings
 from albanna.tools.backend import ErpnextBackend
 from albanna.tools.base import ToolContext
+from albanna.tools.erpnext import PROTECTED_FIELDS
 
 SALES_USER = "albanna.test.sales@albanna.dev"
 ACCOUNTS_USER = "albanna.test.accounts@albanna.dev"
@@ -1525,3 +1526,319 @@ class TestATruncatedAnswer(FrappeTestCase):
             as_dict=True,
         )
         self.assertEqual(row.status, "truncated", "the ledger must say the answer was cut off")
+
+
+@pytest.mark.integration
+class TestTheUpdatePath(FrappeTestCase):
+    """Changing a document that already exists.
+
+    A tool set that could only make things and never change them would
+    leave the person who mistyped a field with no way to fix it — and they
+    would ask the assistant, because it is the one that made the mistake.
+
+    These are the properties of that path: who the change runs as, what it
+    refuses, and — the one that is easy to get wrong — what a failure
+    leaves behind.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.sales_user = self._make_user("albanna.test.update@albanna.dev", "Sales User")
+        self.backend = ErpnextBackend()
+
+    def _make_user(self, email: str, role: str) -> str:
+        if not frappe.db.exists("User", email):
+            user = frappe.new_doc("User")
+            user.email = email
+            user.first_name = "Albanna"
+            user.last_name = "Update"
+            user.flags.ignore_permissions = True
+            user.insert()
+            user.add_roles(role)
+        return email
+
+    def _customer(self) -> str:
+        """A customer of this test's own, to change.
+
+        Each test makes its own, because the framework commits the
+        transaction between test *classes* and rolls it back at the end of
+        one — so the tests in a class share a transaction, and a customer
+        one of them changed would be a changed customer for the next.  The
+        name carries the test's name, so two of them cannot collide.
+        """
+        name = f"Albanna Update Test {self._testMethodName}"
+        if not frappe.db.exists("Customer", name):
+            customer = frappe.new_doc("Customer")
+            customer.customer_name = name
+            customer.customer_type = "Company"
+            customer.customer_group = self._customer_group()
+            customer.flags.ignore_permissions = True
+            customer.insert()
+        return name
+
+    def _customer_group(self) -> str:
+        """A customer group that exists on this site."""
+        group = frappe.db.get_value("Customer", {"disabled": 0}, "customer_group")
+        self.assertTrue(group, "the site needs a customer group")
+        return group
+
+    def _as(self, email: str):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _context(self, email: str) -> ToolContext:
+        self._as(email)
+        return ToolContext(principal=current_principal(), site=frappe.local.site)
+
+    def _update(self, context, data, name=None, doctype="Customer"):
+        return self.backend.call(
+            TOOL_MANIFEST.get("update_doc"),
+            {"doctype": doctype, "name": name or self._customer(), "data": data},
+            context,
+        )
+
+    # -- it works ----------------------------------------------------------
+
+    def test_an_update_changes_the_document(self):
+        context = self._context(self.sales_user)
+        marker = "Albanna update test marker"
+        customer = self._customer()
+
+        result = self._update(context, {"customer_details": marker}, name=customer)
+
+        self.assertTrue(result.ok, result.content)
+        self.assertEqual(
+            frappe.db.get_value("Customer", customer, "customer_details"),
+            marker,
+        )
+
+    def test_an_update_runs_as_the_caller(self):
+        """The change is made by the person who asked for it.
+
+        The framework stamps the document with the session user, so the
+        stamp is the evidence: it cannot be anything else, because the
+        write goes through ``doc.save()`` with the caller's own
+        permissions.
+        """
+        context = self._context(self.sales_user)
+        customer = self._customer()
+
+        result = self._update(context, {"customer_details": "Albanna update test marker"}, name=customer)
+
+        self.assertTrue(result.ok, result.content)
+        self.assertEqual(
+            frappe.db.get_value("Customer", customer, "modified_by"),
+            self.sales_user,
+        )
+
+    def test_the_result_says_what_it_changed(self):
+        """A change nobody can check is not a report.
+
+        The result names the fields, so the assistant can say which field
+        it changed rather than "something was updated".
+        """
+        context = self._context(self.sales_user)
+        customer = self._customer()
+
+        result = self._update(context, {"customer_details": "Albanna update test marker"}, name=customer)
+
+        self.assertTrue(result.ok, result.content)
+        self.assertIn("customer_details", result.content)
+        self.assertIn(customer, result.content)
+
+    def test_a_change_that_changes_nothing_is_not_a_write(self):
+        """Writing the value a document already has is not a change.
+
+        Saving it would touch the modified timestamp, run every hook on
+        the document, and tell the reader that something was done when
+        nothing was.
+        """
+        context = self._context(self.sales_user)
+        customer = self._customer()
+        current = frappe.db.get_value("Customer", customer, "customer_details") or ""
+
+        result = self._update(context, {"customer_details": current}, name=customer)
+
+        self.assertTrue(result.ok, result.content)
+        self.assertIn("nothing was changed", result.content)
+
+    # -- what it refuses ---------------------------------------------------
+
+    def test_a_submitted_document_is_refused(self):
+        """A submitted document is read-only, and the chat says so.
+
+        The framework would let a server-side save rewrite a submitted
+        document — the guard is in the form, not in ``db_update`` — so the
+        guard is in the tool, and the refusal names the way a person does
+        it.
+        """
+        name = self._submitted_invoice()
+        context = self._context(self.sales_user)
+
+        result = self.backend.call(
+            TOOL_MANIFEST.get("update_doc"),
+            {"doctype": "Sales Invoice", "name": name, "data": {"remarks": "changed"}},
+            context,
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("submitted", result.error.lower())
+        self.assertNotEqual(frappe.db.get_value("Sales Invoice", name, "remarks"), "changed")
+
+    def test_a_framework_field_is_refused(self):
+        """The framework's own fields are not the assistant's to set.
+
+        ``Document.update()`` assigns ``name`` first, so a data object
+        that carried one would rename the document rather than change it.
+        """
+        context = self._context(self.sales_user)
+        customer = self._customer()
+
+        result = self._update(context, {"name": "Renamed By The Chat"}, name=customer)
+
+        self.assertFalse(result.ok)
+        self.assertIn("framework", result.error.lower())
+        self.assertEqual(
+            frappe.db.get_value("Customer", customer, "name"),
+            customer,
+        )
+
+    def test_a_read_only_field_is_refused(self):
+        """A field the form will not let a person change is not changed either.
+
+        The chat must not be a way around that: it would make the
+        assistant the only actor on the site who can set a field nobody
+        else can.
+        """
+        meta = frappe.get_meta("Customer")
+        read_only = [
+            df.fieldname
+            for df in meta.fields
+            if df.read_only and df.fieldname not in PROTECTED_FIELDS
+        ]
+        if not read_only:
+            self.skipTest("this site has no read-only field on Customer")
+
+        context = self._context(self.sales_user)
+
+        result = self._update(context, {read_only[0]: "something"})
+
+        self.assertFalse(result.ok)
+        self.assertIn("read-only", result.error.lower())
+
+    def test_a_field_that_does_not_exist_is_refused(self):
+        context = self._context(self.sales_user)
+
+        result = self._update(context, {"nonsense_field": "x"})
+
+        self.assertFalse(result.ok)
+        self.assertIn("unknown field", result.error.lower())
+
+    def test_a_document_that_does_not_exist_is_reported_as_such(self):
+        """"Not found" and "not permitted" are different answers.
+
+        Telling a reader that a document they named does not exist is
+        useful.  Telling them they may not change a document that does not
+        exist is a wall.
+        """
+        context = self._context(self.sales_user)
+
+        result = self._update(context, {"customer_details": "x"}, name="No Such Customer")
+
+        self.assertFalse(result.ok)
+        self.assertIn("not found", result.error.lower())
+
+    def test_a_user_who_may_not_write_is_refused(self):
+        """Even with the authority layer bypassed, Frappe refuses the change.
+
+        The authority layer is the first gate; this is the second.  Both
+        have to hold, because the first is this app's code and the second
+        is the framework's.
+        """
+        name = self._draft_invoice()
+        context = self._context(self.sales_user)
+
+        result = self.backend.call(
+            TOOL_MANIFEST.get("update_doc"),
+            {"doctype": "Sales Invoice", "name": name, "data": {"remarks": "changed"}},
+            context,
+        )
+
+        self.assertFalse(result.ok)
+        self.assertNotEqual(frappe.db.get_value("Sales Invoice", name, "remarks"), "changed")
+
+    # -- what a failure leaves behind -------------------------------------
+
+    def test_a_failed_update_does_not_undo_an_earlier_write(self):
+        """A write that fails must not take the turn's other writes with it.
+
+        A rollback is transaction-wide unless it is given a savepoint, and
+        a transaction-wide rollback in the middle of a turn undoes
+        *everything* the turn has done so far — including a document the
+        assistant has already told the reader it created.  The reader would
+        be told about a document that does not exist.
+        """
+        context = self._context(self.sales_user)
+        name = f"Albanna Write Isolation Test {self._testMethodName}"
+
+        created = self.backend.call(
+            TOOL_MANIFEST.get("create_doc"),
+            {
+                "doctype": "Customer",
+                "data": {
+                    "customer_name": name,
+                    "customer_type": "Company",
+                    "customer_group": self._customer_group(),
+                },
+            },
+            context,
+        )
+        self.assertTrue(created.ok, created.content)
+        name = (created.data or {}).get("name")
+        self.assertTrue(name, created.content)
+
+        # A change that cannot succeed: the name is mandatory.
+        failed = self._update(context, {"customer_name": ""}, name=name)
+
+        self.assertFalse(failed.ok)
+        self.assertTrue(
+            frappe.db.exists("Customer", name),
+            "the earlier write was undone by the later failure",
+        )
+
+    # -- helpers -----------------------------------------------------------
+
+    def _submitted_invoice(self) -> str:
+        """A submitted Sales Invoice on the site.
+
+        One that is already there, rather than one this test submits: the
+        submission of a Sales Invoice runs whatever hooks the site's apps
+        put on it, and a test that depends on the site's app set is a test
+        that breaks when the app set changes.
+        """
+        name = frappe.db.get_value("Sales Invoice", {"docstatus": 1}, "name")
+        if not name:
+            self.skipTest("this site has no submitted Sales Invoice")
+        return name
+
+    def _draft_invoice(self) -> str:
+        """A Sales Invoice on the site that is still in draft."""
+        name = frappe.db.get_value("Sales Invoice", {"docstatus": 0}, "name")
+        if name:
+            return name
+
+        company = frappe.get_all("Company", pluck="name", limit=1)[0]
+        currency = frappe.db.get_value("Company", company, "default_currency")
+        customer = frappe.db.get_value("Customer", {"disabled": 0}, "name")
+        item = frappe.db.get_value("Item", {"disabled": 0}, "name")
+
+        invoice = frappe.new_doc("Sales Invoice")
+        invoice.company = company
+        invoice.currency = currency
+        invoice.customer = customer
+        invoice.append("items", {"item_code": item, "qty": 1, "rate": 10})
+        invoice.flags.ignore_permissions = True
+        invoice.insert()
+        return invoice.name

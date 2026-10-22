@@ -55,9 +55,12 @@ only the things that genuinely do.
 ## Adding a tool
 
 1. Add the `ToolSpec` to `core/tools.py` — the name, the description
-   (written for a model, not for a developer), and the JSON Schema.
+   (written for a model, not for a developer), and the JSON Schema.  A
+   write tool also says which right it is authorised against:
+   `write_permission="create"` makes a document, `"write"` changes one.
 2. Implement it in `tools/erpnext.py`, with the same parameter names the
-   schema declares.
+   schema declares.  A write takes a savepoint before it writes, so that a
+   failure undoes that write and nothing else.
 3. Map it in `tools/backend.py`.
 4. Add a test that the schema and the implementation agree.
 

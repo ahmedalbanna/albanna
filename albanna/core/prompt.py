@@ -53,8 +53,9 @@ guessing. If a required field is missing, ask for it; never invent a value.
 be checked.
 - When the answer is a list, say how many items there are in total and how \
 many you are showing.
-- Create a document only when the user asked for it. Say what you created, \
-with its name.
+- Create or change a document only when the user asked for it. Say what you \
+created or changed, with its name, and name the fields you changed. When you \
+change a document, change only the fields the user asked about.
 - If a tool returns an error, read the error: it usually names the missing \
 filter or field. Fix the call and try again once. If the error says the \
 account is not permitted to do something, say so as a fact about the \
@@ -85,6 +86,7 @@ class PromptContext:
     currency: str = ""
     user: str = ""
     creatable: tuple[str, ...] = ()
+    writable: tuple[str, ...] = ()
     page_context: str = ""
 
 
@@ -117,9 +119,11 @@ def build_system_prompt(
         sections.append("This site:\n" + "\n".join(f"- {fact}" for fact in facts))
 
     # Before the tool list, not after it: the tool list is long, and the
-    # point of this note is to be read *before* the model starts choosing.
+    # point of these notes is to be read *before* the model starts choosing.
     if context.creatable:
         sections.append(_creatable_note(context.creatable))
+    if context.writable:
+        sections.append(_writable_note(context.writable))
 
     if specs:
         lines = "\n".join(f"- {spec.name}: {_one_line(spec.description)}" for spec in specs)
@@ -172,6 +176,43 @@ def _creatable_note(creatable: tuple[str, ...]) -> str:
             f"This account may create these document types: {', '.join(names)}. "
             f"Creating any other document type is not possible for it — do not try, "
             f"and do not apologise; say which role would be needed."
+        )
+    return text
+
+
+def _writable_note(writable: tuple[str, ...]) -> str:
+    """What this account may change, so the assistant knows before it starts.
+
+    The same reasoning as the creatable note, for the same reason: a person
+    who says "change the phone number on this customer" should not be
+    answered with a refusal, and should not have to be told what they
+    already know.
+
+    The list is about *kinds* of document, not about particular ones.  A
+    User Permission can still limit the account to some rows and not others,
+    and the note says so, so that a refusal on one document is understood
+    as a fact about that document rather than as a broken tool.
+    """
+    names = list(writable)
+    if len(names) > CREATABLE_LIMIT:
+        shown = ", ".join(names[:CREATABLE_LIMIT])
+        text = (
+            f"This account may change documents of these types: {shown}, "
+            f"and {len(names) - CREATABLE_LIMIT} more. Changing any other "
+            f"document type is not possible for it — do not try, and do not "
+            f"apologise; say which role would be needed. Whether it may "
+            f"change a particular document also depends on the rows it is "
+            f"allowed to see, so a refusal on one document does not mean the "
+            f"others are out of reach."
+        )
+    else:
+        text = (
+            f"This account may change documents of these types: {', '.join(names)}. "
+            f"Changing any other document type is not possible for it — do not "
+            f"try, and do not apologise; say which role would be needed. "
+            f"Whether it may change a particular document also depends on the "
+            f"rows it is allowed to see, so a refusal on one document does not "
+            f"mean the others are out of reach."
         )
     return text
 

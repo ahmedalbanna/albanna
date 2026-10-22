@@ -34,9 +34,9 @@ Albanna runs neither as a service, and depends on neither.  See
 | **side chat** | The docked panel in the Desk, and the launcher that opens it. Not a page, not a modal, not a route. |
 | **turn** | One question and the work it causes, from the question to the final answer. |
 | **round** | One model call inside a turn. A round may contain several tool calls. |
-| **tool** | One named operation the model may ask for. Five exist. |
+| **tool** | One named operation the model may ask for. Six exist. |
 | **tool spec** | The manifest entry for a tool: name, description, JSON schema, tier, required roles. The contract the model sees. |
-| **manifest** | The five tool specs, in `core/tools.py`. Plain data, no code. |
+| **manifest** | The six tool specs, in `core/tools.py`. Plain data, no code. |
 | **adapter** | The code that actually runs a tool, or calls a model. One per backend, one per vendor. |
 | **principal** | The person a call is made for: their user name, their roles, whether they are a System Manager. |
 | **reachability** | Whether a principal may reach a tool at all. Static: does not depend on the arguments. |
@@ -79,7 +79,7 @@ expensive to get wrong.
 
 ### 1. The tool set is fixed, and the model only sees what it may use
 
-There are five tools.  The manifest is filtered by the authority layer
+There are six tools.  The manifest is filtered by the authority layer
 *before* the schemas are sent to the model, so a tool the user may not
 reach is never mentioned — not mentioned and then refused, **never
 mentioned**.  A model that can see a tool it cannot use spends a turn
@@ -98,11 +98,26 @@ what the turn was doing — the tool called most often, the last failure, how
 many rounds — rather than a silence.  "I could not finish that, and here is
 why" is a usable answer.
 
-### 4. A write survives the turn
+### 4. A write survives the turn, and a failed write takes nothing else with it
 
 The tool functions commit their own transaction.  A document that was
 created is created, even if the model fails afterwards.  The user asked for
 the document; the assistant's ability to describe it is a separate concern.
+
+The other half of that is the failure.  A rollback is transaction-wide
+unless it is given a savepoint, and a transaction-wide rollback in the
+middle of a turn undoes *everything* the turn has done so far — including
+a document the assistant has already told the reader it created.  So every
+write takes a savepoint first, and a failure rolls back to it and no
+further.
+
+### 4a. The two writes are different rights
+
+`create_doc` is authorised against Frappe's `create` permission and
+`update_doc` against `write`.  A role model that grants one does not
+necessarily grant the other, and a refusal has to name the right that is
+missing: "creating a Customer is done by these roles" is the wrong
+sentence when the assistant was asked to *change* one.
 
 ### 5. The site is asserted, never guessed
 
