@@ -29,6 +29,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import Composer from "./Composer.vue";
 import ConversationDrawer from "./ConversationDrawer.vue";
 import { pageIdentity, resolveContext } from "./context.mjs";
+import { exampleSet, openDocumentFrom } from "./examples.mjs";
 import { clockTime } from "./format.mjs";
 import { hasTable, renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js";
 import { watchRoute } from "./page.mjs";
@@ -88,6 +89,9 @@ const copiedTableId = ref("");
 const view = ref("chat");
 const conversations = ref([]);
 const historyLoading = ref(false);
+const historyLoadingMore = ref(false);
+const historyHasMore = ref(false);
+const historyOffset = ref(0);
 
 let messageCounter = 0;
 /** The page's identity, as a ref so that the examples follow the page. */
@@ -107,6 +111,7 @@ const loadingOlder = ref(false);
 
 /** The controller of the turn in flight, so that it can be stopped. */
 const abortController = ref(null);
+const keydownHandler = ref(null);
 
 /**
  * The questions the reader has asked, oldest first.
@@ -180,12 +185,36 @@ const pageContext = computed(() => {
  * more than it gives.
  */
 const examples = computed(() => {
-	const document = openDocument.value;
-	if (document) {
+	// `currentPage` is read so that this is recomputed when the page
+	// changes: `resolveContext` reads globals that Vue cannot see.
+	const page = currentPage.value;
+	const context = resolveContext();
+	const set = exampleSet(context);
+
+	if (set === "form") {
+		const document = openDocumentFrom(context);
+		if (document) {
+			return [
+				__("Summarise this {0}", [document.doctype]),
+				__("What is the status of this {0}?", [document.doctype]),
+				__("What is the total of this {0}?", [document.doctype]),
+			];
+		}
+	}
+
+	if (set === "list" && context.doctype) {
 		return [
-			__("Summarise this {0}", [document.doctype]),
-			__("What is the status of this {0}?", [document.doctype]),
-			__("What is the total of this {0}?", [document.doctype]),
+			__("How many {0} are there?", [context.doctype]),
+			__("Which {0} are still open?", [context.doctype]),
+			__("What is the total value of these {0}?", [context.doctype]),
+		];
+	}
+
+	if (set === "report" && context.report) {
+		return [
+			__("Summarise this report"),
+			__("What are the totals in this report?"),
+			__("Which rows stand out?"),
 		];
 	}
 
@@ -689,7 +718,11 @@ function applyTurnResult(result, asked, answer) {
 	}
 
 	if (answer.content) {
-		announcement.value = answer.content;
+		// A full answer in an aria-live region is read aloud in full,
+		// which is not useful.  Announce the outcome, not the text.
+		announcement.value = result && result.truncated
+			? __("The answer was cut off.")
+			: __("Answer ready.");
 	}
 }
 
@@ -976,15 +1009,40 @@ async function copyAnswer(message) {
 async function showHistory() {
 	view.value = "history";
 	historyLoading.value = true;
+	historyOffset.value = 0;
+	historyHasMore.value = false;
 	try {
-		const result = await call("albanna.api.conversations.list_conversations", {});
-		conversations.value = result.conversations || [];
+		const result = await call("albanna.api.conversations.list_conversations", { offset: 0 });
+		const rows = result.conversations || [];
+		conversations.value = rows;
+		historyOffset.value = rows.length;
+		historyHasMore.value = rows.length >= 30;
 	} catch (failure) {
 		state.error = String(
 			(failure && failure.message) || failure || __("Could not load the conversations."),
 		);
 	} finally {
 		historyLoading.value = false;
+	}
+}
+
+async function loadMoreConversations() {
+	if (historyLoadingMore.value || !historyHasMore.value) return;
+	historyLoadingMore.value = true;
+	try {
+		const result = await call("albanna.api.conversations.list_conversations", {
+			offset: historyOffset.value,
+		});
+		const rows = result.conversations || [];
+		conversations.value = conversations.value.concat(rows);
+		historyOffset.value += rows.length;
+		historyHasMore.value = rows.length >= 30;
+	} catch (failure) {
+		state.error = String(
+			(failure && failure.message) || failure || __("Could not load the conversations."),
+		);
+	} finally {
+		historyLoadingMore.value = false;
 	}
 }
 
@@ -1262,6 +1320,22 @@ onMounted(() => {
 	// for an event that never fires is a listener that never fires.
 	// `page.mjs` holds the name, and `page.test.mjs` holds it to account.
 	unwatch = watchRoute(onRouteChange);
+
+	// Keyboard: Escape closes the panel, Ctrl/Cmd+K focuses the composer.
+	// Both are the affordances a reader expects of a chat panel, and
+	// neither should be a mouse-only action.
+	const onKeydown = (event) => {
+		if (event.key === "Escape") {
+			props.onClose();
+			return;
+		}
+		if ((event.ctrlKey || event.metaKey) && (event.key === "k" || event.key === "K")) {
+			event.preventDefault();
+			focusComposer();
+		}
+	};
+	document.addEventListener("keydown", onKeydown);
+	keydownHandler.value = onKeydown;
 });
 
 onBeforeUnmount(() => {
@@ -1270,6 +1344,7 @@ onBeforeUnmount(() => {
 	if (abortController.value) abortController.value.abort();
 
 	if (unwatch) unwatch();
+	if (keydownHandler.value) document.removeEventListener("keydown", keydownHandler.value);
 });
 </script>
 
@@ -1395,10 +1470,13 @@ onBeforeUnmount(() => {
 			:conversations="conversations"
 			:loading="historyLoading"
 			:active="conversationId"
+			:has-more="historyHasMore"
+			:loading-more="historyLoadingMore"
 			@open="openConversation"
 			@rename="renameConversation"
 			@remove="removeConversation"
 			@back="showTranscript"
+			@loadmore="loadMoreConversations"
 		/>
 
 		<div v-else class="albanna-chat__body">

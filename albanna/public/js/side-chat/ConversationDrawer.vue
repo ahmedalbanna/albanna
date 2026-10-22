@@ -18,9 +18,13 @@ const props = defineProps({
 	loading: { type: Boolean, default: false },
 	/** The conversation currently open in the transcript, if any. */
 	active: { type: String, default: "" },
+	/** Whether more conversations may be loaded. */
+	hasMore: { type: Boolean, default: false },
+	/** Whether more conversations are being loaded. */
+	loadingMore: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(["open", "rename", "remove", "new", "back"]);
+const emit = defineEmits(["open", "rename", "remove", "new", "back", "loadmore"]);
 
 const editing = ref("");
 
@@ -136,6 +140,9 @@ function commitRename(conversation, event) {
 								<span v-if="conversation.last_activity_ts">{{
 									relativeTime(conversation.last_activity_ts)
 								}}</span>
+								<span v-if="conversation.turns">{{
+									__(" {0} turn(s)", [conversation.turns])
+								}}</span>
 							</p>
 						</div>
 
@@ -190,6 +197,15 @@ function commitRename(conversation, event) {
 					</li>
 				</ul>
 			</section>
+			<button
+				v-if="hasMore"
+				type="button"
+				class="albanna-drawer__loadmore"
+				:disabled="loadingMore"
+				@click="emit('loadmore')"
+			>
+				{{ loadingMore ? __("Loading…") : __("Load more") }}
+			</button>
 		</div>
 	</div>
 </template>

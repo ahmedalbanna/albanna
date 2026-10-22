@@ -470,7 +470,39 @@ def list_conversations(user: str, limit: int = 20, offset: int = 0) -> list[dict
         conversation = dict(row)
         conversation["last_activity_ts"] = _epoch(conversation.get("last_activity"))
         conversation["title"] = display_title(conversation.get("title"))
+        # Per-conversation totals, so the reader can see what a thread cost
+        # them.  Aggregated in one query for the whole page, not per row.
+        conversation["turns"] = 0
+        conversation["tokens"] = 0
+        conversation["cost"] = 0.0
         conversations.append(conversation)
+
+    if conversations:
+        names = tuple(c["name"] for c in conversations)
+        placeholders = ", ".join(["%s"] * len(names))
+        try:
+            totals = frappe.db.sql(
+                f"""
+                select conversation,
+                       count(*) as turns,
+                       coalesce(sum(input_tokens), 0) + coalesce(sum(output_tokens), 0) as tokens,
+                       coalesce(sum(cost), 0) as cost
+                from `tabAlbanna Chat Log`
+                where conversation in ({placeholders})
+                group by conversation
+                """,
+                names,
+                as_dict=True,
+            )
+        except Exception:
+            totals = []
+        by_name = {row["conversation"]: row for row in totals}
+        for conversation in conversations:
+            row = by_name.get(conversation["name"])
+            if row:
+                conversation["turns"] = int(row.get("turns") or 0)
+                conversation["tokens"] = int(row.get("tokens") or 0)
+                conversation["cost"] = float(row.get("cost") or 0.0)
 
     return conversations
 
