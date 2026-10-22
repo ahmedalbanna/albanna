@@ -132,15 +132,33 @@ class ToolRegistry:
         disabled = set(names)
         return self._build({spec.name: spec.enabled and spec.name not in disabled for spec in self._specs.values()})
 
-    def without_mutating(self) -> ToolRegistry:
-        """A copy with every write tool switched off.
+    def without_writes_out_of_reach(self, creatable: set[str] | frozenset[str], writable: set[str] | frozenset[str]) -> ToolRegistry:
+        """A copy with the write tools the caller may not make switched off.
 
-        The site's write switch works this way rather than by refusing a
-        call: a write tool that is off is not in the *visible* set, so the
-        model is never told it exists, and a call to it by name is refused.
-        One filter, one truth.
+        The visibility of a write tool follows the caller's own rights,
+        which is what "Frappe decides" means: a person who may create
+        nothing is not told create_doc exists, and a person who may change
+        nothing is not told update_doc does.  There is no site-wide switch
+        to disagree with the permission matrix, because there is no
+        switch.
+
+        A write tool whose right the caller holds on *no* DocType is
+        switched off.  Whether they hold it on the *target* of a particular
+        call is a separate question, answered per call by the authority
+        layer -- which is why a write tool being visible is not the same
+        thing as a write being allowed.
         """
-        return self._build({spec.name: not spec.mutating for spec in self._specs.values()})
+        reachable = {
+            "create": bool(creatable),
+            "write": bool(writable),
+        }
+        return self._build(
+            {
+                spec.name: (not spec.mutating)
+                or reachable.get(spec.write_permission, False)
+                for spec in self._specs.values()
+            }
+        )
 
     def _build(self, enabled: dict[str, bool]) -> ToolRegistry:
         """A copy of this registry with the given tools switched on or off."""

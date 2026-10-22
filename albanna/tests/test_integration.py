@@ -83,7 +83,9 @@ class TestToolPath(FrappeTestCase):
             user.last_name = "Test"
             user.flags.ignore_permissions = True
             user.insert()
-            user.add_roles(role)
+        user = frappe.get_doc("User", email)
+        user.flags.ignore_permissions = True
+        user.add_roles(role, "Albanna User")
         return email
 
     def setUp(self):
@@ -308,25 +310,10 @@ class TestRemovingATurn(FrappeTestCase):
                 user.last_name = "Test"
                 user.flags.ignore_permissions = True
                 user.insert()
-                user.add_roles("Sales User")
+            user = frappe.get_doc("User", email)
+            user.flags.ignore_permissions = True
+            user.add_roles("Sales User", "Albanna User")
         frappe.db.commit()
-
-        self._original_chat_roles = frappe.db.get_single_value("Albanna Settings", "chat_roles")
-        self._allow_chat()
-
-    def tearDown(self):
-        frappe.db.set_single_value("Albanna Settings", "chat_roles", self._original_chat_roles or "")
-        frappe.db.commit()
-        get_settings(refresh=True)
-        super().tearDown()
-
-    def _allow_chat(self):
-        doc = frappe.get_single("Albanna Settings")
-        doc.chat_roles = "Desk User"
-        doc.flags.ignore_permissions = True
-        doc.save(ignore_permissions=True)
-        frappe.db.commit()
-        get_settings(refresh=True)
 
     def _as(self, email):
         frappe.set_user(email)
@@ -474,30 +461,10 @@ class TestConversationOwnership(FrappeTestCase):
                 user.last_name = "Test"
                 user.flags.ignore_permissions = True
                 user.insert()
-                user.add_roles("Sales User")
+            user = frappe.get_doc("User", email)
+            user.flags.ignore_permissions = True
+            user.add_roles("Sales User", "Albanna User")
         frappe.db.commit()
-
-        # The conversation endpoints refuse anybody who may not chat, and on
-        # a fresh site nobody may: the chat roles are empty until an
-        # administrator sets them.  The suite sets them, so it does not
-        # depend on how the site happens to be configured.
-        self._original_chat_roles = frappe.db.get_single_value("Albanna Settings", "chat_roles")
-        self._allow_chat()
-
-    def tearDown(self):
-        frappe.db.set_single_value("Albanna Settings", "chat_roles", self._original_chat_roles or "")
-        frappe.db.commit()
-        get_settings(refresh=True)
-        super().tearDown()
-
-    def _allow_chat(self):
-        """Let a Desk User chat, which is the shipped configuration."""
-        doc = frappe.get_single("Albanna Settings")
-        doc.chat_roles = "Desk User"
-        doc.flags.ignore_permissions = True
-        doc.save(ignore_permissions=True)
-        frappe.db.commit()
-        get_settings(refresh=True)
 
     def _as(self, email):
         frappe.set_user(email)
@@ -579,20 +546,12 @@ class TestNewConversation(FrappeTestCase):
             user.last_name = "Test"
             user.flags.ignore_permissions = True
             user.insert()
-            user.add_roles("Desk User")
-        frappe.db.commit()
-
-        self._original_chat_roles = frappe.db.get_single_value("Albanna Settings", "chat_roles")
-        doc = frappe.get_single("Albanna Settings")
-        doc.chat_roles = "Desk User"
-        doc.flags.ignore_permissions = True
-        doc.save(ignore_permissions=True)
-        frappe.db.commit()
-        get_settings(refresh=True)
+            user = frappe.get_doc("User", self.owner)
+            user.flags.ignore_permissions = True
+            user.add_roles("Desk User", "Albanna User")
+            frappe.db.commit()
 
     def tearDown(self):
-        frappe.db.set_single_value("Albanna Settings", "chat_roles", self._original_chat_roles or "")
-        frappe.db.commit()
         get_settings(refresh=True)
         super().tearDown()
 
@@ -737,11 +696,9 @@ class TestNewConversation(FrappeTestCase):
 
 @pytest.mark.integration
 class TestSettings(FrappeTestCase):
-    """The settings, and the two ways they used to fail silently.
+    """The settings, and the way a provider with no base URL used to fail.
 
-    A role name that is not a role was ignored, so a typo left the people
-    an administrator had chosen unable to chat, with nothing saying why.
-    And a provider with no base URL was not one the app would call, even
+    A provider with no base URL was not one the app would call, even
     though the request code had a default for it — so a deployment that
     followed the instructions had no provider at all.
     """
@@ -750,27 +707,6 @@ class TestSettings(FrappeTestCase):
         frappe.db.set_single_value("Albanna Settings", fieldname, value or "")
         frappe.db.commit()
         get_settings(refresh=True)
-
-    def test_a_role_name_that_is_not_a_role_is_refused(self):
-        original = frappe.db.get_single_value("Albanna Settings", "chat_roles")
-        try:
-            doc = frappe.get_single("Albanna Settings")
-            doc.chat_roles = "Desk User\nNot A Role At All"
-            with self.assertRaises(frappe.ValidationError) as caught:
-                doc.save(ignore_permissions=True)
-            self.assertIn("Not A Role At All", str(caught.exception))
-        finally:
-            self._restore("chat_roles", original)
-
-    def test_a_real_role_is_accepted(self):
-        original = frappe.db.get_single_value("Albanna Settings", "chat_roles")
-        try:
-            doc = frappe.get_single("Albanna Settings")
-            doc.chat_roles = "System Manager"
-            doc.save(ignore_permissions=True)
-            frappe.db.commit()
-        finally:
-            self._restore("chat_roles", original)
 
     def test_a_provider_with_no_base_url_uses_the_provider_default(self):
         from albanna.providers.openai import OpenAIProvider
@@ -832,7 +768,9 @@ class TestTouchedDocuments(FrappeTestCase):
             user.last_name = "Test"
             user.flags.ignore_permissions = True
             user.insert()
-            user.add_roles("Sales User")
+        user = frappe.get_doc("User", self.sales_user)
+        user.flags.ignore_permissions = True
+        user.add_roles("Sales User", "Albanna User")
         frappe.db.commit()
 
     def test_a_read_reports_the_document_it_read(self):
@@ -1255,7 +1193,9 @@ class TestUsageSummary(FrappeTestCase):
             user.last_name = "Usage"
             user.flags.ignore_permissions = True
             user.insert()
-            user.add_roles("Sales User")
+        user = frappe.get_doc("User", self.user)
+        user.flags.ignore_permissions = True
+        user.add_roles("Sales User", "Albanna User")
         frappe.db.commit()
         self._clear_ledger()
 
@@ -1426,10 +1366,9 @@ class TestTheCostOfATurn(FrappeTestCase):
 class TestTheSettingsRefuseNonsense(FrappeTestCase):
     """The settings are free text, and a typo in them is caught.
 
-    The role fields and the extra options are typed by hand.  A name
-    that is not a role is ignored silently, and JSON that is not JSON
-    would be ignored silently too — leaving the operator with an option
-    that is simply not there, and nothing anywhere saying why.
+    The extra options are typed by hand.  JSON that is not JSON would be
+    ignored silently — leaving the operator with an option that is simply
+    not there, and nothing anywhere saying why.
     """
 
     def _validate(self, options):
@@ -1554,7 +1493,9 @@ class TestTheUpdatePath(FrappeTestCase):
             user.last_name = "Update"
             user.flags.ignore_permissions = True
             user.insert()
-            user.add_roles(role)
+        user = frappe.get_doc("User", email)
+        user.flags.ignore_permissions = True
+        user.add_roles(role, "Albanna User")
         return email
 
     def _customer(self) -> str:

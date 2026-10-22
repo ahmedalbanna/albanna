@@ -26,10 +26,7 @@
   "fallback_api_key",
   "column_break_fallback",
   "access_section",
-  "chat_roles",
-  "widget_roles",
   "column_break_access",
-  "widget_enabled",
   "widget_position",
   "limits_section",
   "max_tool_rounds",
@@ -37,9 +34,7 @@
   "price_per_million",
   "turn_timeout",
   "turns_per_minute",
-  "disabled_tools",
   "column_break_limits",
-  "allow_writes",
   "system_prompt",
   "prompt_section"
  ],
@@ -166,30 +161,12 @@
   {
    "fieldname": "access_section",
    "fieldtype": "Section Break",
-   "label": "Access"
-  },
-  {
-   "description": "Roles allowed to use the chat, one per line. Leave empty to allow only System Managers. A name that is not a role is refused when you save.",
-   "fieldname": "chat_roles",
-   "fieldtype": "Small Text",
-   "label": "Chat Roles"
-  },
-  {
-   "description": "Roles allowed to see the side-chat widget, one per line. Leave empty to allow every user who may chat. A name that is not a role is refused when you save.",
-   "fieldname": "widget_roles",
-   "fieldtype": "Small Text",
-   "label": "Widget Roles"
+   "label": "Widget",
+   "description": "Where the side-chat widget sits on the Desk."
   },
   {
    "fieldname": "column_break_access",
    "fieldtype": "Column Break"
-  },
-  {
-   "default": "1",
-   "description": "Show the side-chat widget on every Desk page.",
-   "fieldname": "widget_enabled",
-   "fieldtype": "Check",
-   "label": "Enable Widget"
   },
   {
    "default": "bottom-right",
@@ -241,21 +218,8 @@
    "label": "Turns / Minute"
   },
   {
-   "description": "Tool names to switch off, one per line. A tool that is off is never mentioned to the model, so it is never called.",
-   "fieldname": "disabled_tools",
-   "fieldtype": "Small Text",
-   "label": "Disabled Tools"
-  },
-  {
    "fieldname": "column_break_limits",
    "fieldtype": "Column Break"
-  },
-  {
-   "default": "0",
-   "description": "Let the assistant create and change documents. When this is off, neither write tool is in the tool set at all — the model is never told they exist — so nothing can be written through the chat. Switch it on when you want the assistant to be able to write.",
-   "fieldname": "allow_writes",
-   "fieldtype": "Check",
-   "label": "Allow Writes"
   },
   {
    "description": "Replaces the built-in instructions. Leave empty to use the defaults.",

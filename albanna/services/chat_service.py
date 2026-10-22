@@ -191,7 +191,7 @@ class ChatService:
         principal = current_principal()
         site = current_site()
 
-        registry = self._tool_registry(settings)
+        registry = self._tool_registry(principal.user)
         authority = Authority(registry, principal, FrappePermissionChecker())
         visible = authority.visible()
 
@@ -500,18 +500,17 @@ class ChatService:
 
         return request.conversation_id
 
-    def _tool_registry(self, settings) -> ToolRegistry:
+    def _tool_registry(self, user: str):
         """The tool set this turn may use.
 
-        Two switches, applied in order: the operator's list of disabled
-        tools, and the site's write switch.  A write tool that is off is not
-        in the *visible* set, so the model is never told it exists — there
-        is nothing for it to ask for, and a call to it by name is refused.
+        The set is the caller's, not the site's: a write tool is in it
+        when the caller holds the right it needs, and not otherwise.  The
+        alternative -- one switch for the whole site -- made the assistant
+        weaker than the person in front of it.
         """
-        registry = TOOL_MANIFEST.without(settings.disabled_tools)
-        if not settings.allow_writes:
-            registry = registry.without_mutating()
-        return registry
+        from albanna.services.toolset import tool_registry
+
+        return tool_registry(user)
 
     def _run_tool(
         self,

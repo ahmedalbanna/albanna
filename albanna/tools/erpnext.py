@@ -14,11 +14,15 @@ They are the small part of that project this app ever used, and they return
 the same envelopes the chat service already speaks:
 ``{"status", "message", "data", "hints"}``.
 
-The permissions are the framework's, and they are the *caller's*: a read
-goes through ``frappe.get_list``/``frappe.get_doc``, which apply the
-caller's roles and User Permissions; a write goes through ``doc.insert()``
-or ``doc.save()``, which apply the caller's create or write permission.
-Nothing here bypasses the permission engine.
+The permissions are the framework's, and they are the *caller's*: a listing
+goes through ``frappe.get_list``, which applies the caller's roles and User
+Permissions; a write goes through ``doc.insert()`` or ``doc.save()``, which
+apply the caller's create or write permission.
+
+``get_doc`` is the one exception, and it is the reason the read permission is
+checked by hand below: ``frappe.get_doc`` applies *no* permission check at
+all.  A single document read through the ORM would otherwise return in full
+what a listing of the same DocType refuses.
 """
 
 from __future__ import annotations
@@ -225,6 +229,92 @@ def _normalise_filters(filters: Any) -> list:
     return list(filters)
 
 
+def _roles_for(doctype: str, ptype: str) -> list[str]:
+    """The roles that hold *ptype* on *doctype*, as the framework records them.
+
+    Read from the DocType's own permission rows rather than from a copy of
+    them, so the answer is the organisation's own.  Only the rows that apply
+    at the top level count: a permission recorded at a deeper level
+    (``permlevel``) is not the same right, and offering it as the way in
+    would be wrong.
+    """
+    meta = _meta(doctype)
+    if isinstance(meta, str):
+        return []
+
+    roles: list[str] = []
+    for row in getattr(meta, "permissions", None) or []:
+        try:
+            if not row.get(ptype):
+                continue
+            if int(row.get("permlevel") or 0) != 0:
+                continue
+        except (AttributeError, TypeError, ValueError):
+            continue
+        role = str(row.get("role") or "").strip()
+        if role and role not in roles:
+            roles.append(role)
+    return roles
+
+
+def _may_read(document) -> bool:
+    """Whether the session user may read this document.
+
+    ``frappe.get_doc`` applies no permission check at all, which is how a
+    Sales User came to read a Sales Invoice in full — customer, totals, every
+    line item — through this tool while ``list_docs`` refused the same one.
+    The listing goes through ``frappe.get_list``, which checks; the single
+    read goes through the ORM, which does not.
+
+    The document is passed rather than only its DocType so that the
+    row-level rules count: a User Permission that limits an account to one
+    customer is a read permission, and it applies here.
+
+    An exception is a "no".  A permission engine that cannot answer has not
+    said yes.
+    """
+    try:
+        return bool(frappe.has_permission(document.doctype, ptype="read", doc=document))
+    except Exception:
+        logger.exception("Could not check read permission for %s", document.doctype)
+        return False
+
+
+def _read_refusal(doctype: str, name: str) -> str:
+    """The envelope for a document the caller may not read.
+
+    The wording names the roles that *can* read it, because "you may not
+    read this" is a wall and "a Sales Invoice is read by an Accounts User"
+    is a fact about the organisation the reader can act on.  It is the same
+    sentence :mod:`albanna.core.authority` uses for a refused write, for the
+    same reason: the reader is told who could, and is not apologised to for
+    a limit that is not the assistant's.
+    """
+    roles = _roles_for(doctype, "read")
+    if roles:
+        return error(
+            f"{doctype} '{name}' could not be read: this account may not read it.",
+            doctype=doctype,
+            name=name,
+            denied=True,
+            actionable=(
+                f"Reading a '{doctype}' is done by these roles: {', '.join(roles)}. "
+                f"Say that as a fact about the account, and do not apologise for it."
+            ),
+        )
+
+    return error(
+        f"{doctype} '{name}' could not be read: this account may not read it.",
+        doctype=doctype,
+        name=name,
+        denied=True,
+        actionable=(
+            f"No role on this site holds read on '{doctype}'. State that as a "
+            f"fact about the site, and do not apologise for it."
+        ),
+    )
+
+
 # --------------------------------------------------------------------------
 # The tools
 # --------------------------------------------------------------------------
@@ -302,6 +392,13 @@ def get_doc(doctype: str, name: str, fields: Any = None) -> str:
         return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
     except Exception as exc:
         return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+
+    # The read is loaded first and checked second, and the order is
+    # deliberate: loading is what gives the check something to check.  A
+    # check made without the document would answer a question about the
+    # *kind* of document, and the one that matters here is about *this* one.
+    if not _may_read(document):
+        return _read_refusal(doctype, name)
 
     field_list = [str(field).strip() for field in (fields or []) if str(field).strip()]
     if field_list:

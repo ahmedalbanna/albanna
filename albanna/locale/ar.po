@@ -50,8 +50,8 @@ msgid "The assistant is not available for your account"
 msgstr "المساعد غير متاح لحسابك"
 
 
-msgid "Ask an administrator to add your role to the chat roles in Albanna Settings."
-msgstr "اطلب من أحد المشرفين إضافة دورك إلى أدوار المحادثة في إعدادات ألبانا."
+msgid "Ask an administrator to grant your account read access to Albanna Conversation."
+msgstr "اطلب من أحد المشرفين منح حسابك صلاحية القراءة على Albanna Conversation."
 
 
 msgid "Conversations"
@@ -773,3 +773,15 @@ msgstr "مقطوعة"
 
 msgid "I could not produce an answer to that."
 msgstr "لم أستطع أن أُنتج جواباً على ذلك."
+
+msgid "Where the side-chat widget sits on the Desk."
+msgstr "المكان الذي يظهر فيه عنصر المحادثة الجانبية على المكتب."
+
+msgid "Widget"
+msgstr "عنصر المحادثة"
+
+msgid "You do not have access to the chat. No role on this site holds read on {0}."
+msgstr "ليس لديك صلاحية استخدام المحادثة. لا يوجد دور على هذا الموقع يملك صلاحية القراءة على {0}."
+
+msgid "You do not have access to the chat. Reading {0} is done by these roles: {1}."
+msgstr "ليس لديك صلاحية استخدام المحادثة. قراءة {0} متاحة لهذه الأدوار: {1}."

@@ -189,10 +189,16 @@ class ErpnextBackend:
                     data,
                     summary=message or status,
                 )
-            return ToolResult.failure(
-                truncate_result(content, spec.max_result_chars),
+            return ToolResult(
+                ok=False,
+                content=truncate_result(content, spec.max_result_chars),
                 error=message or status,
                 data=data,
+                # A refusal is not a failure.  It says the *account* may not
+                # do this, which is a fact about the organisation rather than
+                # a broken tool — and the panel draws the two differently,
+                # which it can only do when the tool says which one it is.
+                denied=bool(payload.get("denied")),
                 summary=message or status,
             )
 

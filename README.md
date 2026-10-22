@@ -222,19 +222,26 @@ too.
 |---|---|
 | Model provider | kind, base URL, model, API key, temperature, max tokens, timeout |
 | Fallback | enabled, kind, base URL, model, API key |
-| Access | chat roles, widget roles, widget enabled, widget position |
-| Limits | max tool rounds, history limit, turn timeout, turns per minute, disabled tools, allow writes |
+| Widget | position |
+| Limits | max tool rounds, history limit, turn timeout, turns per minute, disabled tools |
 | Prompt | system prompt (blank uses the built-in one) |
 
-Chat access starts closed: System Managers only. Roles are one per line.
+Chat access starts closed: System Managers only.  To let others chat, grant
+them the `Albanna User` role -- the same way any role is granted in
+Frappe, through the User form.  The role grants read, write, create and
+delete on `Albanna Conversation`, all of them `if_owner`, so a person
+keeps their own conversations and nobody else's.  System Managers are
+covered by the shipped rows and need no role.
 
-### The two switches
+### The write tools
 
-**`Allow Writes`** is off by default.  While it is off neither write tool is
-in the tool set *at all* — the model is never told they exist, so there is
-nothing for it to ask for, and a call to one by name is refused.  It is a
-kill switch for the capability that can change the site, and it is one
-click either way.
+There is no site-wide "allow writes" switch.  A person is offered
+`create_doc` when their account may create at least one DocType, and
+`update_doc` when it may change at least one -- and not otherwise.  The
+model is never told about a tool the caller cannot use, so a turn is
+never spent discovering that a tool is off-limits.  Narrowing or widening
+who may write is done through the permission matrix, the same one that
+governs the rest of the site.
 
 **`Turns / Minute`** caps how many questions one person may ask per minute,
 per surface, so no path is unlimited.  Zero means no limit.  This is a cost

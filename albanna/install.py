@@ -16,11 +16,13 @@ import frappe
 def after_install():
     """Create the settings document with its defaults."""
     _ensure_settings()
+    _ensure_role()
 
 
 def after_migrate():
     """Keep the settings document present across migrations."""
     _ensure_settings()
+    _ensure_role()
 
 
 def _ensure_settings() -> None:
@@ -40,7 +42,22 @@ def _ensure_settings() -> None:
     doc.insert(ignore_if_duplicate=True)
 
 
-#: The values a freshly installed app starts with.
+def _ensure_role() -> None:
+    """The role that grants the chat, and the one the permission rows name.
+
+    It is shipped here rather than only in the patch, because a fresh
+    install never runs the patch and would otherwise have no role for the
+    rows to name.  Idempotent.
+    """
+    if frappe.db.exists("Role", "Albanna User"):
+        return
+
+    role = frappe.new_doc("Role")
+    role.role_name = "Albanna User"
+    role.desk_access = 1
+    role.flags.ignore_permissions = True
+    role.insert(ignore_if_duplicate=True)
+    frappe.db.commit()
 #:
 #: Conservative on purpose: the chat is off for everybody except System
 #: Managers, and the model is a real provider with no key, so the first
@@ -59,14 +76,8 @@ _DEFAULTS = {
     "fallback_model": "longcat-2.5",
     "max_tokens": 8192,
     "enabled": 1,
-    "widget_enabled": 1,
     "max_tool_rounds": 25,
     "history_limit": 50,
     "turn_timeout": 600,
     "turns_per_minute": 6,
-    # Writes are off until somebody asks for them.  The write tool is not
-    # in the tool set at all while this is off, so the model is never told
-    # it exists — a site that has not decided about writes does not have a
-    # way to create a document through the chat.
-    "allow_writes": 0,
 }

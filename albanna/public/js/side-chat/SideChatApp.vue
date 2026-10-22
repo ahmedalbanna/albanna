@@ -1384,7 +1384,7 @@ onBeforeUnmount(() => {
 			<p class="albanna-chat__locked-detail">
 				{{
 					__(
-						"Ask an administrator to add your role to the chat roles in Albanna Settings.",
+						"Ask an administrator to grant your account read access to Albanna Conversation.",
 					)
 				}}
 			</p>

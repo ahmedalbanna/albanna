@@ -10,6 +10,11 @@ things that come *before* that:
 
 The permission checker lives here rather than in ``core/`` because it calls
 Frappe, and ``core/`` may not.
+
+The chat gate is not a rule of this app's.  It is a permission row on
+``Albanna Conversation``, read through the framework — so the operator
+grants the chat the same way they grant anything else on the site, and the
+answer cannot drift from what the permission matrix says.
 """
 
 from __future__ import annotations
@@ -50,38 +55,45 @@ def require_system_manager() -> None:
         )
 
 
-def chat_roles() -> set[str]:
-    """The roles allowed to use the chat.
-
-    Read from the settings, which is where the operator sets them.  An empty
-    set means "System Managers only" — the default that a freshly installed
-    app should have, because a side chat that can create documents should
-    not be open to every account on the site by accident.
-    """
-    from albanna.services.settings_service import get_settings
-
-    return set(get_settings().chat_roles)
+#: The DocType whose permission decides whether a person may chat.
+#:
+#: The app ships one role — ``Albanna User`` — with read, write, create and
+#: delete rows on this DocType, every one of them ``if_owner``.  Read on it
+#: is therefore the answer to "may this person use the chat", and it is the
+#: *framework's* answer: the operator grants and withdraws it in the same
+#: permission matrix they use for every other DocType on the site, and there
+#: is no second list of role names in this app to fall out of step with it.
+#:
+#: ``if_owner`` is what keeps a conversation private once the person is in:
+#: the row grants read, and the row also says whose.
+CHAT_DOCTYPE = "Albanna Conversation"
 
 
 def can_use_chat() -> bool:
-    """True when the session user may start a conversation."""
+    """True when the session user may start a conversation.
+
+    Frappe answers this, not the app.  A person may chat when they hold
+    read on :data:`CHAT_DOCTYPE`, which the app ships as the ``Albanna
+    User`` role and an operator widens or narrows with the permission
+    matrix.
+
+    A System Manager is not a special case here, and does not need to be:
+    the shipped rows grant them read outright, so the framework's own
+    answer already covers them.  A special case would be a second rule
+    that could disagree with the matrix, and the matrix is the one the
+    operator can see.
+    """
     user = frappe.session.user
     if not user or user == GUEST_USER:
         return False
 
-    if is_system_manager():
-        return True
-
-    allowed = chat_roles()
-    if not allowed:
-        return False
-
     try:
-        roles = set(frappe.get_roles())
-    except Exception:
-        return False
+        from frappe.permissions import has_permission as _has_permission
 
-    return bool(allowed & roles)
+        return bool(_has_permission(CHAT_DOCTYPE, "read", print_logs=False))
+    except Exception:
+        logger.exception("Could not establish chat access for %s", user)
+        return False
 
 
 def require_chat_access() -> None:
@@ -90,12 +102,33 @@ def require_chat_access() -> None:
     Every endpoint that carries a user's own data calls this first.  It is
     the same rule the connector used and for the same reason: a gate that
     some endpoints remember and others forget is a gate that fails open.
+
+    The refusal names what is missing rather than only that something is.
+    "You do not have access" is a wall; "reading Albanna Conversation is
+    done by the Albanna User role" is a fact about the organisation that
+    the person can act on, and it is the same sentence shape the authority
+    layer uses for a refused write.
     """
-    if not can_use_chat():
+    if can_use_chat():
+        return
+
+    roles = FrappePermissionChecker().roles_for(CHAT_DOCTYPE, "read")
+    if roles:
         frappe.throw(
-            _("You do not have access to the chat. Ask an administrator to add your role."),
+            frappe._(
+                "You do not have access to the chat. Reading {0} is done by "
+                "these roles: {1}."
+            ).format(CHAT_DOCTYPE, ", ".join(roles)),
             frappe.PermissionError,
         )
+
+    frappe.throw(
+        frappe._(
+            "You do not have access to the chat. No role on this site holds "
+            "read on {0}."
+        ).format(CHAT_DOCTYPE),
+        frappe.PermissionError,
+    )
 
 
 def _doctypes_for_permission(user: str, ptype: str) -> list[str]:

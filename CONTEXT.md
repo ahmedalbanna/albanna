@@ -169,12 +169,19 @@ created**.  That is an identifier, not a statement, and it is what turns
 "the assistant called a tool" into "the assistant created
 ACC-SINV-2026-00008".
 
-### 11. The write capability is a switch, and it is off by default
+### 11. The chat and the writes are granted by Frappe, not by the app
 
-While `Allow Writes` is off neither write tool is in the tool set at all.
-The model is never told it exists, so there is nothing for it to ask for,
-and a call to it by name is refused.  The system prompt's instruction not
-to write without being asked is a second line of defence, not the first.
+The app keeps no list of roles that may chat, and no switch that turns
+writes on or off.  Chatting is a read permission on `Albanna Conversation`,
+and the write tools appear when the caller holds the corresponding right
+(`create` for `create_doc`, `write` for `update_doc`) on at least one
+DocType.  Both are answered by Frappe's permission matrix, so the
+operator grants the chat the same way they grant anything else on the
+site, and the answer cannot drift from what the matrix says.
+
+The two lines of defence are unchanged: a tool the caller may not reach is
+never mentioned to the model, and a call that names a DocType the caller
+may not write is refused with the roles that could.
 
 ### 12. A turn is bounded, and the bound is a cost control rather than a boundary
 

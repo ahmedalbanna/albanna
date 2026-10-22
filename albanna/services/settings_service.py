@@ -33,17 +33,13 @@ class AppSettings:
     enabled: bool
     provider: ProviderConfig
     fallback: ProviderConfig | None
-    chat_roles: frozenset[str]
-    widget_roles: frozenset[str]
-    widget_enabled: bool
     widget_position: str
     max_tool_rounds: int
     history_limit: int
     turn_timeout: int
     turns_per_minute: int
-    allow_writes: bool
     system_prompt: str
-    disabled_tools: frozenset[str]
+    disabled_tools: frozenset[str] = frozenset()
     #: What a million tokens cost, in this site's currency.  Zero means
     #: the cost is not known — see :mod:`albanna.core.cost`.
     price_per_million: float = 0.0
@@ -107,15 +103,11 @@ def _build() -> AppSettings:
         enabled=bool(doc.enabled),
         provider=provider,
         fallback=fallback,
-        chat_roles=frozenset(split_names(doc.chat_roles)),
-        widget_roles=frozenset(split_names(doc.widget_roles)),
-        widget_enabled=bool(doc.widget_enabled),
         widget_position=str(doc.widget_position or "bottom-right").strip() or "bottom-right",
         max_tool_rounds=max(1, _int(doc.max_tool_rounds, 25)),
         history_limit=max(1, _int(doc.history_limit, 50)),
         turn_timeout=max(10, _int(doc.turn_timeout, 600)),
         turns_per_minute=max(0, _int_allowing_zero(doc.turns_per_minute, 6)),
-        allow_writes=bool(doc.allow_writes),
         system_prompt=str(doc.system_prompt or ""),
         disabled_tools=frozenset(split_names(doc.disabled_tools)),
         # What a million tokens cost the operator, in their own currency.
@@ -144,11 +136,6 @@ def split_names(value) -> list[str]:
     if not value:
         return []
 
-    text = str(value)
-    for separator in ("\n", ","):
-        text = text.replace(separator, "\n")
-    if not value:
-        return []
     text = str(value)
     for separator in ("\n", ","):
         text = text.replace(separator, "\n")

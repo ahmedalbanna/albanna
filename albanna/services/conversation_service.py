@@ -12,11 +12,12 @@ hundred messages would rewrite two hundred rows on every question.  The
 rows are inserted instead, and the parent is updated with the handful of
 fields that change.
 
-**The parent grants ``All`` and the hooks narrow it.**  The permission
-rules are implemented as Frappe permission hooks, which is what
-``has_permission`` and ``permission_query_conditions`` are for.  Putting
-the rule in the doctype's permissions instead would mean granting a role
-per user, which is not a thing a doctype can express.
+**The parent grants the chat role, and the hooks narrow it.**  The
+permission rows name ``Albanna User`` (``if_owner``) and ``System
+Manager``; the permission hooks then decide who actually reaches a row.
+Putting the rule in the doctype's permissions instead would mean granting
+a role per user, which is not a thing a doctype can express -- so the
+rows name the roles and the hooks do the narrowing.
 """
 
 from __future__ import annotations
