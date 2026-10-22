@@ -3,11 +3,11 @@
 The launcher calls this on every Desk page load to find out whether the
 widget should render at all.
 
-It is deliberately **not** gated on chat access.  A user who may not chat
-still gets the widget, in its locked state: a panel that says why it is
-locked is information, and a widget that silently does not appear looks
-like a broken install.  The gate that matters is on the endpoints that
-actually run a turn.
+A user who may not chat does not get the widget at all: a side chat that
+cannot be used is not a thing that should be on the screen, and the
+reason it is not there is already a permission fact that Frappe and the
+operator's role assignment explain elsewhere.  The gate that matters is on
+the endpoints that actually run a turn.
 
 Nothing secret is returned, and no role names -- the payload says what the
 widget may do, not who may do it.
@@ -37,7 +37,7 @@ def options() -> dict[str, Any]:
 
     chat_access = can_use_chat()
     enabled = bool(settings.enabled)
-    visible = enabled
+    visible = enabled and chat_access
 
     tools: list[str] = []
     if chat_access and visible:
