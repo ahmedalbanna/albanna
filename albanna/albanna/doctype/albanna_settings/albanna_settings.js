@@ -105,6 +105,16 @@ function usage_html(summary) {
 		rows.push(row(__("Provider cost"), `${Number(summary.provider_cost || 0).toFixed(8)}`));
 	}
 	rows.push(row(__("Failed turns"), String(summary.errors || 0)));
+	if (summary.budget) {
+		rows.push(
+			row(
+				__("Budget"),
+				`${Number(summary.cost || 0).toFixed(4)} / ${Number(summary.budget || 0).toFixed(4)}${
+					summary.budget_exceeded ? " ⚠" : ""
+				}`,
+			),
+		);
+	}
 
 	let html = `<table class="table table-sm" style="width: 100%"><tbody>${rows.join(
 		"",

@@ -43,6 +43,9 @@ class AppSettings:
     #: What a million tokens cost, in this site's currency.  Zero means
     #: the cost is not known — see :mod:`albanna.core.cost`.
     price_per_million: float = 0.0
+    #: Optional monthly budget, in the site's currency.  Zero means
+    #: "no limit set".
+    monthly_budget: float = 0.0
     #: The operator's extra options for the provider — the ones the app
     #: has no field for.  See :mod:`albanna.core.options`.
     extra_options: dict[str, Any] = field(default_factory=dict)
@@ -114,6 +117,7 @@ def _build() -> AppSettings:
         # Zero means the cost is not known, and a zero that reads as
         # "free" is a lie the ledger would tell.
         price_per_million=_float(getattr(doc, "price_per_million", 0), 0.0),
+        monthly_budget=_float(getattr(doc, "monthly_budget", 0), 0.0),
         # The operator's extra options: the ones the app has no field
         # for, which are added to the request the provider receives.
         extra_options=parse_options(getattr(doc, "extra_options", "")),

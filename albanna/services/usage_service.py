@@ -22,6 +22,8 @@ from typing import Any
 
 import frappe
 
+from albanna.services.settings_service import get_settings
+
 #: How many rows a breakdown shows.  A breakdown that lists everything
 #: is a list, and the point of a breakdown is the top of it.
 BREAKDOWN_LIMIT = 5
@@ -84,6 +86,12 @@ def usage_summary() -> dict[str, Any]:
         # The turns whose cost is not known.
         "uncosted_turns": uncosted,
         "errors": errors,
+        # The operator's optional monthly budget, and whether this month
+        # has reached it.  A blank budget means "no limit set".
+        "budget": get_settings().monthly_budget,
+        "budget_exceeded": (
+            get_settings().monthly_budget > 0 and cost >= get_settings().monthly_budget
+        ),
         "by_model": _breakdown(rows, "model"),
         "by_user": _breakdown(rows, "user"),
     }
