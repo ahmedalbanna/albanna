@@ -456,10 +456,10 @@ def list_conversations(user: str, limit: int = 20, offset: int = 0) -> list[dict
     """
     rows = frappe.db.sql(
         """
-        select name, title, page, model, last_activity
+        select name, title, page, model, last_activity, pinned
         from `tabAlbanna Conversation`
         where user = %s
-        order by last_activity desc
+        order by pinned desc, last_activity desc
         limit %s offset %s
         """,
         (user, int(limit), int(offset)),
@@ -656,6 +656,12 @@ def rate_message(conversation: str, message: str, rating: str) -> None:
         frappe.throw(_("Only answers can be rated."), frappe.ValidationError)
 
     frappe.db.set_value("Albanna Message", message, "rating", rating or None)
+
+
+def toggle_pin(conversation: str, pinned: bool) -> None:
+    """Pin or unpin a conversation for the caller."""
+    assert_owns(conversation, frappe.session.user or "")
+    frappe.db.set_value("Albanna Conversation", conversation, "pinned", 1 if pinned else 0)
 
 
 def rename_conversation(conversation: str, title: str) -> None:

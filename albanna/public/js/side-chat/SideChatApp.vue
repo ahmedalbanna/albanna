@@ -1036,6 +1036,19 @@ async function showHistory() {
 	}
 }
 
+async function pinConversation(conversation, pinned) {
+	if (!conversation || !conversation.name) return;
+	conversation.pinned = !!pinned;
+	try {
+		await call("albanna.api.conversations.toggle_pin", {
+			conversation: conversation.name,
+			pinned: pinned ? 1 : 0,
+		});
+	} catch (failure) {
+		conversation.pinned = !pinned;
+	}
+}
+
 async function loadMoreConversations() {
 	if (historyLoadingMore.value || !historyHasMore.value) return;
 	historyLoadingMore.value = true;
@@ -1594,6 +1607,7 @@ onBeforeUnmount(() => {
 			@remove="removeConversation"
 			@back="showTranscript"
 			@loadmore="loadMoreConversations"
+			@pin="pinConversation"
 		/>
 
 		<div v-else class="albanna-chat__body">

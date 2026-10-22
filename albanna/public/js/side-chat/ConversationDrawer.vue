@@ -36,7 +36,7 @@ const filtered = computed(() => {
 	});
 });
 
-const emit = defineEmits(["open", "rename", "remove", "new", "back", "loadmore"]);
+const emit = defineEmits(["open", "rename", "remove", "new", "back", "loadmore", "pin"]);
 
 const editing = ref("");
 
@@ -173,6 +173,15 @@ function commitRename(conversation, event) {
 						</div>
 
 						<div class="albanna-drawer__actions">
+							<button
+								type="button"
+								class="albanna-drawer__action"
+								:aria-label="conversation.pinned ? __('Unpin') : __('Pin')"
+								:title="conversation.pinned ? __('Unpin') : __('Pin')"
+								@click="emit('pin', conversation, !conversation.pinned)"
+							>
+								{{ conversation.pinned ? "📌" : "📍" }}
+							</button>
 							<button
 								type="button"
 								class="albanna-drawer__action"

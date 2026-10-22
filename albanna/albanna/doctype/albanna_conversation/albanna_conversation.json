@@ -25,6 +25,12 @@
    "description": "Derived from the first question in the conversation."
   },
   {
+   "default": "0",
+   "fieldname": "pinned",
+   "fieldtype": "Check",
+   "label": "Pinned"
+  },
+  {
    "description": "Who owns this conversation. Only this user, and a System Manager, can read it.",
    "fieldname": "user",
    "fieldtype": "Link",

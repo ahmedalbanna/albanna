@@ -1212,3 +1212,25 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-drawer__action--danger:hover {
 	color: var(--albanna-error-text, #a1231f);
 }
+
+/* Reduced motion: stop the spinner and any transitions. */
+@media (prefers-reduced-motion: reduce) {
+	.albanna-chat__spinner {
+		animation: none !important;
+	}
+	.albanna-chat * {
+		transition: none !important;
+		animation: none !important;
+	}
+}
+
+/* Small screens: the panel takes the full width instead of docking. */
+@media (max-width: 640px) {
+	.albanna-chat {
+		width: 100% !important;
+		max-width: 100% !important;
+	}
+	body.albanna-docked {
+		margin-inline-end: 0 !important;
+	}
+}

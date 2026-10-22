@@ -196,6 +196,23 @@ def rename_conversation(conversation: str = "", title: str = "") -> dict:
 
 
 @frappe.whitelist()
+def toggle_pin(conversation: str = "", pinned: int = 0) -> dict:
+    """Pin or unpin a conversation."""
+    require_chat_access()
+
+    from albanna.services.conversation_service import assert_owns
+    from albanna.services.conversation_service import toggle_pin as _toggle
+
+    user = str(frappe.session.user or "")
+    assert_owns(conversation, user)
+
+    _toggle(conversation, bool(int(pinned or 0)))
+    frappe.db.commit()
+
+    return {"status": "ok"}
+
+
+@frappe.whitelist()
 def delete_turn(conversation: str = "", message: str = "") -> dict:
     """Remove a turn from a conversation: the question asked and the answer given.
 
