@@ -24,6 +24,18 @@ const props = defineProps({
 	loadingMore: { type: Boolean, default: false },
 });
 
+const search = ref("");
+
+const filtered = computed(() => {
+	const term = search.value.trim().toLowerCase();
+	if (!term) return props.conversations;
+	return props.conversations.filter((conversation) => {
+		const title = String(conversation.title || "").toLowerCase();
+		const page = String(conversation.page || "").toLowerCase();
+		return title.includes(term) || page.includes(term);
+	});
+});
+
 const emit = defineEmits(["open", "rename", "remove", "new", "back", "loadmore"]);
 
 const editing = ref("");
@@ -35,7 +47,7 @@ const editing = ref("");
  * reader scans rather than reads.  Grouping them by day turns it into
  * something a person can navigate.
  */
-const groups = computed(() => groupByDate(props.conversations));
+const groups = computed(() => groupByDate(filtered.value));
 
 /**
  * The heading of a group, in the reader's language.
@@ -101,7 +113,21 @@ function commitRename(conversation, event) {
 			</p>
 		</div>
 
-		<div v-else class="albanna-drawer__list">
+		<div v-if="!loading && conversations.length" class="albanna-drawer__search">
+			<input
+				type="search"
+				class="albanna-drawer__search-input"
+				:placeholder="__('Search conversations…')"
+				:aria-label="__('Search conversations')"
+				v-model="search"
+			/>
+		</div>
+
+		<div v-if="!loading && conversations.length && !filtered.length" class="albanna-drawer__empty">
+			<p class="albanna-drawer__empty-title">{{ __("No matches") }}</p>
+		</div>
+
+		<div v-if="!loading && conversations.length && filtered.length" class="albanna-drawer__list">
 			<section v-for="group in groups" :key="group.key" class="albanna-drawer__group">
 				<h3 class="albanna-drawer__group-title">{{ groupLabel(group.key) }}</h3>
 				<ul class="albanna-drawer__group-list">

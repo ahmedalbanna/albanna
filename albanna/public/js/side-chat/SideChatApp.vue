@@ -79,6 +79,14 @@ const transcriptEl = ref(null);
 const announcement = ref("");
 /** Whether the transcript is pinned to the bottom. */
 const followBottom = ref(true);
+
+const lastAssistantMessage = computed(() => {
+	const messages = state.messages;
+	for (let i = messages.length - 1; i >= 0; i -= 1) {
+		if (messages[i].role === "assistant") return messages[i];
+	}
+	return null;
+});
 const showScrollButton = ref(false);
 /** The message whose answer was just copied, if any. */
 const copiedId = ref("");
@@ -253,6 +261,7 @@ function makeMessage(role, content, at) {
 		// then.
 		documents: [],
 		pending: false,
+		rating: "",
 		// When it was said, formatted once.  A message the panel is
 		// showing now is stamped with the reader's clock; a message from a
 		// conversation that was opened comes with the server's.
@@ -324,6 +333,7 @@ function messageFromServer(message) {
 	// is removed by naming it, and a name does not shift when the
 	// conversation grows.
 	item.name = message.name || "";
+	item.rating = message.rating || "";
 	// The stored index, which is how the panel asks for the page of
 	// messages behind this one.  A message that has not been stored yet
 	// has no index, and it is the newest one.
@@ -1107,6 +1117,75 @@ async function renameConversation(name, title) {
  *
  * @param {object} message the question
  */
+async function regenerateLast() {
+	const assistant = lastAssistantMessage.value;
+	if (!assistant || !assistant.name || !conversationId.value) return;
+	// Find the question that brought this answer.
+	let questionMessage = null;
+	for (let i = state.messages.length - 1; i >= 0; i -= 1) {
+		if (state.messages[i] === assistant) {
+			for (let j = i - 1; j >= 0; j -= 1) {
+				if (state.messages[j].role === "user") {
+					questionMessage = state.messages[j];
+					break;
+				}
+			}
+			break;
+		}
+	}
+	const question = questionMessage ? questionMessage.content : "";
+	try {
+		const result = await call("albanna.api.conversations.delete_turn", {
+			conversation: conversationId.value,
+			message: assistant.name,
+		});
+		const messages = (result.messages || []).map(messageFromServer);
+		clearTranscript(state);
+		for (const message of messages) state.messages.push(message);
+		draft.value = question;
+	} catch (failure) {
+		state.error = String(
+			(failure && failure.message) || failure || __("Could not regenerate."),
+		);
+	}
+}
+
+function exportConversation() {
+	const lines = [];
+	for (const message of state.messages) {
+		if (message.role === "user") {
+			lines.push(`**You:** ${message.content}`);
+		} else if (message.role === "assistant") {
+			lines.push(`**Albanna:**\n\n${message.content}`);
+		}
+		lines.push("");
+	}
+	const body = lines.join("\n");
+	const blob = new Blob([body], { type: "text/markdown;charset=utf-8" });
+	const url = URL.createObjectURL(blob);
+	const link = document.createElement("a");
+	link.href = url;
+	link.download = `albanna-conversation-${Date.now()}.md`;
+	document.body.appendChild(link);
+	link.click();
+	document.body.removeChild(link);
+	URL.revokeObjectURL(url);
+}
+
+async function rateMessage(message, rating) {
+	if (!message || !message.name || !conversationId.value) return;
+	try {
+		await call("albanna.api.conversations.rate_message", {
+			conversation: conversationId.value,
+			message: message.name,
+			rating,
+		});
+		message.rating = rating;
+	} catch (failure) {
+		// Rating is a courtesy, not a gate: a failure is not worth a toast.
+	}
+}
+
 function removeTurn(message) {
 	if (!message || !message.name) return;
 
@@ -1408,6 +1487,44 @@ onBeforeUnmount(() => {
 				</button>
 
 				<button
+					v-if="view === 'chat' && lastAssistantMessage"
+					type="button"
+					class="albanna-chat__icon"
+					:aria-label="__('Regenerate last answer')"
+					:title="__('Regenerate last answer')"
+					@click="regenerateLast"
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+						<path
+							d="M21 12a9 9 0 1 1-3-6.7L21 8m0-5v5h-5"
+							stroke="currentColor"
+							stroke-width="1.8"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+					</svg>
+				</button>
+
+				<button
+					v-if="view === 'chat' && state.messages.length"
+					type="button"
+					class="albanna-chat__icon"
+					:aria-label="__('Export conversation')"
+					:title="__('Export conversation')"
+					@click="exportConversation"
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+						<path
+							d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"
+							stroke="currentColor"
+							stroke-width="1.8"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+					</svg>
+				</button>
+
+				<button
 					v-if="view === 'chat'"
 					type="button"
 					class="albanna-chat__icon"
@@ -1629,6 +1746,26 @@ onBeforeUnmount(() => {
 									stroke-linejoin="round"
 								/>
 							</svg>
+						</button>
+						<button
+							v-if="message.role === 'assistant' && message.name"
+							type="button"
+							class="albanna-chat__copy"
+							:aria-label="__('Helpful')"
+							:title="__('Helpful')"
+							@click="rateMessage(message, 'up')"
+						>
+							{{ message.rating === 'up' ? '👍' : '👍' }}
+						</button>
+						<button
+							v-if="message.role === 'assistant' && message.name"
+							type="button"
+							class="albanna-chat__copy"
+							:aria-label="__('Not helpful')"
+							:title="__('Not helpful')"
+							@click="rateMessage(message, 'down')"
+						>
+							{{ message.rating === 'down' ? '👎' : '👎' }}
 						</button>
 						<button
 							v-if="message.role === 'assistant' && message.hasTable"

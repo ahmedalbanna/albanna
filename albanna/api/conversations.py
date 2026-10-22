@@ -232,6 +232,20 @@ def delete_turn(conversation: str = "", message: str = "") -> dict:
 
 
 @frappe.whitelist()
+def rate_message(conversation: str = "", message: str = "", rating: str = "") -> dict:
+    """Record the reader's rating of an answer: "up", "down", or "" to clear."""
+    require_chat_access()
+
+    from albanna.services.conversation_service import rate_message as _rate
+
+    user = str(frappe.session.user or "")
+    _rate(conversation, message, rating)
+    frappe.db.commit()
+
+    return {"status": "ok"}
+
+
+@frappe.whitelist()
 def delete_conversation(conversation: str = "") -> dict:
     """Delete a conversation and its messages."""
     require_chat_access()

@@ -298,7 +298,7 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
     if before_idx > 0:
         rows = frappe.db.sql(
             """
-            select name, role, content, tool_calls, creation, idx
+            select name, role, content, tool_calls, creation, idx, rating
             from `tabAlbanna Message`
             where parent = %s and parentfield = %s and idx < %s
             order by idx desc
@@ -310,7 +310,7 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
     else:
         rows = frappe.db.sql(
             """
-            select name, role, content, tool_calls, creation, idx
+            select name, role, content, tool_calls, creation, idx, rating
             from `tabAlbanna Message`
             where parent = %s and parentfield = %s
             order by idx desc
@@ -359,6 +359,7 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
                 "idx": int(row.idx or 0),
                 "role": role,
                 "content": row.content or "",
+                "rating": row.rating or "",
                 "tools": tools,
                 # When it was said, so that the transcript can say so.
                 # The epoch is what the browser reads: the stored value is
@@ -628,6 +629,33 @@ def delete_turn(conversation: str, message: str) -> int:
         {"names": tuple(names)},
     )
     return len(names)
+
+
+def rate_message(conversation: str, message: str, rating: str) -> None:
+    """Record the reader's rating of an answer.
+
+    Only the caller's own conversations may be rated, and only assistant
+    rows carry a rating.  A blank rating clears it.
+    """
+    assert_owns(conversation, frappe.session.user or "")
+
+    if rating not in ("", "up", "down"):
+        frappe.throw(_("That is not a rating."), frappe.ValidationError)
+
+    row = frappe.db.sql(
+        """
+        select name, role from `tabAlbanna Message`
+        where name = %s and parent = %s and parentfield = %s
+        """,
+        (message, conversation, PARENT_FIELD),
+        as_dict=True,
+    )
+    if not row:
+        frappe.throw(_("That message does not exist."), frappe.DoesNotExistError)
+    if row[0]["role"] != "assistant":
+        frappe.throw(_("Only answers can be rated."), frappe.ValidationError)
+
+    frappe.db.set_value("Albanna Message", message, "rating", rating or None)
 
 
 def rename_conversation(conversation: str, title: str) -> None:

@@ -48,6 +48,13 @@
    "fieldname": "tool_calls",
    "fieldtype": "Long Text",
    "label": "Tool Calls"
+  },
+  {
+   "description": "The reader's rating of this answer, if they gave one. Blank means unrated.",
+   "fieldname": "rating",
+   "fieldtype": "Select",
+   "label": "Rating",
+   "options": "\nup\ndown"
   }
  ],
  "index_web_pages_for_search": 0,
