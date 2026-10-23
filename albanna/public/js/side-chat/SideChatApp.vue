@@ -36,6 +36,7 @@ import { watchRoute } from "./page.mjs";
 import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
 import { takeRetryQuestion } from "./retry.mjs";
 import { clearInflight, loadInflight, saveInflight } from "./inflight.mjs";
+import { canDecide, remainingSeconds } from "./approval.mjs";
 import { mergeOlder, oldestIdx, olderRequest, windowRequest } from "./window.mjs";
 import {
 	beginTurn,
@@ -111,8 +112,7 @@ watch(pendingConfirm, (value) => {
 		return;
 	}
 	const tick = () => {
-		const remaining = Math.max(0, 120 - Math.floor((Date.now() - value.at) / 1000));
-		confirmCountdown.value = remaining;
+		confirmCountdown.value = remainingSeconds(value, Date.now());
 	};
 	tick();
 	confirmTimer = setInterval(tick, 1000);
@@ -634,13 +634,13 @@ async function resumeInflight() {
 
 	// A turn that was waiting for approval when the page was reloaded
 	// is still waiting for it.  The card comes back with the request
-	// id it needs, and only if the wait has not already run out.
-	if (entry.approval && entry.approval.request_id) {
-		const age = Date.now() - Number(entry.approval.at || 0);
-		if (age < 120000) {
-			pendingConfirm.value = entry.approval;
-			setActivity(state, __("Waiting for your approval…"));
-		}
+	// id it needs, and only if the wait has not already run out — the
+	// same window every other part of the card reads, so the card
+	// cannot come back saying "waiting" when the worker has already
+	// given up.
+	if (canDecide(entry.approval, Date.now())) {
+		pendingConfirm.value = entry.approval;
+		setActivity(state, __("Waiting for your approval…"));
 	}
 
 	const controller = new AbortController();

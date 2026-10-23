@@ -26,6 +26,24 @@ export function canDecide(approval, now) {
 }
 
 /**
+ * The seconds left on the wait, floored at zero.
+ *
+ * This is what the card's countdown says.  It agrees with
+ * :func:`canDecide` by construction — both read the same window — so the
+ * card cannot show "3s left" while refusing to be clicked, or the other
+ * way round.
+ *
+ * @param {{at?: number}} approval the pending approval
+ * @param {number} now the current time, in milliseconds
+ * @returns {number} whole seconds left, zero when the wait has run out
+ */
+export function remainingSeconds(approval, now) {
+	if (!canDecide(approval, now)) return 0;
+	const at = Number(approval.at);
+	return Math.max(0, Math.ceil((APPROVAL_WINDOW_MS - (Number(now) - at)) / 1000));
+}
+
+/**
  * Whether the wait has run out.
  *
  * @param {{at?: number}} approval the pending approval
