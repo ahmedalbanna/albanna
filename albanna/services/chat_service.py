@@ -570,8 +570,9 @@ class ChatService:
         gated = spec.mutating and confirm_writes_for(principal.user)
 
         if gated:
-            import time
             import uuid
+
+            from albanna.services.approval import await_decision
 
             request_id = uuid.uuid4().hex
             emit(
@@ -584,17 +585,7 @@ class ChatService:
                 }
             )
 
-            key = f"albanna:confirm:{request_id}"
-            decision = "timeout"
-            deadline = time.monotonic() + 120.0
-            while time.monotonic() < deadline:
-                value = frappe.cache().get_value(key, user=principal.user)
-                if value is not None:
-                    decision = str(value)
-                    with contextlib.suppress(Exception):
-                        frappe.cache().delete_value(key, user=principal.user)
-                    break
-                time.sleep(0.5)
+            decision = await_decision(request_id, principal.user)
 
             if decision != "approve":
                 message = (

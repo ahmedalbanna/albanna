@@ -1900,6 +1900,44 @@ class TestWriteApproval(TestToolPath):
             "the declined write must be recorded as declined",
         )
 
+    def test_a_decision_written_after_the_first_poll_is_seen(self):
+        """The reader's answer arrives *after* the worker has started waiting.
+
+        This is the production ordering, and it is the one that broke: the
+        cache keeps a *miss* in the request's local cache, so a poll that
+        does not ask for ``expires=True`` reads that miss back for ever
+        and the reader's approval is never seen.  The write then times out
+        whatever the reader did.
+        """
+        from albanna.services.approval import await_decision, decision_key
+
+        email = self.accounts_user
+        request_id = "late-decision-test"
+
+        # A clean slate: the decision is written after the first poll.
+        frappe.cache().delete_value(decision_key(request_id), user=email)
+
+        polls = {"n": 0}
+
+        def answering_sleep(_seconds):
+            polls["n"] += 1
+            if polls["n"] == 2:
+                # The reader answers after the first miss.
+                frappe.cache().set_value(
+                    decision_key(request_id), "approve", user=email, expires_in_sec=60
+                )
+
+        decision = await_decision(
+            request_id,
+            email,
+            timeout=5.0,
+            interval=0.01,
+            sleep=answering_sleep,
+        )
+
+        self.assertEqual(decision, "approve", "the decision must be seen, whatever it is")
+        self.assertGreaterEqual(polls["n"], 2, "the first poll must have missed")
+
     def test_a_timeout_is_recorded_as_not_approved(self):
         # A decision of "timeout" is what the worker records when the
         # reader does not answer in time; seeding it simulates that path

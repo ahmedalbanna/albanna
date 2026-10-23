@@ -97,6 +97,26 @@ const copiedTableId = ref("");
  *  yet.  The card is shown in the transcript until it is answered, so
  *  that the reader approves a change and not a JSON blob. */
 const pendingConfirm = ref(null);
+/** Seconds left on the pending approval, for the countdown on the card. */
+const confirmCountdown = ref(0);
+let confirmTimer = null;
+
+watch(pendingConfirm, (value) => {
+	if (confirmTimer) {
+		clearInterval(confirmTimer);
+		confirmTimer = null;
+	}
+	if (!value || !value.at) {
+		confirmCountdown.value = 0;
+		return;
+	}
+	const tick = () => {
+		const remaining = Math.max(0, 120 - Math.floor((Date.now() - value.at) / 1000));
+		confirmCountdown.value = remaining;
+	};
+	tick();
+	confirmTimer = setInterval(tick, 1000);
+});
 
 /** "chat" shows the transcript; "history" shows the list of conversations. */
 const view = ref("chat");
@@ -1961,6 +1981,9 @@ onBeforeUnmount(() => {
 			aria-live="assertive"
 		>
 			<p class="albanna-chat__confirm-preview">{{ pendingConfirm.preview }}</p>
+			<p v-if="confirmCountdown > 0" class="albanna-chat__confirm-countdown">
+				{{ __("Waiting {0}s", [confirmCountdown]) }}
+			</p>
 			<div class="albanna-chat__confirm-actions">
 				<button
 					type="button"
