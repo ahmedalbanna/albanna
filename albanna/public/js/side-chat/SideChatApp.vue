@@ -24,6 +24,24 @@
  * conversations.  The list is not a second floating panel — the widget is
  * already a column of the Desk, and a drawer floating over it would be a
  * second floating thing on a page that has one.
+ *
+ * Where things live
+ * -----------------
+ *
+ * The pure, tested logic is deliberately out of this file; what stays
+ * here is state, wiring and DOM.  Each concern has its module:
+ *
+ *  - ``approval.mjs``     — the approval window: is the card decided, expired,
+ *                           how long is left (and the same window everywhere);
+ *  - ``export.mjs``       — the transcript as a Markdown file;
+ *  - ``inflight.mjs``     — a turn in flight across a page reload;
+ *  - ``window.mjs``       — which slice of the transcript is shown, older pages;
+ *  - ``markdown.js``      — answer rendering, tables, copy formats;
+ *  - ``context.mjs``      — the page's identity and its resolvable names;
+ *  - ``examples.mjs``     — the empty-state suggestions, per page;
+ *  - ``recent-questions.mjs``, ``retry.mjs``, ``page.mjs``, ``format.mjs``
+ *                         — recent asks, the retried question, route
+ *                           watching, clocks.
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import Composer from "./Composer.vue";

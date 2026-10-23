@@ -1,8 +1,16 @@
-"""The wait for a reader's decision.
+"""The wait for a reader's decision, and what the reader is told about it.
 
 A write that the rail is on does not run until the reader has answered.
 The worker that proposed it waits here, and the browser answers by writing
 the decision to the cache under the reader's own namespace.
+
+Everything a turn needs to *speak* about the wait lives here too: the
+human-readable preview the confirmation card opens with
+(:func:`write_preview`) and the sentence the model is told when the write
+was not made (:func:`denial_message`).  They sit beside the wait because
+they are three parts of one answer to one question — what is about to
+happen, can I go on, and what happened instead.
+
 
 The one subtlety this module exists for
 ----------------------------------------
