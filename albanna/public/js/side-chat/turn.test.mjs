@@ -105,3 +105,38 @@ global.window = {
 }
 
 console.log("turn: all assertions passed");
+
+// The cadence of the guarantee: how long the next poll waits.
+//
+// Extracted as a pure function because the *wait itself* is browser-only,
+// but the cadence is business logic: how often may a browser knock on the
+// server while a turn is running.
+import { nextPollDelay } from "./turn.mjs";
+
+// A quiet socket ramps: the first idle poll keeps the old cadence, and
+// each further idle poll waits longer.
+{
+	const t = 0;
+	assert.equal(nextPollDelay({ lastEventAt: 0, idlePolls: 0 }, t), 1500, "the first idle poll keeps the old rhythm");
+	assert.equal(nextPollDelay({ lastEventAt: 0, idlePolls: 1 }, t), 2400, "the second waits longer");
+	assert.equal(nextPollDelay({ lastEventAt: 0, idlePolls: 2 }, t), 3840);
+	assert.equal(nextPollDelay({ lastEventAt: 0, idlePolls: 5 }, t), 9000, "by the sixth idle poll the cap holds");
+	assert.equal(nextPollDelay({ lastEventAt: 0, idlePolls: 50 }, t), 9000, "it never grows past the cap");
+}
+
+// A socket that has spoken recently has proven the transport works, and
+// the poll slows right down — every idle poll it has run notwithstanding.
+// The times are real clock times: a busy morning, not the epoch.
+{
+	const t = 1735000000000;
+	assert.equal(nextPollDelay({ lastEventAt: t - 100, idlePolls: 0 }, t), 12000);
+	assert.equal(nextPollDelay({ lastEventAt: t - 7900, idlePolls: 9 }, t), 12000, "recent counts even after many idle polls");
+	// And an event older than the window falls back to the ramp.
+	assert.equal(nextPollDelay({ lastEventAt: t - 8000, idlePolls: 0 }, t), 1500, "a stale event does not count as alive");
+}
+
+// A turn with no idea what the socket is doing also ramps, from the start.
+{
+	assert.equal(nextPollDelay({}, 0), 1500);
+	assert.equal(nextPollDelay({}, 0), 1500);
+}

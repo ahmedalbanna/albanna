@@ -11,6 +11,11 @@
 // the finished answer in the cache, and this module reads it back until it
 // arrives.  A client whose socket died still gets its answer, because the
 // poll does not care about the socket.
+//
+// The poll is also polite about it: one poll in flight at a time, each
+// idle poll waiting longer than the last, and the whole thing slowing
+// right down while the socket is visibly delivering — a guarantee that is
+// never exercised is not a guarantee, but it does not need to be loud.
 
 /** The socket.io event the server publishes progress on. */
 export const STREAM_EVENT = "albanna_chat_progress";
@@ -21,11 +26,56 @@ export const ASK_ENDPOINT = "albanna.api.chat.ask_stream";
 /** The endpoint that reads a finished turn back. */
 export const STATUS_ENDPOINT = "albanna.api.chat.status";
 
-/** How often to ask whether the turn is done. */
+/** How often to ask whether the turn is done, the first time. */
 export const STATUS_POLL_MS = 1500;
+
+/** How much longer each idle poll waits than the one before it.
+ *
+ * A turn's answer usually arrives over the socket within seconds.  The
+ * poll is the delivery *guarantee*, not the transport, so the gap grows
+ * — one poll dictating a second of latency was a choice made when the
+ * poll was the fast path. */
+export const STATUS_POLL_GROWTH = 1.6;
+
+/** The longest a wait between two idle polls grows to. */
+export const STATUS_POLL_MAX_MS = 9000;
+
+/** The gap between two polls while the socket is visibly delivering.
+ *
+ * When events are arriving, the transport is working and a poll is
+ * almost redundant — yet a guarantee that is never exercised is not a
+ * guarantee, so it still runs, slowly. */
+export const STATUS_POLL_MS_WHILE_ALIVE = 12000;
+
+/** How long after a socket event the socket still counts as alive. */
+export const SOCKET_ALIVE_WINDOW_MS = 8000;
 
 /** How long to wait before the first poll. */
 export const FIRST_POLL_MS = 1200;
+
+/**
+ * The gap before the next poll.
+ *
+ * Three states, read from what the wait itself has seen: the socket has
+ * spoken recently (the transport is alive — slow down), the socket has
+ * gone quiet or never spoke (poll is the ear — keep the ramp), and the
+ * ramp never grows past its cap.
+ *
+ * @param {object} state what the wait has observed
+ * @param {number} state.lastEventAt when the last socket event arrived,
+ *   zero if none ever has
+ * @param {number} state.idlePolls how many polls have run without a
+ *   settled answer
+ * @param {number} now the current time, in milliseconds
+ * @returns {number} milliseconds to wait before the next poll
+ */
+export function nextPollDelay({ lastEventAt = 0, idlePolls = 0 }, now) {
+	if (lastEventAt > 0 && now - lastEventAt < SOCKET_ALIVE_WINDOW_MS) {
+		return STATUS_POLL_MS_WHILE_ALIVE;
+	}
+	const grown = STATUS_POLL_MS * STATUS_POLL_GROWTH ** Math.max(0, idlePolls);
+	return Math.min(Math.round(grown), STATUS_POLL_MAX_MS);
+}
 
 /**
  * Call a whitelisted method.
@@ -261,15 +311,16 @@ export function waitForTurn(streamId, { onEvent, signal } = {}) {
 	return new Promise((resolve) => {
 		let settled = false;
 		let pollTimer = null;
-		let firstPoll = null;
+		let pollInFlight = false;
+		let lastEventAt = 0;
+		let idlePolls = 0;
 		let unsubscribeSocket = () => {};
 
 		const finish = (payload) => {
 			if (settled) return;
 			settled = true;
 			unsubscribeSocket();
-			if (firstPoll) window.clearTimeout(firstPoll);
-			if (pollTimer) window.clearInterval(pollTimer);
+			if (pollTimer) window.clearTimeout(pollTimer);
 			// The abort listener is removed here rather than left on the
 			// signal: a signal outlives the turn, and a listener that
 			// outlives its turn is a leak the user never sees.
@@ -294,6 +345,9 @@ export function waitForTurn(streamId, { onEvent, signal } = {}) {
 		}
 
 		unsubscribeSocket = subscribe(streamId, (event) => {
+			// When an event arrives, the socket is proven alive: the wait
+			// uses that to slow its polls down to the guarantee-only rate.
+			lastEventAt = Date.now();
 			if (event.event === "done") {
 				finish(event.result);
 				return;
@@ -301,22 +355,40 @@ export function waitForTurn(streamId, { onEvent, signal } = {}) {
 			if (onEvent) onEvent(event);
 		});
 
-		// The poll is the delivery guarantee.  It starts a moment after the
-		// socket subscription so a fast turn is not asked for twice.
-		const poll = async () => {
+		/* The poll is the delivery guarantee.  It is *serialised*: the
+		 * next poll is scheduled only when the previous one has finished,
+		 * because a queue of unanswered polls piled up behind a slow
+		 * response is requests spent on nothing.  And it ramps: each
+		 * poll that comes back without an answer waits longer than the
+		 * last, so a turn that is thinking hard is polled a few times a
+		 * minute, not every second and a half.
+		 *
+		 * When a socket event arrives the socket is scheduled to slow
+		 * right down, since the transport is working and the poll is
+		 * only there to guarantee what is already working. */
+		async function poll() {
+			pollInFlight = true;
 			try {
 				const payload = await call(STATUS_ENDPOINT, { stream_id: streamId });
 				if (payload && (payload.status === "ok" || payload.status === "error")) {
 					finish(payload);
+					return;
 				}
+				idlePolls += 1;
 			} catch (error) {
 				// A failed poll is not a failed turn; the next one may work.
+				idlePolls += 1;
+			} finally {
+				pollInFlight = false;
+				if (!settled) {
+					// The delay is read *now*: a socket event that arrived
+					// while the request was in flight is included in the
+					// judgment, so a working socket slows the next poll.
+					pollTimer = window.setTimeout(poll, nextPollDelay({ lastEventAt, idlePolls }, Date.now()));
+				}
 			}
-		};
-		firstPoll = window.setTimeout(() => {
-			pollTimer = window.setInterval(poll, STATUS_POLL_MS);
-			poll();
-		}, FIRST_POLL_MS);
+		}
+		pollTimer = window.setTimeout(poll, FIRST_POLL_MS);
 
 		/* The abort listener goes on *last*, and that order matters.
 		 *
