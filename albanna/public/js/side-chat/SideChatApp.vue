@@ -1277,17 +1277,33 @@ function exportConversation() {
 	URL.revokeObjectURL(url);
 }
 
+/**
+ * Rate an answer, as a toggle.
+ *
+ * Clicking the marked side again clears the rating: the rating is the
+ * reader's single opinion of the answer, and two thumbs lit at once is
+ * not an opinion, it is noise.  A failure is silent — the rating is a
+ * courtesy, and a lost courtesy is not worth a toast over a thread the
+ * reader is still reading.
+ *
+ * @param {object} message the answer, carrying its row name
+ * @param {string} rating "up" or "down"
+ */
 async function rateMessage(message, rating) {
 	if (!message || !message.name || !conversationId.value) return;
+	const next = message.rating === rating ? "" : rating;
 	try {
 		await call("albanna.api.conversations.rate_message", {
 			conversation: conversationId.value,
 			message: message.name,
-			rating,
+			rating: next,
 		});
-		message.rating = rating;
+		// The server, not the click, is what the answer carries: the
+		// rating has to survive a reload, so it is only set here once
+		// the row agrees.
+		message.rating = next;
 	} catch (failure) {
-		// Rating is a courtesy, not a gate: a failure is not worth a toast.
+		// Silent, for the reason above.
 	}
 }
 
@@ -1853,25 +1869,35 @@ onBeforeUnmount(() => {
 								/>
 							</svg>
 						</button>
+						<!-- The rating is a toggle behaviour, not two independent
+					     buttons: clicking the marked side again clears the
+					     rating.  The state is on the *button*, not only in
+					     the glyph, so a reader who cannot tell the two
+					     thumbs apart still gets the answer in the tooltip
+					     and the pressed state in their reader. -->
 						<button
 							v-if="message.role === 'assistant' && message.name"
 							type="button"
 							class="albanna-chat__copy"
+							:class="{ 'albanna-chat__rating--on': message.rating === 'up' }"
 							:aria-label="__('Helpful')"
+							:aria-pressed="message.rating === 'up' ? 'true' : 'false'"
 							:title="__('Helpful')"
 							@click="rateMessage(message, 'up')"
 						>
-							{{ message.rating === "up" ? "👍" : "👍" }}
+							👍
 						</button>
 						<button
 							v-if="message.role === 'assistant' && message.name"
 							type="button"
 							class="albanna-chat__copy"
+							:class="{ 'albanna-chat__rating--on': message.rating === 'down' }"
 							:aria-label="__('Not helpful')"
+							:aria-pressed="message.rating === 'down' ? 'true' : 'false'"
 							:title="__('Not helpful')"
 							@click="rateMessage(message, 'down')"
 						>
-							{{ message.rating === "down" ? "👎" : "👎" }}
+							👎
 						</button>
 						<button
 							v-if="message.role === 'assistant' && message.hasTable"

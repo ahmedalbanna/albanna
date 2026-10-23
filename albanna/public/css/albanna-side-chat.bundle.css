@@ -795,6 +795,15 @@ body.albanna-side-chat-docked-inline-start {
 	padding: 2px 6px;
 }
 
+/* A rating that the reader has given: the mark that carries the opinion
+ * is the one that stands out, and the colour is the theme's own primary
+ * rather than a red or a green, so that neither direction is dressed as
+ * an error or a success. */
+.albanna-chat__rating--on {
+	color: var(--albanna-primary, var(--primary, #2490ef));
+	background: var(--albanna-hover, #f2f4f5);
+}
+
 /* Jump to the end of the transcript, for the reader who has scrolled up to
  * read something and does not want to be dragged back by the next token.
  *
