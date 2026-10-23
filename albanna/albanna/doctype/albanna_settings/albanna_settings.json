@@ -52,7 +52,7 @@
    "label": "Model Provider"
   },
   {
-   "description": "Which API the model is called through. `openai` covers every OpenAI-compatible endpoint \u2014 OpenRouter, OpenAI, Groq, vLLM, LM Studio.",
+   "description": "Which API the model is called through. `openai` covers every OpenAI-compatible endpoint — OpenRouter, OpenAI, Groq, vLLM, LM Studio.",
    "fieldname": "provider_kind",
    "fieldtype": "Select",
    "in_list_view": 1,
@@ -78,7 +78,7 @@
    "fieldname": "extra_options",
    "fieldtype": "Small Text",
    "label": "Extra Options",
-   "description": "Options for the provider that the app has no field for, as a JSON object \u2014 for example {\"setCacheKey\": \"True\"}. They are added to the request the app sends. A string that spells true or false becomes the boolean it means; the app's own settings are never overwritten by them."
+   "description": "Options for the provider that the app has no field for, as a JSON object — for example {\"setCacheKey\": \"True\"}. They are added to the request the app sends. A string that spells true or false becomes the boolean it means; the app's own settings are never overwritten by them."
   },
   {
    "description": "The provider's API key. Stored encrypted; it is never sent to the browser and never written to a log.",

@@ -97,7 +97,6 @@ def test_the_settings_do_not_print_the_key_either():
         turn_timeout=600,
         turns_per_minute=6,
         system_prompt="",
-        disabled_tools=frozenset(),
     )
 
     assert KEY not in repr(settings)

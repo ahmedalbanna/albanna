@@ -255,7 +255,7 @@ def rate_message(conversation: str = "", message: str = "", rating: str = "") ->
 
     from albanna.services.conversation_service import rate_message as _rate
 
-    user = str(frappe.session.user or "")
+    _ = str(frappe.session.user or "")
     _rate(conversation, message, rating)
     frappe.db.commit()
 

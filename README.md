@@ -223,7 +223,7 @@ too.
 | Model provider | kind, base URL, model, API key, temperature, max tokens, timeout |
 | Fallback | enabled, kind, base URL, model, API key |
 | Widget | position |
-| Limits | max tool rounds, history limit, turn timeout, turns per minute, disabled tools |
+| Limits | max tool rounds, history limit, turn timeout, turns per minute |
 | Prompt | system prompt (blank uses the built-in one) |
 
 Chat access starts closed: System Managers only.  To let others chat, grant

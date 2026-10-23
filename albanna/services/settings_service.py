@@ -39,7 +39,6 @@ class AppSettings:
     turn_timeout: int
     turns_per_minute: int
     system_prompt: str
-    disabled_tools: frozenset[str] = frozenset()
     #: What a million tokens cost, in this site's currency.  Zero means
     #: the cost is not known — see :mod:`albanna.core.cost`.
     price_per_million: float = 0.0
@@ -112,7 +111,6 @@ def _build() -> AppSettings:
         turn_timeout=max(10, _int(doc.turn_timeout, 600)),
         turns_per_minute=max(0, _int_allowing_zero(doc.turns_per_minute, 6)),
         system_prompt=str(doc.system_prompt or ""),
-        disabled_tools=frozenset(split_names(doc.disabled_tools)),
         # What a million tokens cost the operator, in their own currency.
         # Zero means the cost is not known, and a zero that reads as
         # "free" is a lie the ledger would tell.

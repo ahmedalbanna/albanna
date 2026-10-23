@@ -10,7 +10,6 @@ The app used to keep its own permission layer on top of Frappe's:
 * `Albanna Settings.chat_roles` — the roles that may use the chat.
 * `Albanna Settings.widget_roles` — the roles that may see the widget.
 * `Albanna Settings.allow_writes` — a site-wide switch for the write tools.
-* `Albanna Settings.disabled_tools` — a per-tool switch (kept, see below).
 * `Albanna Settings.widget_enabled` — a duplicate of `enabled`.
 
 None of these are things Frappe does not already do.  Frappe has a
@@ -54,12 +53,9 @@ What is kept:
 * `enabled` — the single site-wide kill switch for the chat.  It is not a
   permission; it is an operator's "the chat is off" decision, and it
   leaves the widget in its locked state so the reason is visible.
-* `disabled_tools` — a per-tool feature switch.  Not a permission, and not
-  replaceable by one: a site that does not want a tool at all is entitled
-  to be without it.
 
 What is removed: `chat_roles`, `widget_roles`, `widget_enabled`,
-`allow_writes`.  The migration moves the old `chat_roles` values into the
+`allow_writes`, `disabled_tools`.  The migration moves the old `chat_roles` values into the
 new model by granting `Albanna User` to the users who held one of those
 roles.
 
