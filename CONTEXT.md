@@ -845,10 +845,13 @@ rule was written down:
     list keyed by stream id, not a single slot: a second question asked
     in another thread overwrites nothing, and a turn finishing erases
     only its own entry.
-*   **Leaving a thread stops the watching, not the work.**  Coming back
-    picks the turn up again, mid-answer if that is where it is.  The
-    reader is never told a turn was "stopped" when it is still running —
-    "stopped" means they asked it to stop.
+*   **Leaving a thread stops the watching, not the work.**  The turn's
+    address survives an aborted wait, so coming back picks the turn up
+    again, mid-answer if that is where it is.  A wait that is aborted
+    forgets nothing: erasing the address there would turn "unwatched"
+    into "lost".  The reader is never told a turn was "stopped" when it
+    is still running — "stopped" means they asked it to stop, and the
+    Stop button only exists on the thread being read.
 
 The turn's phase is the *thread's*: running while the thread shown has a
 wait, idle when it has none.  One turn ending while another of the same

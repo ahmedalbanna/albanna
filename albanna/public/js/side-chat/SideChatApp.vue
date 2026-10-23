@@ -588,7 +588,7 @@ function noticeText(notice) {
 		case "stopped":
 			return __("Stopped.");
 		case "moved":
-			return __("You moved to another page, so the turn was stopped.");
+			return __("You moved to another page. The turn is still running — its answer will be in that page's conversation.");
 		case "no-table":
 			return __("There is no table to copy.");
 		case "copy-failed":
@@ -687,6 +687,10 @@ function followTurn(entry, asked, answer) {
 		conversation: entry.conversation_id || "",
 		page: entry.page || "",
 	});
+	// Set when the wait ends because it was aborted rather than because
+	// the turn ended: the two need different cleanups, and only one of
+	// them may forget the turn's address.
+	let abortedWait = false;
 	refreshPhase();
 
 	return waitForTurn(entry.stream_id, {
@@ -694,6 +698,31 @@ function followTurn(entry, asked, answer) {
 		onEvent: (event) => handleTurnEvent(answer, event, entry.stream_id),
 	})
 		.then((result) => {
+			if (result && result.status === "aborted") {
+				abortedWait = true;
+				/* The waiting stopped; the work did not.
+				 *
+				 * A wait is aborted by leaving the thread, leaving the
+				 * page, or pressing Stop — and in all three the worker
+				 * finishes the turn and the answer lands in the
+				 * conversation.  So the address is *kept*: it is what
+				 * lets the reader come back to the thread and find the
+				 * answer arriving, or already there.  Erasing it here
+				 * would turn "unwatched" into "lost", which is exactly
+				 * the lie the panel must not tell.
+				 *
+				 * The *notice* is another matter, and it belongs to the
+				 * thread being read: the Stop button is only on that
+				 * thread, so only a stop the reader asked for is
+				 * acknowledged.  A turn that was left behind says
+				 * nothing, because its reader is elsewhere. */
+				if (attached(answer)) {
+					stopTurn(state, answer);
+					if (!state.notice) state.notice = "stopped";
+				}
+				return;
+			}
+
 			// Only this turn's card is this turn's business: a turn
 			// finishing in another thread must not clear the card the
 			// reader is looking at.
@@ -713,7 +742,10 @@ function followTurn(entry, asked, answer) {
 		})
 		.finally(() => {
 			turnWaits.delete(entry.stream_id);
-			removeInflight(entry.stream_id);
+			// The address goes when the turn is *over* — answered,
+			// failed, or reported lost — and stays while it runs, for
+			// the reader who comes back to its thread.
+			if (!abortedWait) removeInflight(entry.stream_id);
 			answer.pending = false;
 			refreshPhase();
 			scrollToBottom();
@@ -814,6 +846,20 @@ function refreshPhase() {
 }
 
 /**
+ * Put the page's own turns back on screen — the ones asked as the page's
+ * *first* question, before the server had a conversation to name.
+ *
+ * Such a turn is remembered with no conversation id, because the
+ * conversation is created by the answer that is still on its way.  It
+ * belongs to this page's thread, and to no other: another page's
+ * unanswered first question is another page's business.
+ */
+function attachPageThreadTurns() {
+	const own = turnsForPage(currentPage.value).some((entry) => !entry.conversation_id);
+	if (own) attachRunningTurns("");
+}
+
+/**
  * Pick up the turns that were running when the page was reloaded.
  *
  * The worker is still working and each answer is parked in the cache;
@@ -838,6 +884,7 @@ function resumeInflight() {
 		if (conversation && conversation !== conversationId.value) continue;
 		attachRunningTurns(conversation);
 	}
+	attachPageThreadTurns();
 }
 
 /**
@@ -1086,9 +1133,13 @@ async function send(question) {
 	// The turn's address, written down by `onQueued` and cleaned up by
 	// the `finally`: one turn, one entry, one cleanup.
 	let entry = null;
+	// How the turn ended, for the same reason: the `finally` needs to
+	// know whether the turn is over or merely unwatched, and a `const`
+	// inside the `try` is not visible there.
+	let result = null;
 
 	try {
-		const result = await runTurn({
+		result = await runTurn({
 			question: text,
 			conversationId: conversationId.value,
 			page: page,
@@ -1153,7 +1204,11 @@ async function send(question) {
 		// wait, because the reader may go back to it.
 		if (entry) {
 			turnWaits.delete(entry.stream_id);
-			removeInflight(entry.stream_id);
+			// An aborted wait is a turn still running: its address stays,
+			// so coming back to the thread finds the answer arriving.
+			if (!(result && result.status === "aborted")) {
+				removeInflight(entry.stream_id);
+			}
 		}
 		refreshPhase();
 		scrollToBottom();
@@ -1710,7 +1765,7 @@ async function loadPageConversation() {
 			// The page's own thread, before its first question created
 			// it: a turn asked a moment ago is remembered with no
 			// conversation id, and it is still running.
-			attachRunningTurns("");
+			attachPageThreadTurns();
 			return;
 		}
 
@@ -1726,6 +1781,7 @@ async function loadPageConversation() {
 		// up again: the reader moved to another page and came back, and
 		// the answer is still arriving.
 		attachRunningTurns(result.conversation);
+		attachPageThreadTurns();
 	} catch (failure) {
 		// The panel still works without it: the reader can ask, and the
 		// answer will join whatever thread the server picks.
