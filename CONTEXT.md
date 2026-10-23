@@ -858,6 +858,31 @@ wait, idle when it has none.  One turn ending while another of the same
 thread still runs leaves it running, because the Stop button that
 vanished early is a button that stopped nothing.
 
+### 49. The server owns the deadline it tells the reader about
+
+The approval wait is one number, and the server is the side that holds
+it.  `settings.confirm_timeout` sets it (clamped to 30–600 seconds, both
+at the operator's save and at the read), the worker waits that long, and
+the `confirm` event carries it to the browser as `window_seconds`.  The
+card counts down from *that*, and stops accepting answers at it.
+
+A countdown computed on the browser's clock against a constant of its
+own is a countdown that lies — it tells the reader they have time they
+do not have, and the reader decides how long to take by it.  One
+deadline, told to both sides.
+
+When it runs out the card says so, in the danger colour, with its
+buttons disabled.  A card that stays clickable past its deadline
+accepts an answer nobody is reading any more, and the reader who clicks
+it gets silence — which reads as the assistant ignoring them.  Silence
+at a deadline is the one outcome worse than the deadline.
+
+An approval belongs to the turn that is waiting for it, so the card is
+keyed by stream id: two writes waiting in one thread are two cards, a
+write proposed while its reader is in another thread is remembered all
+the same, and leaving a thread takes its cards with it and brings them
+back on return.
+
 ## What is deliberately not here
 
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.
