@@ -31,6 +31,7 @@ import ConversationDrawer from "./ConversationDrawer.vue";
 import { pageIdentity, resolveContext } from "./context.mjs";
 import { exampleSet, openDocumentFrom } from "./examples.mjs";
 import { clockTime } from "./format.mjs";
+import { conversationToMarkdown, exportFilename } from "./export.mjs";
 import { hasTable, renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js";
 import { watchRoute } from "./page.mjs";
 import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
@@ -1253,22 +1254,23 @@ async function regenerateLast() {
 	}
 }
 
+/**
+ * Export the transcript as a Markdown file.
+ *
+ * The *file* is built in :mod:`export.mjs`, where it is testable; the
+ * DOM dance of a detached anchor is what stays here.  The speakers are
+ * named in the reader's language, because the file is theirs.
+ */
 function exportConversation() {
-	const lines = [];
-	for (const message of state.messages) {
-		if (message.role === "user") {
-			lines.push(`**You:** ${message.content}`);
-		} else if (message.role === "assistant") {
-			lines.push(`**Albanna:**\n\n${message.content}`);
-		}
-		lines.push("");
-	}
-	const body = lines.join("\n");
+	const body = conversationToMarkdown(state.messages, {
+		reader: __("You"),
+		assistant: __("Albanna"),
+	});
 	const blob = new Blob([body], { type: "text/markdown;charset=utf-8" });
 	const url = URL.createObjectURL(blob);
 	const link = document.createElement("a");
 	link.href = url;
-	link.download = `albanna-conversation-${Date.now()}.md`;
+	link.download = exportFilename(Date.now());
 	document.body.appendChild(link);
 	link.click();
 	document.body.removeChild(link);
