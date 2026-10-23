@@ -22,6 +22,7 @@ class AlbannaSettings(Document):
     def validate(self):
         self._enforce_one_key()
         self._enforce_valid_options()
+        self._clamp_approval_wait()
 
     def on_update(self):
         self._store_secret("api_key", self.api_key)
@@ -53,6 +54,41 @@ class AlbannaSettings(Document):
                     ).format(fieldname),
                     frappe.ValidationError,
                 )
+
+    def _clamp_approval_wait(self):
+        """Keep the approval wait inside the bounds the wait itself honours.
+
+        The wait is read with a clamp as well — :func:`wait_seconds` — so
+        a value outside the bounds is not a crash, it is a clamp.  But a
+        clamp the operator cannot see is a setting that does not do what
+        the box says, so the value is corrected *here*, where the
+        operator typed it, and the box then shows what will happen.
+
+        The bounds are the ones in :mod:`albanna.services.approval`: a
+        floor, because a wait shorter than a reader's pause refuses
+        writes nobody was given the chance to approve; a ceiling, because
+        the worker holds its slot for as long as the wait lasts.
+        """
+        from albanna.services.approval import MAX_TIMEOUT, MIN_TIMEOUT
+
+        try:
+            seconds = int(self.get("confirm_timeout") or 0)
+        except (TypeError, ValueError):
+            seconds = 0
+
+        if seconds <= 0:
+            return
+
+        clamped = min(max(seconds, int(MIN_TIMEOUT)), int(MAX_TIMEOUT))
+        if clamped != seconds:
+            self.confirm_timeout = clamped
+            frappe.msgprint(
+                frappe._("The approval wait is kept between {0} and {1} seconds; {2} was used.").format(
+                    int(MIN_TIMEOUT), int(MAX_TIMEOUT), clamped
+                ),
+                indicator="orange",
+                alert=True,
+            )
 
     def _enforce_valid_options(self):
         """Refuse options that are not a JSON object.

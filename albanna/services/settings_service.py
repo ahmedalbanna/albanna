@@ -25,6 +25,11 @@ from albanna.providers.base import ProviderConfig, default_base_url
 #: Where the memoised settings live between calls in one request.
 _CACHE_ATTR = "albanna_settings_cache"
 
+#: How long a write waits for the reader when the operator has not said.
+#: The same number the approval card counts down from, because the
+#: server owns the deadline — see :mod:`albanna.services.approval`.
+DEFAULT_CONFIRM_TIMEOUT = 120
+
 
 @dataclass(frozen=True)
 class AppSettings:
@@ -48,6 +53,14 @@ class AppSettings:
     #: Whether a write must wait for the reader's approval before it runs.
     #: Off by default; a per-user policy can turn it on for one account.
     confirm_writes: bool = False
+    #: How long a write waits for the reader, in seconds.
+    #:
+    #: The server owns this number and tells the reader's browser it in
+    #: the approval event, so the countdown on the card and the worker's
+    #: deadline are the *same* deadline.  A countdown that disagrees with
+    #: the thing it counts down to is worse than no countdown: it tells
+    #: the reader they have time they do not have.
+    confirm_timeout: int = 120
     #: The operator's extra options for the provider — the ones the app
     #: has no field for.  See :mod:`albanna.core.options`.
     extra_options: dict[str, Any] = field(default_factory=dict)
@@ -123,6 +136,9 @@ def _build() -> AppSettings:
         # field, read as a bool; a missing column (pre-migration) reads
         # as "off".
         confirm_writes=bool(getattr(doc, "confirm_writes", 0)),
+        # A missing column (pre-migration) or nonsense reads as the
+        # default rather than as "no wait at all".
+        confirm_timeout=_int(getattr(doc, "confirm_timeout", 0), DEFAULT_CONFIRM_TIMEOUT),
         # The operator's extra options: the ones the app has no field
         # for, which are added to the request the provider receives.
         extra_options=parse_options(getattr(doc, "extra_options", "")),

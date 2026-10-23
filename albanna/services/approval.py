@@ -36,8 +36,35 @@ import frappe
 #: The prefix every pending decision is stored under.
 KEY_PREFIX = "albanna:confirm:"
 
-#: How long the reader is given, in seconds.
+#: How long the reader is given, in seconds, when the operator has not
+#: said.  The same default the settings field carries.
 DEFAULT_TIMEOUT = 120.0
+
+#: The shortest and longest a wait may be set to.
+#:
+#: A floor, because a wait shorter than a reader's pause is a rail that
+#: refuses writes nobody was given the chance to approve; a ceiling,
+#: because the worker holds its slot for as long as the wait lasts, and
+#: a wait that can be set to an hour is a worker held for an hour.
+MIN_TIMEOUT = 30.0
+MAX_TIMEOUT = 600.0
+
+
+def wait_seconds(configured) -> float:
+    """The wait to use, from whatever the operator set.
+
+    A number outside the bounds is clamped rather than refused: an
+    operator who typed 5000 meant "a long time", and refusing the turn
+    over a typo in a setting is a worse answer than honouring the
+    intent.
+    """
+    try:
+        seconds = float(configured)
+    except (TypeError, ValueError):
+        return DEFAULT_TIMEOUT
+    if seconds <= 0:
+        return DEFAULT_TIMEOUT
+    return min(max(seconds, MIN_TIMEOUT), MAX_TIMEOUT)
 
 #: How long between two reads of the decision.  Short enough that the
 #: reader's approval is acted on within a tenth of a second, long enough

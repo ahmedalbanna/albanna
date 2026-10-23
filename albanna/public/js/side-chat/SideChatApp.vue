@@ -120,28 +120,18 @@ const copiedId = ref("");
 /** The message whose table was just copied, if any. */
 const copiedTableId = ref("");
 
-/** A write the assistant has proposed and the reader has not answered
- *  yet.  The card is shown in the transcript until it is answered, so
- *  that the reader approves a change and not a JSON blob. */
-const pendingConfirm = ref(null);
-/** Seconds left on the pending approval, for the countdown on the card. */
-const confirmCountdown = ref(0);
-let confirmTimer = null;
+/* One clock for every approval card on screen.
+ *
+ * A timer per card was a timer per card, and two of them disagreed about
+ * what "now" was within the same second.  One ticking `now`, read by
+ * every card. */
+const now = ref(Date.now());
+let clockTimer = null;
 
-watch(pendingConfirm, (value) => {
-	if (confirmTimer) {
-		clearInterval(confirmTimer);
-		confirmTimer = null;
-	}
-	if (!value || !value.at) {
-		confirmCountdown.value = 0;
-		return;
-	}
-	const tick = () => {
-		confirmCountdown.value = remainingSeconds(value, Date.now());
-	};
-	tick();
-	confirmTimer = setInterval(tick, 1000);
+onMounted(() => {
+	clockTimer = setInterval(() => {
+		now.value = Date.now();
+	}, 1000);
 });
 
 /** "chat" shows the transcript; "history" shows the list of conversations. */
@@ -191,6 +181,19 @@ const turnWaits = shallowReactive(new Map());
 
 const keydownHandler = ref(null);
 
+/* The approvals waiting for an answer, by stream id.
+ *
+ * A map of its own, and not a field on the wait above it, for one
+ * reason: `shallowReactive` tracks the map's own adds and deletes and
+ * nothing inside a value.  Clearing a field on a wait entry would leave
+ * the card on screen until something else re-rendered — a card that
+ * stays after its decision is taken, which is the same lie in the other
+ * direction.  Adding and deleting a *key* is seen.
+ *
+ * The values are plain data, written once when the write is proposed and
+ * never edited: a decision replaces the entry rather than changing it. */
+const pendingApprovals = shallowReactive(new Map());
+
 /**
  * The questions the reader has asked, oldest first.
  *
@@ -213,6 +216,21 @@ const canChat = computed(() => props.config.chat_access === true && !locked.valu
 
 /** The waits of the thread the reader is looking at, oldest last. */
 const visibleWaits = computed(() => waitsOfConversation([...turnWaits.entries()], conversationId.value));
+
+/** The approvals waiting in the thread being read, oldest last.
+ *
+ * An approval belongs to the turn that is waiting for it, and a turn
+ * belongs to its thread — so the card belongs to the thread too.  A
+ * write proposed in another thread is not shown here: its reader is
+ * elsewhere, and the card comes back when its thread is opened. */
+const visibleApprovals = computed(() => {
+	const waiting = [];
+	for (const wait of visibleWaits.value) {
+		const approval = pendingApprovals.get(wait.streamId);
+		if (approval) waiting.push({ streamId: wait.streamId, approval });
+	}
+	return waiting;
+});
 
 /** Is a turn running in the thread being read? */
 const busy = computed(() => visibleWaits.value.length > 0);
@@ -678,15 +696,20 @@ watch(view, async (next) => {
  * @param {object} entry the remembered turn
  * @param {object} asked the question message
  * @param {object} answer the answer message
+ * @param {object} [approval] the approval this turn is waiting for, when
+ *   it is being picked up again after a reload or a return to its thread
  * @returns {Promise<void>} settles when the turn is no longer waited for
  */
-function followTurn(entry, asked, answer) {
+function followTurn(entry, asked, answer, approval = null) {
 	const controller = new AbortController();
 	turnWaits.set(entry.stream_id, {
 		controller,
 		conversation: entry.conversation_id || "",
 		page: entry.page || "",
 	});
+	// A turn picked up again with an approval still waiting keeps its
+	// card: the reader left it mid-decision and is now back.
+	if (approval) pendingApprovals.set(entry.stream_id, approval);
 	// Set when the wait ends because it was aborted rather than because
 	// the turn ended: the two need different cleanups, and only one of
 	// them may forget the turn's address.
@@ -723,12 +746,6 @@ function followTurn(entry, asked, answer) {
 				return;
 			}
 
-			// Only this turn's card is this turn's business: a turn
-			// finishing in another thread must not clear the card the
-			// reader is looking at.
-			if (pendingConfirm.value && pendingConfirm.value.stream_id === entry.stream_id) {
-				pendingConfirm.value = null;
-			}
 			applyTurnResult(result, asked, answer);
 		})
 		.catch((failure) => {
@@ -742,6 +759,11 @@ function followTurn(entry, asked, answer) {
 		})
 		.finally(() => {
 			turnWaits.delete(entry.stream_id);
+			// The card goes with the wait: a turn that is no longer
+			// waited for has no card to show, in this thread or any
+			// other.  (The remembered entry keeps its approval, so
+			// picking the turn up again brings the card back.)
+			pendingApprovals.delete(entry.stream_id);
 			// The address goes when the turn is *over* — answered,
 			// failed, or reported lost — and stays while it runs, for
 			// the reader who comes back to its thread.
@@ -782,11 +804,10 @@ function attachRunningTurns(conversationName) {
 		// so the card cannot come back saying "waiting" when the worker
 		// has already given up.
 		if (canDecide(entry.approval, Date.now())) {
-			pendingConfirm.value = { ...entry.approval, stream_id: entry.stream_id };
 			setActivity(state, __("Waiting for your approval…"));
 		}
 
-		followTurn(entry, asked, answer);
+		followTurn(entry, asked, answer, entry.approval);
 	}
 }
 
@@ -899,24 +920,40 @@ function handleTurnEvent(answer, event, streamId = "") {
 		// A write is proposed and waits for the reader's approval.  The
 		// card is shown in the transcript, so the reader approves a
 		// change and not a JSON blob — and the thread keeps its place.
+		//
+		// The card belongs to the *turn*: it hangs off the turn's wait,
+		// so a second write proposed in another thread has a card of
+		// its own instead of overwriting this one, and leaving the
+		// thread takes this card with it.
 		const approval = {
 			request_id: event.request_id,
 			name: event.name,
 			preview: event.preview || event.name || __("a change"),
 			at: Date.now(),
-			// Whose card it is: a turn finishing elsewhere must not
-			// clear the card of the turn being read.
+			// The server's own deadline, in seconds.  The card counts
+			// down from this and stops accepting answers at it — the
+			// same deadline the worker is holding, not a second opinion
+			// about it.
+			window_seconds: event.window_seconds,
 			stream_id: streamId,
 		};
-		pendingConfirm.value = approval;
-		// Write the approval down too, so that a reload during the wait
-		// does not lose the card the reader was about to click.  The
-		// turn's own entry is patched — the other turns' entries are
-		// not this turn's business.
+
+		/* Write it down *first*, and show it second.
+		 *
+		 * The order matters for the reader who is in another thread
+		 * when the write is proposed: the worker is already waiting,
+		 * and the card has to be remembered even though nobody is
+		 * looking at it — otherwise coming back to the thread brings
+		 * back a turn with no way to answer it, and the write times
+		 * out with the reader none the wiser.  Remembered first, the
+		 * card is there when they return. */
 		const saved = findInflight(streamId);
 		if (saved) {
 			saveInflight({ ...saved, approval });
 		}
+
+		if (!turnWaits.has(streamId)) return;
+		pendingApprovals.set(streamId, approval);
 		setActivity(state, __("Waiting for your approval…"));
 		scrollToBottom();
 		return;
@@ -1066,17 +1103,24 @@ function applyTurnResult(result, asked, answer) {
 /**
  * Approve or reject a write that is waiting in the transcript.
  *
+ * @param {string} streamId the turn whose write is waiting
  * @param {string} decision "approve" or "reject"
  */
-function decideWrite(decision) {
-	const pending = pendingConfirm.value;
+function decideWrite(streamId, decision) {
+	const pending = streamId ? pendingApprovals.get(streamId) : null;
 	if (!pending) return;
-	pendingConfirm.value = null;
-	// The card is no longer waiting, so the turn's remembered entry no
-	// longer carries it: a reload after the decision must not resurrect
-	// a card that was already answered.
-	const saved = findInflight(pending.stream_id);
+
+	// The card goes the moment the decision is taken: the worker is
+	// acting on it now, and a card that waits for the turn to end says
+	// "undecided" about a decision already made.  If the decision fails
+	// to reach the worker, the turn says so — an error the reader can
+	// read, rather than a card that silently does nothing.
+	pendingApprovals.delete(streamId);
+	// The remembered entry must not resurrect it either: a reload after
+	// the decision must not show a card that was already answered.
+	const saved = findInflight(streamId);
 	if (saved) saveInflight({ ...saved, approval: null });
+
 	call("albanna.api.chat.confirm_write", {
 		request_id: pending.request_id,
 		decision,
@@ -1184,11 +1228,6 @@ async function send(question) {
 			},
 		});
 
-		// Only this turn's card is this turn's business: another thread's
-		// approval must survive this turn ending.
-		if (pendingConfirm.value && pendingConfirm.value.stream_id === (entry && entry.stream_id)) {
-			pendingConfirm.value = null;
-		}
 		applyTurnResult(result, asked, answer);
 	} catch (failure) {
 		failTurn(
@@ -1287,10 +1326,13 @@ function removeMessage(message) {
  * should not have to watch the rest of it arrive.
  */
 function stop() {
-	if (pendingConfirm.value) {
+	if (visibleApprovals.value.length) {
 		// A write is waiting for the reader.  Stopping is a decision as
-		// much as a click is, and it is the same decision: not to run it.
-		decideWrite("reject");
+		// much as a click is, and it is the same decision: not to run it
+		// — for every write this thread is waiting on.
+		for (const wait of visibleApprovals.value) {
+			decideWrite(wait.streamId, "reject");
+		}
 		return;
 	}
 	if (!mayStop.value) return;
@@ -1870,6 +1912,8 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+	if (clockTimer) clearInterval(clockTimer);
+
 	// Every turn in flight is left to finish on the server — the answers
 	// land in their threads — but this panel is no longer waiting for
 	// any of them: there is no screen left to show them on, and a wait
@@ -2336,29 +2380,45 @@ onBeforeUnmount(() => {
 		<!-- A write that is waiting for the reader's approval.  It is a
 		     card in the transcript rather than a dialog, so that the
 		     reader approves a change and not a JSON blob, and the thread
-		     keeps its place. -->
+		     keeps its place.
+
+		     One card per waiting write, each belonging to the turn that
+		     proposed it: two writes waiting in this thread are two cards,
+		     and neither can be answered by clicking the other.
+
+		     The buttons stop when the server's window runs out, and the
+		     card says so.  A card that stays clickable past its deadline
+		     accepts an answer nobody is reading any more, and the reader
+		     who clicks it gets silence — which reads as the assistant
+		     ignoring them. -->
 		<div
-			v-if="pendingConfirm"
+			v-for="wait in visibleApprovals"
+			:key="wait.streamId"
 			class="albanna-chat__confirm"
 			role="alertdialog"
 			aria-live="assertive"
 		>
-			<p class="albanna-chat__confirm-preview">{{ pendingConfirm.preview }}</p>
-			<p v-if="confirmCountdown > 0" class="albanna-chat__confirm-countdown">
-				{{ __("Waiting {0}s", [confirmCountdown]) }}
+			<p class="albanna-chat__confirm-preview">{{ wait.approval.preview }}</p>
+			<p v-if="canDecide(wait.approval, now)" class="albanna-chat__confirm-countdown">
+				{{ __("Waiting {0}s", [remainingSeconds(wait.approval, now)]) }}
+			</p>
+			<p v-else class="albanna-chat__confirm-countdown albanna-chat__confirm-countdown--out">
+				{{ __("The wait ran out — the change was not made.") }}
 			</p>
 			<div class="albanna-chat__confirm-actions">
 				<button
 					type="button"
 					class="albanna-chat__confirm-button albanna-chat__confirm-button--confirm"
-					@click="decideWrite('approve')"
+					:disabled="!canDecide(wait.approval, now)"
+					@click="decideWrite(wait.streamId, 'approve')"
 				>
 					{{ __("Confirm") }}
 				</button>
 				<button
 					type="button"
 					class="albanna-chat__confirm-button albanna-chat__confirm-button--cancel"
-					@click="decideWrite('reject')"
+					:disabled="!canDecide(wait.approval, now)"
+					@click="decideWrite(wait.streamId, 'reject')"
 				>
 					{{ __("Cancel") }}
 				</button>

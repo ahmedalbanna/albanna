@@ -270,6 +270,16 @@ def confirm_write(request_id: str = "", decision: str = "") -> dict[str, Any]:
     # The key is written under the caller's own namespace, exactly as the
     # worker reads it — the two sides agree on the spelling, or neither
     # side finds the other.
-    frappe.cache().set_value(key, decision, user=user, expires_in_sec=180)
+    #
+    # The TTL outlives the wait it answers: a decision recorded near the
+    # end of a long window must still be there when the worker's next
+    # poll comes, and a worker polling every tenth of a second reads it
+    # long before it could expire.  The grace is for the poll, not for
+    # the reader.
+    from albanna.services.approval import wait_seconds
+    from albanna.services.settings_service import get_settings
+
+    ttl = int(wait_seconds(get_settings().confirm_timeout)) + 60
+    frappe.cache().set_value(key, decision, user=user, expires_in_sec=ttl)
 
     return {"status": "ok", "decision": decision}

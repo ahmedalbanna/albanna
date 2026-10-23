@@ -570,16 +570,26 @@ class ChatService:
         # write does not run until the reader has approved it.  The turn
         # pauses here and waits for the browser's answer; a refusal or a
         # timeout is reported to the model as a denial, so it can say so.
+        from albanna.services.settings_service import get_settings
         from albanna.user_policy import confirm_writes_for
 
+        # Memoised per request, so this is the same object `run` read:
+        # the wait the operator configured, not a second reading of it.
+        settings = get_settings()
         gated = spec.mutating and confirm_writes_for(principal.user)
 
         if gated:
             import uuid
 
-            from albanna.services.approval import await_decision, denial_message, write_preview
+            from albanna.services.approval import await_decision, denial_message, wait_seconds, write_preview
 
             request_id = uuid.uuid4().hex
+            # One deadline, told to both sides.  The worker waits this
+            # long; the browser counts down from the same number, sent
+            # with the event.  A countdown computed on the browser's own
+            # clock against a different constant is a countdown that
+            # lies — and the reader decides how long to take by it.
+            seconds = wait_seconds(settings.confirm_timeout)
             emit(
                 {
                     "event": "confirm",
@@ -587,10 +597,11 @@ class ChatService:
                     "name": call.name,
                     "arguments": call.arguments,
                     "preview": write_preview(call.name, call.arguments),
+                    "window_seconds": seconds,
                 }
             )
 
-            decision = await_decision(request_id, principal.user)
+            decision = await_decision(request_id, principal.user, timeout=seconds)
 
             if decision != "approve":
                 message = denial_message(decision)
