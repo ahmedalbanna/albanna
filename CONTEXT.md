@@ -824,6 +824,37 @@ default.  A System Manager is not exempt from the policy — the rail is
 about the *reader*, and an administrator who writes through the chat is
 still a reader.
 
+### 48. A turn belongs to its thread, and the panel waits for the thread it shows
+
+A turn is a background job, and a job outlives the screen that asked for
+it.  So the *turn* and the *waiting* are two different things, and the
+code keeps them apart: the worker finishes every turn whatever the
+browser does, and the browser waits for the turns of the thread it is
+showing — one thread at a time, because the reader is reading one
+thread.
+
+Three things follow, and each one is a bug that was shipped before the
+rule was written down:
+
+*   **A turn that finishes in another thread must not move the panel.**
+    The answer lands in its own thread on the server, where it belongs;
+    the reader stays where they chose to be.  A panel that jumped back to
+    the thread whose turn just ended put every later question in the
+    wrong conversation.
+*   **Each turn remembers its own address.**  The remembered turns are a
+    list keyed by stream id, not a single slot: a second question asked
+    in another thread overwrites nothing, and a turn finishing erases
+    only its own entry.
+*   **Leaving a thread stops the watching, not the work.**  Coming back
+    picks the turn up again, mid-answer if that is where it is.  The
+    reader is never told a turn was "stopped" when it is still running —
+    "stopped" means they asked it to stop.
+
+The turn's phase is the *thread's*: running while the thread shown has a
+wait, idle when it has none.  One turn ending while another of the same
+thread still runs leaves it running, because the Stop button that
+vanished early is a button that stopped nothing.
+
 ## What is deliberately not here
 
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.

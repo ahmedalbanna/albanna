@@ -1,4 +1,4 @@
-// The turn that is in flight, remembered across a reload.
+// The turns that are in flight, remembered across a reload.
 //
 // A reader who reloads the Desk during a turn loses the turn from the
 // screen: the worker is still working, and the answer is parked in the
@@ -7,20 +7,35 @@
 // keeps and a closed tab does not — and the panel picks it up again
 // when the page comes back.
 //
-// The entry is per *page*: a turn belongs to the thread of the page it
-// was asked on, and re-attaching it on another page would put the
+// The entry is per *turn*, not per panel, and that is the whole point
+// of this module: a reader may ask a question in one thread, move to
+// another, ask again there, and come back.  Both turns are running, and
+// each needs its own address remembered — a single slot would have the
+// second turn overwrite the first, and the first turn's completion
+// erase the second's address on its way out.
+//
+// The entry is also per *page*: a turn belongs to the thread of the page
+// it was asked on, and re-attaching it on another page would put the
 // answer in the wrong thread.
 //
 // Pure: no `frappe`, no DOM, so it is tested under plain node.
 
-/** Where the turn is written down. */
+/** Where the turns are written down. */
 export const INFLIGHT_KEY = "albanna_inflight_turn";
 
 /** How long a turn may be waited for after a reload. */
 export const INFLIGHT_TTL_MS = 4 * 60 * 60 * 1000;
 
+/** How many turns are remembered.
+ *
+ * A bound, because storage is small and a reader who opens fifty
+ * threads in a session should not push the session's storage quota:
+ * the newest turns are the ones that can still be picked up, and an
+ * old one has either finished or outlived its TTL. */
+export const MAX_TURNS = 12;
+
 /**
- * The storage the entry is written to.
+ * The storage the turns are written to.
  *
  * @returns {object|null} the session's storage, or null when there is
  *   none
@@ -36,7 +51,46 @@ function sessionStorageOrNull() {
 }
 
 /**
- * Write the turn down.
+ * Read every remembered turn, newest first.
+ *
+ * Expired entries are dropped on the way through: a turn that is hours
+ * old is a turn whose worker died, and a reader who comes back should
+ * not be shown it.
+ *
+ * @param {object} [storage] the storage, for the test
+ * @returns {Array<object>} the turns, newest first
+ */
+export function loadInflightTurns(storage) {
+	const store = storage || sessionStorageOrNull();
+	if (!store) return [];
+
+	try {
+		const raw = store.getItem(INFLIGHT_KEY);
+		if (!raw) return [];
+
+		const parsed = JSON.parse(raw);
+		// The single-slot format this module used before a reader could
+		// ask a second question before the first turn finished.  A
+		// storage entry written by that version is still a turn.
+		const turns = Array.isArray(parsed) ? parsed : parsed && parsed.turns ? parsed.turns : parsed ? [parsed] : [];
+
+		const now = Date.now();
+		return turns
+			.filter((turn) => turn && turn.stream_id)
+			.map((turn) => ({ ...turn, started_at: turn.started_at || now }))
+			.filter((turn) => now - turn.started_at <= INFLIGHT_TTL_MS)
+			.sort((left, right) => (right.started_at || 0) - (left.started_at || 0));
+	} catch (error) {
+		return [];
+	}
+}
+
+/**
+ * Write a turn down, keeping the others.
+ *
+ * Upsert by stream id: a turn that was saved once — the same stream id,
+ * perhaps with its approval now attached — replaces its own entry
+ * rather than adding a second one.
  *
  * @param {object} entry the turn: `stream_id`, `conversation_id`, `page`
  *   and `question`
@@ -47,60 +101,95 @@ export function saveInflight(entry, storage) {
 	const store = storage || sessionStorageOrNull();
 	if (!store || !entry || !entry.stream_id) return false;
 
-	try {
-		store.setItem(
-			INFLIGHT_KEY,
-			JSON.stringify({ ...entry, started_at: entry.started_at || Date.now() }),
-		);
-		return true;
-	} catch (error) {
-		/* A storage that refuses is a storage that cannot be asked. */
-		return false;
-	}
+	const turns = loadInflightTurns(store).filter((turn) => turn.stream_id !== entry.stream_id);
+	const saved = { ...entry, started_at: entry.started_at || Date.now() };
+	turns.unshift(saved);
+	// True only when the write landed: a storage that refused is a
+	// storage the caller must not believe remembered anything.
+	return writeTurns(store, turns);
 }
 
 /**
- * Read the turn back.
+ * Forget one turn, and keep the others.
  *
- * An entry that has been there too long is not a turn any more: the
- * worker died, or the answer was never coming, and a reader who comes
- * back an hour later should not be shown a turn that ended long ago.
+ * A turn finishing must not erase the address of the turn running
+ * beside it: each turn cleans up after itself, and only itself.
  *
+ * @param {string} streamId the turn's stream id
  * @param {object} [storage] the storage, for the test
- * @returns {object|null} the turn, or null when there is none
  */
-export function loadInflight(storage) {
+export function removeInflight(streamId, storage) {
 	const store = storage || sessionStorageOrNull();
-	if (!store) return null;
+	if (!store || !streamId) return;
 
-	try {
-		const raw = store.getItem(INFLIGHT_KEY);
-		if (!raw) return null;
-
-		const parsed = JSON.parse(raw);
-		if (!parsed || !parsed.stream_id) return null;
-		if (parsed.started_at && Date.now() - parsed.started_at > INFLIGHT_TTL_MS) {
-			store.removeItem(INFLIGHT_KEY);
-			return null;
-		}
-		return parsed;
-	} catch (error) {
-		return null;
-	}
+	const turns = loadInflightTurns(store).filter((turn) => turn.stream_id !== streamId);
+	writeTurns(store, turns);
 }
 
 /**
- * Forget the turn.
+ * Forget every turn.
  *
  * @param {object} [storage] the storage, for the test
  */
 export function clearInflight(storage) {
 	const store = storage || sessionStorageOrNull();
 	if (!store) return;
+	writeTurns(store, []);
+}
 
+/**
+ * The remembered turn with this stream id, if it is still remembered.
+ *
+ * @param {string} streamId the turn's stream id
+ * @param {object} [storage] the storage, for the test
+ * @returns {object|null} the turn, or null
+ */
+export function findInflight(streamId, storage) {
+	if (!streamId) return null;
+	return loadInflightTurns(storage).find((turn) => turn.stream_id === streamId) || null;
+}
+
+/**
+ * The remembered turns of one conversation.
+ *
+ * @param {string} conversationId the conversation, empty for the page's
+ *   own thread — the thread a first question creates
+ * @param {object} [storage] the storage, for the test
+ * @returns {Array<object>} its turns, newest first
+ */
+export function turnsForConversation(conversationId, storage) {
+	const wanted = conversationId || "";
+	return loadInflightTurns(storage).filter((turn) => (turn.conversation_id || "") === wanted);
+}
+
+/**
+ * The remembered turns of one page.
+ *
+ * @param {string} page the page identity
+ * @param {object} [storage] the storage, for the test
+ * @returns {Array<object>} its turns, newest first
+ */
+export function turnsForPage(page, storage) {
+	return loadInflightTurns(storage).filter((turn) => (turn.page || "") === (page || ""));
+}
+
+/**
+ * Write the list, bounded.
+ *
+ * @param {object} store the storage
+ * @param {Array<object>} turns the turns, newest first
+ * @returns {boolean} true when the write landed
+ */
+function writeTurns(store, turns) {
 	try {
-		store.removeItem(INFLIGHT_KEY);
+		if (!turns.length) {
+			store.removeItem(INFLIGHT_KEY);
+			return true;
+		}
+		store.setItem(INFLIGHT_KEY, JSON.stringify({ turns: turns.slice(0, MAX_TURNS) }));
+		return true;
 	} catch (error) {
-		/* Nothing to forget if the storage refuses. */
+		/* A storage that refuses is a storage that cannot be asked. */
+		return false;
 	}
 }

@@ -43,7 +43,7 @@
  *                         — recent asks, the retried question, route
  *                           watching, clocks.
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowReactive, watch } from "vue";
 import Composer from "./Composer.vue";
 import ConversationDrawer from "./ConversationDrawer.vue";
 import { pageIdentity, resolveContext } from "./context.mjs";
@@ -54,20 +54,26 @@ import { hasTable, renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js"
 import { watchRoute } from "./page.mjs";
 import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
 import { takeRetryQuestion } from "./retry.mjs";
+import { waitsOfConversation, waitsOfPage } from "./turn-waits.mjs";
 import { createRenderThrottle, scheduleRender } from "./render-throttle.mjs";
-import { clearInflight, loadInflight, saveInflight } from "./inflight.mjs";
+import {
+	findInflight,
+	removeInflight,
+	saveInflight,
+	turnsForConversation,
+	turnsForPage,
+} from "./inflight.mjs";
 import { canDecide, remainingSeconds } from "./approval.mjs";
 import { mergeOlder, oldestIdx, olderRequest, windowRequest } from "./window.mjs";
 import {
 	beginTurn,
-	canSend,
-	canStop,
 	clearTranscript,
 	dismiss,
 	endTurn,
 	failTurn,
+	IDLE,
 	initialState,
-	isBusy,
+	RUNNING,
 	setActivity,
 	stopTurn,
 } from "./state.mjs";
@@ -162,8 +168,27 @@ const hasOlder = ref(false);
 /** Whether the older page is being fetched. */
 const loadingOlder = ref(false);
 
-/** The controller of the turn in flight, so that it can be stopped. */
-const abortController = ref(null);
+/* The turns being waited for right now, by stream id.
+ *
+ * One entry per turn — not one per panel — because a reader may have a
+ * turn running in more than one thread: they asked, moved to another
+ * conversation, and asked again there.  Both turns are running on the
+ * server, and the panel waits for whichever thread it is showing.  A
+ * turn in another thread keeps its address in the storage (so a reload
+ * finds it) but is not waited for here: its events would render into a
+ * transcript the reader is not looking at.
+ *
+ * Each entry is `{controller, conversation, page}`: the abort handle,
+ * and which thread the turn belongs to — a conversation's id, or the
+ * empty string for the page's own thread before its first question has
+ * created it.
+ *
+ * `shallowReactive`, not `reactive`: the map's own adds and deletes must
+ * be seen by the computed that reads it, and its *values* must not be
+ * touched — a proxied `AbortController` is a controller whose `abort()`
+ * may not reach the signal the wait is listening on. */
+const turnWaits = shallowReactive(new Map());
+
 const keydownHandler = ref(null);
 
 /**
@@ -186,12 +211,15 @@ let unwatch = () => {};
 const locked = computed(() => props.config.locked === true);
 const canChat = computed(() => props.config.chat_access === true && !locked.value);
 
-/** Is a turn in flight? */
-const busy = computed(() => isBusy(state));
+/** The waits of the thread the reader is looking at, oldest last. */
+const visibleWaits = computed(() => waitsOfConversation([...turnWaits.entries()], conversationId.value));
+
+/** Is a turn running in the thread being read? */
+const busy = computed(() => visibleWaits.value.length > 0);
 /** May the reader ask a question? */
-const maySend = computed(() => canSend(state) && canChat.value);
+const maySend = computed(() => !busy.value && canChat.value);
 /** May the reader stop the turn? */
-const mayStop = computed(() => canStop(state) && canChat.value);
+const mayStop = computed(() => busy.value && canChat.value);
 
 /**
  * The document the widget is looking at, if it is looking at one.
@@ -638,61 +666,177 @@ watch(view, async (next) => {
 });
 
 /**
- * Pick up a turn that was running when the page was reloaded.
+ * Wait for a turn that is already running, and keep the panel honest
+ * about it while it runs.
  *
- * The worker is still working and the answer is parked in the cache;
- * all that was lost is the browser's memory of the stream.  So the
- * stream is read back and the turn is waited for again.
+ * This is the one place a turn is *followed* — by `send` through
+ * `runTurn`, and by every path that picks a turn up again: a reload, a
+ * thread opened from the drawer, the page's thread loaded after a route
+ * change.  They differ in where the turn came from and not in what it
+ * means to wait for it, so the waiting is written once, here.
  *
- * The turn belongs to the thread of the page it was asked on, so it is
- * only picked up on that page.
+ * @param {object} entry the remembered turn
+ * @param {object} asked the question message
+ * @param {object} answer the answer message
+ * @returns {Promise<void>} settles when the turn is no longer waited for
  */
-async function resumeInflight() {
-	const entry = loadInflight();
-	if (!entry || !entry.stream_id) return;
+function followTurn(entry, asked, answer) {
+	const controller = new AbortController();
+	turnWaits.set(entry.stream_id, {
+		controller,
+		conversation: entry.conversation_id || "",
+		page: entry.page || "",
+	});
+	refreshPhase();
 
-	if (entry.page && entry.page !== currentPage.value) {
-		// The turn belongs to another page's thread, and this panel is
-		// about this one.
-		clearInflight();
+	return waitForTurn(entry.stream_id, {
+		signal: controller.signal,
+		onEvent: (event) => handleTurnEvent(answer, event, entry.stream_id),
+	})
+		.then((result) => {
+			// Only this turn's card is this turn's business: a turn
+			// finishing in another thread must not clear the card the
+			// reader is looking at.
+			if (pendingConfirm.value && pendingConfirm.value.stream_id === entry.stream_id) {
+				pendingConfirm.value = null;
+			}
+			applyTurnResult(result, asked, answer);
+		})
+		.catch((failure) => {
+			// A detached answer is not on screen, and its failure is not
+			// this thread's failure to report.
+			if (attached(answer)) {
+				failTurn(state, answer, String((failure && failure.message) || failure));
+				removeMessage(answer);
+				refreshPhase();
+			}
+		})
+		.finally(() => {
+			turnWaits.delete(entry.stream_id);
+			removeInflight(entry.stream_id);
+			answer.pending = false;
+			refreshPhase();
+			scrollToBottom();
+		});
+}
+
+/**
+ * Put the turns of one thread back on screen, and wait for them.
+ *
+ * The question and the answer are rebuilt from what was remembered: the
+ * question is the reader's own words, and the answer starts empty and
+ * fills from the stream — exactly as it did the first time.
+ *
+ * @param {string} conversationName the thread, empty for the page's own
+ *   thread before its first question created it
+ */
+function attachRunningTurns(conversationName) {
+	for (const entry of turnsForConversation(conversationName)) {
+		if (turnWaits.has(entry.stream_id)) continue;
+
+		const question = String(entry.question || "");
+		const asked = makeMessage("user", question);
+		const answer = makeMessage("assistant", "");
+		answer.pending = true;
+
+		beginTurn(state, question, asked, answer);
+		setActivity(state, __("Thinking"));
+		scrollToBottom(true);
+
+		// A turn that was waiting for approval when the page was
+		// reloaded is still waiting for it.  The card comes back with
+		// the request id it needs, and only if the wait has not already
+		// run out — the same window every other part of the card reads,
+		// so the card cannot come back saying "waiting" when the worker
+		// has already given up.
+		if (canDecide(entry.approval, Date.now())) {
+			pendingConfirm.value = { ...entry.approval, stream_id: entry.stream_id };
+			setActivity(state, __("Waiting for your approval…"));
+		}
+
+		followTurn(entry, asked, answer);
+	}
+}
+
+/**
+ * The waits of one page.
+ *
+ * @param {string} page the page identity
+ * @returns {Array<{streamId: string, controller: AbortController}>}
+ */
+function waitsForPage(page) {
+	return waitsOfPage([...turnWaits.entries()], page);
+}
+
+/**
+ * Stop waiting for the turns of the threads the reader is not reading.
+ *
+ * The work is not cancelled — the worker finishes every turn and the
+ * answer lands in its thread on the server.  What stops is the watching:
+ * a turn's events belong to its own transcript, and rendering them into
+ * a thread the reader has left is noise nobody sees.
+ *
+ * The address stays remembered, so coming back to the thread picks the
+ * turn up again, mid-answer if that is where it is.
+ */
+function stopOtherWaits() {
+	for (const wait of visibleWaits.value) {
+		// The thread being read keeps its waits.
+		if ((wait.conversation || "") === (conversationId.value || "")) continue;
+		wait.controller.abort();
+	}
+}
+
+/**
+ * Bring the turn's phase back in step with the waits.
+ *
+ * The phase is one turn's state, and there is more than one turn now.
+ * It follows the *thread*: running while the thread being read has a
+ * wait, idle when it has none.  So it is corrected after every ending —
+ * a turn ending in another thread leaves it alone, one turn ending while
+ * another of the same thread still runs keeps it running, and the last
+ * one ending makes it idle.
+ *
+ * The corrections run both ways on purpose: the state machine's own
+ * transitions (`endTurn`, `stopTurn`, `failTurn`) end *a* turn, and with
+ * more than one turn in a thread that is not the same thing as the
+ * thread being over.
+ */
+function refreshPhase() {
+	if (visibleWaits.value.length > 0) {
+		state.phase = RUNNING;
 		return;
 	}
+	if (state.phase !== IDLE) {
+		state.phase = IDLE;
+		state.activity = "";
+	}
+}
 
-	const question = String(entry.question || "");
-	const asked = makeMessage("user", question);
-	const answer = makeMessage("assistant", "");
-	answer.pending = true;
-
-	beginTurn(state, question, asked, answer);
-	setActivity(state, __("Thinking"));
-	scrollToBottom(true);
-
-	// A turn that was waiting for approval when the page was reloaded
-	// is still waiting for it.  The card comes back with the request
-	// id it needs, and only if the wait has not already run out — the
-	// same window every other part of the card reads, so the card
-	// cannot come back saying "waiting" when the worker has already
-	// given up.
-	if (canDecide(entry.approval, Date.now())) {
-		pendingConfirm.value = entry.approval;
-		setActivity(state, __("Waiting for your approval…"));
+/**
+ * Pick up the turns that were running when the page was reloaded.
+ *
+ * The worker is still working and each answer is parked in the cache;
+ * all that was lost is the browser's memory of the streams.  So the
+ * streams are read back and waited for again — every one of them, each
+ * in the thread it belongs to.
+ *
+ * A turn belongs to the thread of the page it was asked on, so a turn
+ * of another page is not picked up here: it belongs to a thread this
+ * panel is not showing, and it is picked up when that thread is opened.
+ */
+function resumeInflight() {
+	const wanted = new Set();
+	for (const entry of turnsForPage(currentPage.value)) {
+		wanted.add(entry.conversation_id || "");
 	}
 
-	const controller = new AbortController();
-	abortController.value = controller;
-
-	try {
-		const result = await waitForTurn(entry.stream_id, {
-			signal: controller.signal,
-			onEvent: (event) => handleTurnEvent(answer, event),
-		});
-		pendingConfirm.value = null;
-		applyTurnResult(result, asked, answer);
-	} catch (failure) {
-		failTurn(state, answer, String((failure && failure.message) || failure));
-		removeMessage(answer);
-	} finally {
-		clearInflight();
+	// The thread being shown, and the page's own thread — a first
+	// question's turn is remembered with no conversation id yet, because
+	// the conversation is created by the answer.
+	for (const conversation of wanted) {
+		if (conversation && conversation !== conversationId.value) continue;
+		attachRunningTurns(conversation);
 	}
 }
 
@@ -701,8 +845,9 @@ async function resumeInflight() {
  *
  * @param {object} answer the answer message
  * @param {object} event the progress event
+ * @param {string} [streamId] the turn the event belongs to
  */
-function handleTurnEvent(answer, event) {
+function handleTurnEvent(answer, event, streamId = "") {
 	if (event.event === "confirm") {
 		// A write is proposed and waits for the reader's approval.  The
 		// card is shown in the transcript, so the reader approves a
@@ -712,15 +857,18 @@ function handleTurnEvent(answer, event) {
 			name: event.name,
 			preview: event.preview || event.name || __("a change"),
 			at: Date.now(),
+			// Whose card it is: a turn finishing elsewhere must not
+			// clear the card of the turn being read.
+			stream_id: streamId,
 		};
 		pendingConfirm.value = approval;
 		// Write the approval down too, so that a reload during the wait
 		// does not lose the card the reader was about to click.  The
-		// stream id is already stored from onQueued, so it is patched in
-		// rather than re-created.
-		const existing = loadInflight();
-		if (existing && existing.stream_id) {
-			saveInflight({ ...existing, approval });
+		// turn's own entry is patched — the other turns' entries are
+		// not this turn's business.
+		const saved = findInflight(streamId);
+		if (saved) {
+			saveInflight({ ...saved, approval });
 		}
 		setActivity(state, __("Waiting for your approval…"));
 		scrollToBottom();
@@ -779,7 +927,37 @@ function handleTurnEvent(answer, event) {
  * @param {object} asked the question message
  * @param {object} answer the answer message
  */
+/**
+ * Whether a message is still part of the transcript being shown.
+ *
+ * A turn that was running when the reader moved to another thread has
+ * an answer that is no longer on screen: it is detached, and everything
+ * this module does to *state* — the phase, the activity line, the
+ * notice — belongs to the thread being read, not to that one.
+ *
+ * @param {object} message the message
+ * @returns {boolean}
+ */
+function attached(message) {
+	return state.messages.includes(message);
+}
+
+/**
+ * Apply what a turn ended with.
+ *
+ * @param {object} result the turn's final payload
+ * @param {object} asked the question message
+ * @param {object} answer the answer message
+ */
 function applyTurnResult(result, asked, answer) {
+	if (!attached(answer)) {
+		// The turn finished in a thread the reader has left.  Its
+		// answer is in that thread on the server — where it belongs —
+		// and the panel stays where the reader chose to be.  Nothing
+		// here may drag them back to it.
+		return;
+	}
+
 	if (result && result.conversation_id) {
 		conversationId.value = result.conversation_id;
 	}
@@ -826,6 +1004,10 @@ function applyTurnResult(result, asked, answer) {
 		failTurn(state, answer, __("Something went wrong."));
 	}
 
+	// The state machine ended *a* turn; the phase belongs to the thread,
+	// and another of its waits may still be running.
+	refreshPhase();
+
 	if (answer.content) {
 		// A full answer in an aria-live region is read aloud in full,
 		// which is not useful.  Announce the outcome, not the text.
@@ -843,8 +1025,11 @@ function decideWrite(decision) {
 	const pending = pendingConfirm.value;
 	if (!pending) return;
 	pendingConfirm.value = null;
-	const existing = loadInflight();
-	if (existing) saveInflight({ ...existing, approval: null });
+	// The card is no longer waiting, so the turn's remembered entry no
+	// longer carries it: a reload after the decision must not resurrect
+	// a card that was already answered.
+	const saved = findInflight(pending.stream_id);
+	if (saved) saveInflight({ ...saved, approval: null });
 	call("albanna.api.chat.confirm_write", {
 		request_id: pending.request_id,
 		decision,
@@ -898,7 +1083,9 @@ async function send(question) {
 	recentQuestions.value = addQuestion(recentQuestions.value, text);
 
 	const controller = new AbortController();
-	abortController.value = controller;
+	// The turn's address, written down by `onQueued` and cleaned up by
+	// the `finally`: one turn, one entry, one cleanup.
+	let entry = null;
 
 	try {
 		const result = await runTurn({
@@ -926,20 +1113,31 @@ async function send(question) {
 				recent_questions: recent,
 			},
 			signal: controller.signal,
-			onEvent: (event) => handleTurnEvent(answer, event),
+			onEvent: (event) => handleTurnEvent(answer, event, entry ? entry.stream_id : ""),
 			// The turn's address on the server, written down so that a
-			// reader who reloads during the turn finds it again.
+			// reader who reloads during the turn finds it again — beside
+			// the addresses of any other turn still running.
 			onQueued: (streamId) => {
-				saveInflight({
+				entry = {
 					stream_id: streamId,
 					conversation_id: conversationId.value,
 					page,
 					question: text,
+				};
+				saveInflight(entry);
+				turnWaits.set(streamId, {
+					controller,
+					conversation: conversationId.value || "",
+					page,
 				});
 			},
 		});
 
-		pendingConfirm.value = null;
+		// Only this turn's card is this turn's business: another thread's
+		// approval must survive this turn ending.
+		if (pendingConfirm.value && pendingConfirm.value.stream_id === (entry && entry.stream_id)) {
+			pendingConfirm.value = null;
+		}
 		applyTurnResult(result, asked, answer);
 	} catch (failure) {
 		failTurn(
@@ -950,8 +1148,14 @@ async function send(question) {
 		removeMessage(answer);
 	} finally {
 		answer.pending = false;
-		abortController.value = null;
-		clearInflight();
+		// This turn cleans up after itself, and only itself: a turn
+		// running in another thread keeps both its address and its
+		// wait, because the reader may go back to it.
+		if (entry) {
+			turnWaits.delete(entry.stream_id);
+			removeInflight(entry.stream_id);
+		}
+		refreshPhase();
 		scrollToBottom();
 	}
 }
@@ -1034,8 +1238,13 @@ function stop() {
 		decideWrite("reject");
 		return;
 	}
-	if (!mayStop.value || !abortController.value) return;
-	abortController.value.abort();
+	if (!mayStop.value) return;
+	// The waits of the thread being read, and only those: a turn running
+	// in another thread is not the reader's to stop from here, and its
+	// Stop button is not on this screen.
+	for (const wait of visibleWaits.value) {
+		wait.controller.abort();
+	}
 }
 
 function retry() {
@@ -1223,6 +1432,13 @@ async function openConversation(conversation) {
 		view.value = "chat";
 		followBottom.value = true;
 		scrollToBottom(true);
+
+		/* The thread being left stops being waited for — its turns
+		 * keep running, and their addresses are remembered — and the
+		 * thread just opened picks up any turn of its own that is still
+		 * running, mid-answer and all. */
+		stopOtherWaits();
+		attachRunningTurns(conversation.name);
 	} catch (failure) {
 		state.error = String(
 			(failure && failure.message) || failure || __("Could not open that conversation."),
@@ -1455,6 +1671,9 @@ async function newConversation() {
 		view.value = "chat";
 		state.notice = "started";
 		scrollToBottom(true);
+		// The thread being left keeps its turns running; the watching
+		// stops here, and the new thread is empty of them.
+		stopOtherWaits();
 	} catch (failure) {
 		state.error = String(
 			(failure && failure.message) || failure || __("Could not start a new conversation."),
@@ -1488,6 +1707,10 @@ async function loadPageConversation() {
 			state.messages = [];
 			conversationId.value = "";
 			hasOlder.value = false;
+			// The page's own thread, before its first question created
+			// it: a turn asked a moment ago is remembered with no
+			// conversation id, and it is still running.
+			attachRunningTurns("");
 			return;
 		}
 
@@ -1499,6 +1722,10 @@ async function loadPageConversation() {
 		hasOlder.value = !!(result && result.has_more);
 		followBottom.value = true;
 		scrollToBottom(true);
+		// A turn of this page's thread that is still running is picked
+		// up again: the reader moved to another page and came back, and
+		// the answer is still arriving.
+		attachRunningTurns(result.conversation);
 	} catch (failure) {
 		// The panel still works without it: the reader can ask, and the
 		// answer will join whatever thread the server picks.
@@ -1512,20 +1739,30 @@ async function loadPageConversation() {
  * rather than kept, because an answer about the previous page would be
  * read as an answer about this one.
  *
- * A turn in flight is stopped with it.  The answer would be about the
- * page the reader has just left, and it belongs to that page's thread —
- * so the work goes on where it belongs, and the panel says what it did.
+ * The turns of the page being left stop being waited for.  The answers
+ * would be about the page the reader has just left, and they belong to
+ * that page's threads — so the work goes on where it belongs, and the
+ * panel says what it did.  Their addresses stay remembered: coming back
+ * to that page picks each turn up again.
  */
 function onRouteChange() {
 	const context = resolveContext();
 	const identity = pageIdentity();
 	if (identity === currentPage.value) return;
 
+	// Every wait of the page being left — the thread on screen and any
+	// other thread of this page that is still running — stops being
+	// waited for.  The answers belong to those threads, the work goes
+	// on, and the addresses are remembered.
+	const leaving = waitsForPage(currentPage.value);
 	const stopped = clearTranscript(state);
-	if (stopped) {
-		state.notice = "moved";
-		if (abortController.value) abortController.value.abort();
+	for (const wait of leaving) {
+		wait.controller.abort();
 	}
+	if (stopped || leaving.length) state.notice = "moved";
+	// The waits are aborting, not gone: the phase catches up with them
+	// as they settle, and says "running" until they have.
+	refreshPhase();
 
 	conversationId.value = "";
 	currentPage.value = identity;
@@ -1577,9 +1814,13 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-	// A turn in flight is left to finish on the server, but this panel is
-	// no longer waiting for it.
-	if (abortController.value) abortController.value.abort();
+	// Every turn in flight is left to finish on the server — the answers
+	// land in their threads — but this panel is no longer waiting for
+	// any of them: there is no screen left to show them on, and a wait
+	// nobody resolves is a socket subscription and a poll nobody stops.
+	for (const wait of visibleWaits.value) {
+		wait.controller.abort();
+	}
 
 	if (unwatch) unwatch();
 	if (keydownHandler.value) document.removeEventListener("keydown", keydownHandler.value);
