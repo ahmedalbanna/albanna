@@ -1317,21 +1317,21 @@ class TestTheCostOfATurn(FrappeTestCase):
 
     def _log(self, usage, price_per_million=0.0):
         from albanna.providers.base import Usage
-        from albanna.services.chat_service import ChatService
+        from albanna.services.chat_service import ChatService, TurnAudit
 
         ChatService()._log(
-            self.conversation,
-            "Administrator",
-            "a-provider",
-            "a-model",
-            1,
-            [],
-            usage,
-            0.0,
-            "ok",
-            "",
-            "",
-            price_per_million=price_per_million,
+            TurnAudit(
+                conversation=self.conversation,
+                user="Administrator",
+                provider="a-provider",
+                model="a-model",
+                rounds=1,
+                tool_calls=[],
+                usage=usage,
+                started=0.0,
+                status="ok",
+                price_per_million=price_per_million,
+            )
         )
         frappe.db.commit()
         return frappe.db.get_value(

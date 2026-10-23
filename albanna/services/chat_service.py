@@ -123,6 +123,40 @@ class TurnOutcome:
     #: names are the rows' own, so they do not shift when the
     #: conversation grows.
     written: list[tuple[str, str]] = field(default_factory=list)
+
+
+@dataclass
+class TurnAudit:
+    """What the audit row needs from a turn.
+
+    A turn reaches :meth:`ChatService._log` at three endings — a clean
+    answer, a failed provider chain, a round budget spent — and each
+    passed eleven positional arguments before this existed.  Eleven
+    positional arguments, spelled the same three ways, is an audit row
+    waiting for its columns to swap.
+
+    The record carries them by name instead.  Adding a column to the
+    audit then touches exactly two places: this class and the writer —
+    no call site changes, and none can silently misplace a field.
+    """
+
+    conversation: str
+    user: str
+    #: Which provider/model produced the turn's last word.  Empty when
+    #: none of the chain answered, which is itself a fact worth logging.
+    provider: str = ""
+    model: str = ""
+    rounds: int = 0
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    usage: Usage | None = None
+    #: When the turn began, by the clock :func:`time.monotonic` keeps —
+    #: the duration is computed against this, not stored.
+    started: float = 0.0
+    status: str = "ok"
+    error_class: str = ""
+    error_message: str = ""
+    price_per_million: float = 0.0
+
 def turn_payload(outcome: TurnOutcome) -> dict[str, Any]:
     """The wire shape of a turn.
 
@@ -244,18 +278,20 @@ class ChatService:
                 completion = self._complete(llm_config, messages, visible, emit, request.stream)
             except AllProvidersFailed as exc:
                 self._log(
-                    conversation,
-                    principal.user,
-                    provider_name,
-                    model_name,
-                    rounds,
-                    tool_calls_made,
-                    usage,
-                    started,
-                    "error",
-                    "provider_error",
-                    str(exc),
-                    price_per_million=settings.price_per_million,
+                    TurnAudit(
+                        conversation=conversation,
+                        user=principal.user,
+                        provider=provider_name,
+                        model=model_name,
+                        rounds=rounds,
+                        tool_calls=tool_calls_made,
+                        usage=usage,
+                        started=started,
+                        status="error",
+                        error_class="provider_error",
+                        error_message=str(exc),
+                        price_per_million=settings.price_per_million,
+                    )
                 )
                 return TurnOutcome(
                     ok=False,
@@ -300,18 +336,18 @@ class ChatService:
                     update_modified=False,
                 )
                 self._log(
-                    conversation,
-                    principal.user,
-                    completion.provider,
-                    completion.model,
-                    rounds,
-                    tool_calls_made,
-                    usage,
-                    started,
-                    "truncated" if completion.truncated else "ok",
-                    "",
-                    "",
-                    price_per_million=settings.price_per_million,
+                    TurnAudit(
+                        conversation=conversation,
+                        user=principal.user,
+                        provider=completion.provider,
+                        model=completion.model,
+                        rounds=rounds,
+                        tool_calls=tool_calls_made,
+                        usage=usage,
+                        started=started,
+                        status="truncated" if completion.truncated else "ok",
+                        price_per_million=settings.price_per_million,
+                    )
                 )
                 return TurnOutcome(
                     ok=True,
@@ -338,24 +374,7 @@ class ChatService:
 
             for call in answer.tool_calls:
                 result = self._run_tool(call, authority, principal, site, visible, emit)
-                entry = {
-                    "name": call.name,
-                    "ok": result.ok,
-                    "denied": result.denied,
-                    "approved": result.approved,
-                    "error": result.error,
-                    # What the call found, kept with the call so that a
-                    # conversation reopened tomorrow still says what was
-                    # looked up, and not only which function was called.
-                    "summary": result.summary or result.error,
-                    # The documents it looked at, kept for the same
-                    # reason: a reopened answer links to them too.
-                    "documents": touched_documents(call, result),
-                }
-                created = _created_name(result)
-                if created:
-                    entry["created"] = created
-                tool_calls_made.append(entry)
+                tool_calls_made.append(tool_entry(call, result))
                 messages.append(tool_result(call.id, result.content))
 
         # The step budget ran out.  Rather than have the *app* compose a
@@ -374,18 +393,20 @@ class ChatService:
             ],
         )
         self._log(
-            conversation,
-            principal.user,
-            provider_name,
-            model_name,
-            rounds,
-            tool_calls_made,
-            usage,
-            started,
-            "truncated" if truncated else "capped",
-            "round_limit",
-            f"reached {settings.max_tool_rounds} rounds",
-            price_per_million=settings.price_per_million,
+            TurnAudit(
+                conversation=conversation,
+                user=principal.user,
+                provider=provider_name,
+                model=model_name,
+                rounds=rounds,
+                tool_calls=tool_calls_made,
+                usage=usage,
+                started=started,
+                status="truncated" if truncated else "capped",
+                error_class="round_limit",
+                error_message=f"reached {settings.max_tool_rounds} rounds",
+                price_per_million=settings.price_per_million,
+            )
         )
         return TurnOutcome(
             ok=True,
@@ -537,28 +558,12 @@ class ChatService:
 
         decision = authority.authorize(call.name, call.arguments)
         if not decision.allowed:
-            emit(
-                {
-                    "event": "tool_done",
-                    "name": call.name,
-                    "ok": False,
-                    "error": decision.reason,
-                    "summary": decision.reason,
-                }
-            )
+            emit_tool_done(emit, call, ok=False, error=decision.reason, summary=decision.reason)
             return ToolResult.refusal(decision.reason, decision.code)
 
         invalid = validate_arguments(spec, call.arguments)
         if invalid:
-            emit(
-                {
-                    "event": "tool_done",
-                    "name": call.name,
-                    "ok": False,
-                    "error": invalid,
-                    "summary": invalid,
-                }
-            )
+            emit_tool_done(emit, call, ok=False, error=invalid, summary=invalid)
             return ToolResult.failure(invalid, invalid)
 
         # Hard confirmation gate: when the operator has asked for it, a
@@ -572,7 +577,7 @@ class ChatService:
         if gated:
             import uuid
 
-            from albanna.services.approval import await_decision
+            from albanna.services.approval import await_decision, denial_message, write_preview
 
             request_id = uuid.uuid4().hex
             emit(
@@ -581,27 +586,15 @@ class ChatService:
                     "request_id": request_id,
                     "name": call.name,
                     "arguments": call.arguments,
-                    "preview": _write_preview(call.name, call.arguments),
+                    "preview": write_preview(call.name, call.arguments),
                 }
             )
 
             decision = await_decision(request_id, principal.user)
 
             if decision != "approve":
-                message = (
-                    "The reader did not approve this change, so it was not made."
-                    if decision == "reject"
-                    else "The reader did not respond in time, so the change was not made."
-                )
-                emit(
-                    {
-                        "event": "tool_done",
-                        "name": call.name,
-                        "ok": False,
-                        "error": message,
-                        "summary": message,
-                    }
-                )
+                message = denial_message(decision)
+                emit_tool_done(emit, call, ok=False, error=message, summary=message)
                 return ToolResult(ok=False, content=message, error=message, denied=True, approved=False)
 
         emit({"event": "tool_start", "name": call.name, "arguments": call.arguments})
@@ -618,31 +611,21 @@ class ChatService:
         except Exception as exc:  # noqa: BLE001 - a tool must not kill the turn
             logger.exception("Tool '%s' could not be run", call.name)
             message = f"The tool '{call.name}' could not be run: {type(exc).__name__}: {exc}"
-            emit(
-                {
-                    "event": "tool_done",
-                    "name": call.name,
-                    "ok": False,
-                    "error": message,
-                    "summary": message,
-                }
-            )
+            emit_tool_done(emit, call, ok=False, error=message, summary=message)
             return ToolResult.failure(message, message)
 
-        emit(
-            {
-                "event": "tool_done",
-                "name": call.name,
-                "ok": result.ok,
-                "error": result.error,
-                # What the call found, in the tool's own words.  It goes
-                # behind the tool's name in the panel: the reader can see
-                # what was looked up without reading the answer.
-                "summary": result.summary or result.error,
-                # The documents it looked at, so that the answer can link
-                # to them.
-                "documents": touched_documents(call, result),
-            }
+        emit_tool_done(
+            emit,
+            call,
+            ok=result.ok,
+            error=result.error,
+            # What the call found, in the tool's own words.  It goes
+            # behind the tool's name in the panel: the reader can see
+            # what was looked up without reading the answer.
+            summary=result.summary or result.error,
+            # The documents it looked at, so that the answer can link
+            # to them.
+            documents=touched_documents(call, result),
         )
         return result
 
@@ -780,21 +763,7 @@ class ChatService:
 
     # -- the audit row ----------------------------------------------------
 
-    def _log(
-        self,
-        conversation: str,
-        user: str,
-        provider: str,
-        model: str,
-        rounds: int,
-        tool_calls: list[dict[str, Any]],
-        usage: Usage | None,
-        started: float,
-        status: str,
-        error_class: str,
-        error_message: str,
-        price_per_million: float = 0.0,
-    ) -> None:
+    def _log(self, audit: TurnAudit) -> None:
         """Write the turn's audit row.
 
         It records what was *done* — which tools ran, whether they worked,
@@ -811,17 +780,18 @@ class ChatService:
         """
         try:
             doc = frappe.new_doc("Albanna Chat Log")
-            doc.user = user
-            doc.conversation = conversation
-            doc.provider = provider
-            doc.model = model
-            doc.status = status
-            doc.rounds = rounds
-            doc.tool_calls = len(tool_calls)
-            if tool_calls:
-                doc.tools = json.dumps(tool_calls, default=str)
-            doc.duration_ms = int((time.monotonic() - started) * 1000)
-            if usage is not None:
+            doc.user = audit.user
+            doc.conversation = audit.conversation
+            doc.provider = audit.provider
+            doc.model = audit.model
+            doc.status = audit.status
+            doc.rounds = audit.rounds
+            doc.tool_calls = len(audit.tool_calls)
+            if audit.tool_calls:
+                doc.tools = json.dumps(audit.tool_calls, default=str)
+            doc.duration_ms = int((time.monotonic() - audit.started) * 1000)
+            if audit.usage is not None:
+                usage = audit.usage
                 doc.input_tokens = usage.input_tokens
                 doc.output_tokens = usage.output_tokens
                 # The cost in the *site's* currency: the tokens the turn
@@ -832,17 +802,83 @@ class ChatService:
                 doc.cost = cost_of_turn(
                     usage.input_tokens,
                     usage.output_tokens,
-                    price_per_million,
+                    audit.price_per_million,
                 )
                 doc.provider_cost = usage.cost
                 doc.estimated = 1 if usage.estimated else 0
-            if error_class:
-                doc.error_class = error_class
-            if error_message:
-                doc.error_message = error_message[:500]
+            if audit.error_class:
+                doc.error_class = audit.error_class
+            if audit.error_message:
+                doc.error_message = audit.error_message[:500]
             doc.insert(ignore_permissions=True)
         except Exception:
             logger.exception("Could not write the chat log row")
+
+
+def tool_done_event(name: str, ok: bool, error: str = "", summary: str = "", documents=None) -> dict[str, Any]:
+    """The panel's record of one tool call's end.
+
+    **One place**, because the shape is read in three kinds of place — a
+    refusal, a failure, a finish — and every one of them sent a slightly
+    different set of keys before this existed.  A key added here reaches
+    all of them; a key forgotten elsewhere is silently absent.
+
+    Args:
+        name: the tool's name, as the model called it.
+        ok: whether it ran to a result (a refusal never did).
+        error: what went wrong, empty when nothing did.
+        summary: what the call found, in the tool's own words.
+        documents: the documents the call touched, when known.
+    """
+    event: dict[str, Any] = {"event": "tool_done", "name": name, "ok": ok}
+    if error:
+        event["error"] = error
+    if summary:
+        event["summary"] = summary
+    if documents is not None:
+        event["documents"] = documents
+    return event
+
+
+def emit_tool_done(
+    emit: Emit,
+    call: ToolCall,
+    ok: bool,
+    error: str = "",
+    summary: str = "",
+    documents=None,
+) -> None:
+    """Say a tool call is over, through whatever ``emit`` carries events."""
+    emit(tool_done_event(call.name, ok, error=error, summary=summary, documents=documents))
+
+
+def tool_entry(call: ToolCall, result: ToolResult) -> dict[str, Any]:
+    """What the transcript and the audit row both keep about one call.
+
+    **One place**, because the *executed* calls are recorded in two
+    shapes — the row under the answer in the transcript, and the audit
+    row in the log — and the two must never disagree about what
+    happened.  A field added here is recorded in both; renamed here, it
+    is renamed in both.
+    """
+    entry: dict[str, Any] = {
+        "name": call.name,
+        "ok": result.ok,
+        "denied": result.denied,
+        "approved": result.approved,
+        "error": result.error,
+        # What the call found, kept with the call so that a
+        # conversation reopened tomorrow still says what was
+        # looked up, and not only which function was called.
+        "summary": result.summary or result.error,
+        # The documents it looked at, kept for the same
+        # reason: a reopened answer links to them too.
+        "documents": touched_documents(call, result),
+    }
+    created = _created_name(result)
+    if created:
+        entry["created"] = created
+    return entry
 
 
 def touched_documents(call, result: ToolResult) -> list[dict[str, str]]:
@@ -896,45 +932,4 @@ def _created_name(result: ToolResult) -> str:
     return str(name) if name else ""
 
 
-def _write_preview(name: str, arguments: dict) -> str:
-    """A compact, human-readable summary of a pending write.
 
-    The reader approves a *change*, not a JSON blob, so the confirmation
-    dialog says what will happen in the reader's words: "Create Customer:
-    Acme (type Company)" rather than the raw arguments.
-    """
-    arguments = arguments or {}
-    doctype = str(arguments.get("doctype") or "").strip()
-    data = arguments.get("data") or {}
-    if not isinstance(data, dict):
-        data = {}
-
-    if name == "create_doc":
-        title = _preview_title(doctype, data)
-        if title:
-            return f"Create {doctype}: {title}"
-        return f"Create a {doctype}"
-
-    if name == "update_doc":
-        docname = str(arguments.get("name") or "").strip()
-        fields = ", ".join(f"{key} = {value}" for key, value in list(data.items())[:6])
-        if docname and fields:
-            return f"Change {doctype} {docname}: {fields}"
-        if docname:
-            return f"Change {doctype} {docname}"
-        return f"Change a {doctype}"
-
-    return f"{name}({doctype})"
-
-
-def _preview_title(doctype: str, data: dict) -> str:
-    """The most identifying value in a new document's data."""
-    for key in ("customer_name", "supplier_name", "full_name", "item_name", "subject", "title", "name"):
-        value = data.get(key)
-        if value:
-            return str(value)
-    # Fall back to the first non-empty value.
-    for value in data.values():
-        if isinstance(value, (str, int, float)) and str(value).strip():
-            return str(value)
-    return ""

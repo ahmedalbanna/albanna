@@ -40,6 +40,65 @@ DEFAULT_INTERVAL = 0.1
 TIMEOUT = "timeout"
 
 
+def write_preview(name: str, arguments: dict) -> str:
+    """A compact, human-readable summary of a pending write.
+
+    The reader approves a *change*, not a JSON blob, so the confirmation
+    dialog says what will happen in the reader's words: "Create Customer:
+    Acme (type Company)" rather than the raw arguments.
+
+    The words are deliberately the *app's* fixed verbs — Create, Change —
+    because this string is composed in the worker, which has no reader's
+    language; the card around it carries the sentence around it.
+    """
+    arguments = arguments or {}
+    doctype = str(arguments.get("doctype") or "").strip()
+    data = arguments.get("data") or {}
+    if not isinstance(data, dict):
+        data = {}
+
+    if name == "create_doc":
+        title = _preview_title(doctype, data)
+        if title:
+            return f"Create {doctype}: {title}"
+        return f"Create a {doctype}"
+
+    if name == "update_doc":
+        docname = str(arguments.get("name") or "").strip()
+        fields = ", ".join(f"{key} = {value}" for key, value in list(data.items())[:6])
+        if docname and fields:
+            return f"Change {doctype} {docname}: {fields}"
+        if docname:
+            return f"Change {doctype} {docname}"
+        return f"Change a {doctype}"
+
+    return f"{name}({doctype})"
+
+
+def _preview_title(doctype: str, data: dict) -> str:
+    """The most identifying value in a new document's data."""
+    for key in ("customer_name", "supplier_name", "full_name", "item_name", "subject", "title", "name"):
+        value = data.get(key)
+        if value:
+            return str(value)
+    # Fall back to the first non-empty value.
+    for value in data.values():
+        if isinstance(value, (str, int, float)) and str(value).strip():
+            return str(value)
+    return ""
+
+
+def denial_message(decision: str) -> str:
+    """What the model is told when the write did not run.
+
+    The wording must let the model explain itself to the reader without
+    pretending the change happened.
+    """
+    if decision == "reject":
+        return "The reader did not approve this change, so it was not made."
+    return "The reader did not respond in time, so the change was not made."
+
+
 def decision_key(request_id: str) -> str:
     """The cache key one pending decision is stored under."""
     return f"{KEY_PREFIX}{request_id}"
