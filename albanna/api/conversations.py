@@ -56,8 +56,7 @@ def list_conversations(limit: int = PAGE_SIZE, offset: int = 0) -> dict:
 
     from albanna.services.conversation_service import list_conversations as _list
 
-    user = str(frappe.session.user or "")
-    conversations = _list(user, limit=min(int(limit or PAGE_SIZE), PAGE_SIZE), offset=int(offset or 0))
+    conversations = _list(str(frappe.session.user or ""), limit=min(int(limit or PAGE_SIZE), PAGE_SIZE), offset=int(offset or 0))
 
     for conversation in conversations:
         conversation["preview"] = _preview(conversation["name"])
@@ -255,7 +254,6 @@ def rate_message(conversation: str = "", message: str = "", rating: str = "") ->
 
     from albanna.services.conversation_service import rate_message as _rate
 
-    _ = str(frappe.session.user or "")
     _rate(conversation, message, rating)
     frappe.db.commit()
 

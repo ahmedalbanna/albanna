@@ -123,11 +123,17 @@ function commitRename(conversation, event) {
 			/>
 		</div>
 
-		<div v-if="!loading && conversations.length && !filtered.length" class="albanna-drawer__empty">
+		<div
+			v-if="!loading && conversations.length && !filtered.length"
+			class="albanna-drawer__empty"
+		>
 			<p class="albanna-drawer__empty-title">{{ __("No matches") }}</p>
 		</div>
 
-		<div v-if="!loading && conversations.length && filtered.length" class="albanna-drawer__list">
+		<div
+			v-if="!loading && conversations.length && filtered.length"
+			class="albanna-drawer__list"
+		>
 			<section v-for="group in groups" :key="group.key" class="albanna-drawer__group">
 				<h3 class="albanna-drawer__group-title">{{ groupLabel(group.key) }}</h3>
 				<ul class="albanna-drawer__group-list">

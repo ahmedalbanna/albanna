@@ -36,6 +36,7 @@ The rules it keeps
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import time
@@ -556,6 +557,56 @@ class ChatService:
             )
             return ToolResult.failure(invalid, invalid)
 
+        # Hard confirmation gate: when the operator has asked for it, a
+        # write does not run until the reader has approved it.  The turn
+        # pauses here and waits for the browser's answer; a refusal or a
+        # timeout is reported to the model as a denial, so it can say so.
+        from albanna.user_policy import confirm_writes_for
+
+        if spec.mutating and confirm_writes_for(principal.user):
+            import time
+            import uuid
+
+            request_id = uuid.uuid4().hex
+            emit(
+                {
+                    "event": "confirm",
+                    "request_id": request_id,
+                    "name": call.name,
+                    "arguments": call.arguments,
+                    "preview": _write_preview(call.name, call.arguments),
+                }
+            )
+
+            key = f"albanna:confirm:{request_id}"
+            decision = "timeout"
+            deadline = time.monotonic() + 120.0
+            while time.monotonic() < deadline:
+                value = frappe.cache().get_value(key, user=principal.user)
+                if value is not None:
+                    decision = str(value)
+                    with contextlib.suppress(Exception):
+                        frappe.cache().delete_value(key, user=principal.user)
+                    break
+                time.sleep(0.5)
+
+            if decision != "approve":
+                message = (
+                    "The reader did not approve this change, so it was not made."
+                    if decision == "reject"
+                    else "The reader did not respond in time, so the change was not made."
+                )
+                emit(
+                    {
+                        "event": "tool_done",
+                        "name": call.name,
+                        "ok": False,
+                        "error": message,
+                        "summary": message,
+                    }
+                )
+                return ToolResult.refusal(message, "user_denied")
+
         emit({"event": "tool_start", "name": call.name, "arguments": call.arguments})
 
         context = ToolContext(principal=principal, site=site)
@@ -841,3 +892,47 @@ def _created_name(result: ToolResult) -> str:
         return ""
     name = data.get("name")
     return str(name) if name else ""
+
+
+def _write_preview(name: str, arguments: dict) -> str:
+    """A compact, human-readable summary of a pending write.
+
+    The reader approves a *change*, not a JSON blob, so the confirmation
+    dialog says what will happen in the reader's words: "Create Customer:
+    Acme (type Company)" rather than the raw arguments.
+    """
+    arguments = arguments or {}
+    doctype = str(arguments.get("doctype") or "").strip()
+    data = arguments.get("data") or {}
+    if not isinstance(data, dict):
+        data = {}
+
+    if name == "create_doc":
+        title = _preview_title(doctype, data)
+        if title:
+            return f"Create {doctype}: {title}"
+        return f"Create a {doctype}"
+
+    if name == "update_doc":
+        docname = str(arguments.get("name") or "").strip()
+        fields = ", ".join(f"{key} = {value}" for key, value in list(data.items())[:6])
+        if docname and fields:
+            return f"Change {doctype} {docname}: {fields}"
+        if docname:
+            return f"Change {doctype} {docname}"
+        return f"Change a {doctype}"
+
+    return f"{name}({doctype})"
+
+
+def _preview_title(doctype: str, data: dict) -> str:
+    """The most identifying value in a new document's data."""
+    for key in ("customer_name", "supplier_name", "full_name", "item_name", "subject", "title", "name"):
+        value = data.get(key)
+        if value:
+            return str(value)
+    # Fall back to the first non-empty value.
+    for value in data.values():
+        if isinstance(value, (str, int, float)) and str(value).strip():
+            return str(value)
+    return ""

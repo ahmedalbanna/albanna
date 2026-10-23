@@ -125,11 +125,6 @@ msgstr "المحادثة معطّلة على هذا الموقع."
 msgid "The assistant did not finish this question — the background worker did not complete the turn. It may have been restarted. Please try again."
 msgstr "لم يُكمل المساعد هذا السؤال — لم يُكمل العامل الخلفي الدور. ربما أُعيد تشغيله. يرجى المحاولة مرة أخرى."
 
-
-msgid "You do not have access to the chat. Ask an administrator to add your role."
-msgstr "ليس لديك صلاحية استخدام المحادثة. اطلب من أحد المشرفين إضافة دورك."
-
-
 msgid "Too many questions. Wait a minute and try again."
 msgstr "أسئلة كثيرة جداً. انتظر دقيقة ثم حاول مرة أخرى."
 
@@ -277,10 +272,6 @@ msgstr "يحتاج المزوّد إلى عنوان أساسي."
 
 msgid "The provider needs a model id."
 msgstr "يحتاج المزوّد إلى معرّف نموذج."
-
-msgid "These are not roles: {0}"
-msgstr "هذه ليست أدواراً: {0}"
-
 msgid "The provider is not one this app knows: {0}"
 msgstr "المزوّد ليس واحداً يعرفه هذا التطبيق: {0}"
 
@@ -409,34 +400,15 @@ msgstr "لم يُحدَّد سعر، فـ {0} دور بلا تكلفة معرو�
 
 msgid "API Key"
 msgstr "مفتاح الـ API"
-
-msgid "Access"
-msgstr "الوصول"
-
 msgid "Albanna Settings"
 msgstr "إعدادات ألبانا"
-
-msgid "Allow Writes"
-msgstr "السماح بالكتابة"
-
 msgid "Base URL"
 msgstr "عنوان الأساس"
 
 msgid "Calls the provider with the smallest question that means anything, and says what happened. The values in this form are used, so a provider can be tested before it is saved."
 msgstr "يستدعي المزوّد بأصغر سؤال له معنى، ويقول ما الذي حدث. تُستعمل القيم الموجودة في هذه الاستمارة، فيمكن اختبار المزوّد قبل حفظه."
-
-msgid "Chat Roles"
-msgstr "أدوار المحادثة"
-
-msgid "Disabled Tools"
-msgstr "الأدوات المعطّلة"
-
 msgid "Enable Fallback"
 msgstr "تفعيل المزوّد الاحتياطي"
-
-msgid "Enable Widget"
-msgstr "تفعيل الأداة"
-
 msgid "Enabled"
 msgstr "مُفعَّل"
 
@@ -469,10 +441,6 @@ msgstr "كم سؤالاً قد يطرحه شخص في الدقيقة، لكل و
 
 msgid "How many tool rounds one question may take. A backstop against a runaway loop, not a budget: the assistant answers with what it has found when it is reached, rather than apologising for stopping."
 msgstr "كم جولة من الأدوات قد يأخذها سؤال واحد. حدّ أمان ضدّ حلقة لا تنتهي، لا ميزانية: يجيب المساعد بما وجده حين يُبلَغ، بدل أن يعتذر عن التوقّف."
-
-msgid "Let the assistant create documents. When this is off, the write tool is not in the tool set at all — the model is never told it exists — so nothing can be created through the chat. Switch it on when you want the assistant to be able to write."
-msgstr "السماح للمساعد بإنشاء المستندات. حين يكون هذا مطفأً لا تكون أداة الكتابة في مجموعة الأدوات أصلاً — ولا يُقال للنموذج إنها موجودة — فلا يمكن إنشاء شيء عبر المحادثة. شغّله حين تريد للمساعد أن يكتب."
-
 msgid "Limits"
 msgstr "الحدود"
 
@@ -496,16 +464,6 @@ msgstr "المزوّد"
 
 msgid "Replaces the built-in instructions. Leave empty to use the defaults."
 msgstr "يستبدل التعليمات المدمجة. اتركه فارغاً لاستعمال الافتراضيات."
-
-msgid "Roles allowed to see the side-chat widget, one per line. Leave empty to allow every user who may chat. A name that is not a role is refused when you save."
-msgstr "الأدوار المسموح لها رؤية أداة المحادثة الجانبية، دور في كل سطر. اتركه فارغاً ليسمح لكل من يقدر على المحادثة. أي اسم ليس دوراً يُرفض عند الحفظ."
-
-msgid "Roles allowed to use the chat, one per line. Leave empty to allow only System Managers. A name that is not a role is refused when you save."
-msgstr "الأدوار المسموح لها استعمال المحادثة، دور في كل سطر. اتركه فارغاً ليسمح فقط لمدراء النظام. أي اسم ليس دوراً يُرفض عند الحفظ."
-
-msgid "Show the side-chat widget on every Desk page."
-msgstr "إظهار أداة المحادثة الجانبية في كل صفحة من صفحات الـ Desk."
-
 msgid "System Prompt"
 msgstr "تعليمات النظام"
 
@@ -535,10 +493,6 @@ msgstr "مفتاح API الخاص بالمزوّد. يُخزَّن مشفَّر�
 
 msgid "Timeout (s)"
 msgstr "المهلة (ثانية)"
-
-msgid "Tool names to switch off, one per line. A tool that is off is never mentioned to the model, so it is never called."
-msgstr "أسماء الأدوات التي تُعطَّل، اسم في كل سطر. الأداة المعطّلة لا تُذكر للنموذج أبداً، فلا تُنادى أبداً."
-
 msgid "Turn Timeout (s)"
 msgstr "مهلة الدور (ثانية)"
 
@@ -559,10 +513,6 @@ msgstr "الركن الذي تجلس فيه الأداة. على واجهة عر
 
 msgid "Widget Position"
 msgstr "موضع الأداة"
-
-msgid "Widget Roles"
-msgstr "أدوار الأداة"
-
 msgid "anthropic"
 msgstr "Anthropic"
 
@@ -785,3 +735,142 @@ msgstr "ليس لديك صلاحية استخدام المحادثة. لا يو�
 
 msgid "You do not have access to the chat. Reading {0} is done by these roles: {1}."
 msgstr "ليس لديك صلاحية استخدام المحادثة. قراءة {0} متاحة لهذه الأدوار: {1}."
+
+
+msgid " {0} turn(s)"
+msgstr " {0} دور"
+
+msgid "Albanna User Policy"
+msgstr "سياسة مستخدم ألبانا"
+
+msgid "Always"
+msgstr "دائماً"
+
+msgid "Answer ready."
+msgstr "الإجابة جاهزة."
+
+msgid "Budget"
+msgstr "الميزانية"
+
+msgid "Cancel"
+msgstr "إلغاء"
+
+msgid "Comma- or newline-separated tool names to hide from the assistant, e.g. create_doc."
+msgstr "أسماء الأدوات التي تُخفى عن المساعد، مفصولة بفواصل أو أسطر، مثل create_doc."
+
+msgid "Confirm"
+msgstr "تأكيد"
+
+msgid "Confirm writes"
+msgstr "تأكيد الكتابات"
+
+msgid "Confirm writes override"
+msgstr "تجاوز تأكيد الكتابات"
+
+msgid "Could not regenerate."
+msgstr "تعذّر إعادة التوليد."
+
+msgid "Disabled tools"
+msgstr "الأدوات المعطّلة"
+
+msgid "Export conversation"
+msgstr "تصدير المحادثة"
+
+msgid "Helpful"
+msgstr "مفيد"
+
+msgid "How many {0} are there?"
+msgstr "كم عدد {0}؟"
+
+msgid "Load more"
+msgstr "تحميل المزيد"
+
+msgid "Monthly budget"
+msgstr "الميزانية الشهرية"
+
+msgid "Never"
+msgstr "أبداً"
+
+msgid "No matches"
+msgstr "لا تطابق"
+
+msgid "Not helpful"
+msgstr "غير مفيد"
+
+msgid "Notes"
+msgstr "ملاحظات"
+
+msgid "Only answers can be rated."
+msgstr "يمكن تقييم الإجابات فقط."
+
+msgid "Optional. When this month's estimated cost reaches it, System Managers are warned in the usage dialog. Leave blank for no limit."
+msgstr "اختياري. حين تبلغ التكلفة التقديرية لهذا الشهر هذا المبلغ، يُنذَر مدراء النظام في حوار الاستهلاك. اتركه فارغاً لبلا حدّ."
+
+msgid "Pin"
+msgstr "تثبيت"
+
+msgid "Pinned"
+msgstr "مُثبَّت"
+
+msgid "Rating"
+msgstr "التقييم"
+
+msgid "Regenerate last answer"
+msgstr "إعادة توليد آخر إجابة"
+
+msgid "Search conversations"
+msgstr "بحث في المحادثات"
+
+msgid "Search conversations…"
+msgstr "بحث في المحادثات…"
+
+msgid "Site default"
+msgstr "الافتراضي للموقع"
+
+msgid "Summarise this report"
+msgstr "لخّص هذا التقرير"
+
+msgid "That is not a rating."
+msgstr "هذا ليس تقييماً."
+
+msgid "That is not a user."
+msgstr "هذا ليس مستخدماً."
+
+msgid "The answer was cut off."
+msgstr "قُطعت الإجابة."
+
+msgid "The reader's rating of this answer, if they gave one. Blank means unrated."
+msgstr "تقييم القارئ لهذه الإجابة، إن أبداه. فارغ تعني غير مقيّمة."
+
+msgid "Unpin"
+msgstr "إلغاء التثبيت"
+
+msgid "Waiting for your approval…"
+msgstr "في انتظار موافقتك…"
+
+msgid "What are the totals in this report?"
+msgstr "ما الإجماليات في هذا التقرير؟"
+
+msgid "What is the total value of these {0}?"
+msgstr "ما القيمة الإجمالية لهذه {0}؟"
+msgid "Which rows stand out?"
+msgstr "أي الصفوف بارزة؟"
+
+msgid "Which {0} are still open?"
+msgstr "أي {0} لا تزال مفتوحة؟"
+
+msgid "Why this override exists, if it is not obvious. A line for the next operator."
+msgstr "لماذا هذا التجاوز، إن لم يكن واضحاً. سطر للمسؤول التالي."
+
+msgid "a change"
+msgstr "تغيير"
+
+msgid "down"
+msgstr "أسفل"
+
+msgid "up"
+msgstr "أعلى"
+
+
+msgid "When on, the assistant asks for your approval before creating or changing a document. On by default."
+msgstr "حين يكون مفعَّلاً، يطلب المساعد موافقتك قبل إنشاء مستند أو تغييره. مفعَّل افتراضياً."

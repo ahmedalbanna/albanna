@@ -109,9 +109,9 @@ function usage_html(summary) {
 		rows.push(
 			row(
 				__("Budget"),
-				`${Number(summary.cost || 0).toFixed(4)} / ${Number(summary.budget || 0).toFixed(4)}${
-					summary.budget_exceeded ? " ⚠" : ""
-				}`,
+				`${Number(summary.cost || 0).toFixed(4)} / ${Number(summary.budget || 0).toFixed(
+					4,
+				)}${summary.budget_exceeded ? " ⚠" : ""}`,
 			),
 		);
 	}

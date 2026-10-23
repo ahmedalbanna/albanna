@@ -903,6 +903,55 @@ body.albanna-side-chat-docked-inline-start {
 	gap: 8px;
 }
 
+/* A write that is waiting for the reader's approval.
+
+   It is a card in the transcript rather than a dialog, so that the
+   reader approves a change and not a JSON blob, and the thread keeps
+   its place. */
+.albanna-chat__confirm {
+	margin: 0 12px 8px;
+	padding: 10px 12px;
+	border-radius: 8px;
+	border: 1px solid var(--albanna-border, #ededed);
+	background: var(--albanna-surface, #ffffff);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.albanna-chat__confirm-preview {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--albanna-text, #1f2328);
+}
+
+.albanna-chat__confirm-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.albanna-chat__confirm-button {
+	border: 1px solid var(--albanna-border, #ededed);
+	background: var(--albanna-hover, #f2f4f5);
+	color: var(--albanna-text, #1f2328);
+	border-radius: 6px;
+	padding: 5px 12px;
+	font-size: 12px;
+	cursor: pointer;
+	font-family: inherit;
+}
+
+.albanna-chat__confirm-button--confirm {
+	background: var(--albanna-primary, #2490ef);
+	color: #ffffff;
+	border-color: var(--albanna-primary, #2490ef);
+}
+
+.albanna-chat__confirm-button:hover {
+	filter: brightness(0.97);
+}
+
 .albanna-chat__notice-text {
 	min-width: 0;
 }

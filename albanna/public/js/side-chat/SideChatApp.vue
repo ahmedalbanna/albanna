@@ -93,6 +93,11 @@ const copiedId = ref("");
 /** The message whose table was just copied, if any. */
 const copiedTableId = ref("");
 
+/** A write the assistant has proposed and the reader has not answered
+ *  yet.  The card is shown in the transcript until it is answered, so
+ *  that the reader approves a change and not a JSON blob. */
+const pendingConfirm = ref(null);
+
 /** "chat" shows the transcript; "history" shows the list of conversations. */
 const view = ref("chat");
 const conversations = ref([]);
@@ -615,6 +620,7 @@ async function resumeInflight() {
 			signal: controller.signal,
 			onEvent: (event) => handleTurnEvent(answer, event),
 		});
+		pendingConfirm.value = null;
 		applyTurnResult(result, asked, answer);
 	} catch (failure) {
 		failTurn(state, answer, String((failure && failure.message) || failure));
@@ -631,6 +637,19 @@ async function resumeInflight() {
  * @param {object} event the progress event
  */
 function handleTurnEvent(answer, event) {
+	if (event.event === "confirm") {
+		// A write is proposed and waits for the reader's approval.  The
+		// card is shown in the transcript, so the reader approves a
+		// change and not a JSON blob — and the thread keeps its place.
+		pendingConfirm.value = {
+			request_id: event.request_id,
+			name: event.name,
+			preview: event.preview || event.name || __("a change"),
+		};
+		setActivity(state, __("Waiting for your approval…"));
+		scrollToBottom();
+		return;
+	}
 	if (event.event === "token") {
 		setContent(answer, answer.content + event.text);
 		scrollToBottom();
@@ -730,10 +749,24 @@ function applyTurnResult(result, asked, answer) {
 	if (answer.content) {
 		// A full answer in an aria-live region is read aloud in full,
 		// which is not useful.  Announce the outcome, not the text.
-		announcement.value = result && result.truncated
-			? __("The answer was cut off.")
-			: __("Answer ready.");
+		announcement.value =
+			result && result.truncated ? __("The answer was cut off.") : __("Answer ready.");
 	}
+}
+
+/**
+ * Approve or reject a write that is waiting in the transcript.
+ *
+ * @param {string} decision "approve" or "reject"
+ */
+function decideWrite(decision) {
+	const pending = pendingConfirm.value;
+	if (!pending) return;
+	pendingConfirm.value = null;
+	call("albanna.api.chat.confirm_write", {
+		request_id: pending.request_id,
+		decision,
+	}).catch(() => {});
 }
 
 /**
@@ -817,6 +850,7 @@ async function send(question) {
 			},
 		});
 
+		pendingConfirm.value = null;
 		applyTurnResult(result, asked, answer);
 	} catch (failure) {
 		failTurn(
@@ -1769,7 +1803,7 @@ onBeforeUnmount(() => {
 							:title="__('Helpful')"
 							@click="rateMessage(message, 'up')"
 						>
-							{{ message.rating === 'up' ? '👍' : '👍' }}
+							{{ message.rating === "up" ? "👍" : "👍" }}
 						</button>
 						<button
 							v-if="message.role === 'assistant' && message.name"
@@ -1779,7 +1813,7 @@ onBeforeUnmount(() => {
 							:title="__('Not helpful')"
 							@click="rateMessage(message, 'down')"
 						>
-							{{ message.rating === 'down' ? '👎' : '👎' }}
+							{{ message.rating === "down" ? "👎" : "👎" }}
 						</button>
 						<button
 							v-if="message.role === 'assistant' && message.hasTable"
@@ -1878,6 +1912,35 @@ onBeforeUnmount(() => {
 					/>
 				</svg>
 			</button>
+		</div>
+
+		<!-- A write that is waiting for the reader's approval.  It is a
+		     card in the transcript rather than a dialog, so that the
+		     reader approves a change and not a JSON blob, and the thread
+		     keeps its place. -->
+		<div
+			v-if="pendingConfirm"
+			class="albanna-chat__confirm"
+			role="alertdialog"
+			aria-live="assertive"
+		>
+			<p class="albanna-chat__confirm-preview">{{ pendingConfirm.preview }}</p>
+			<div class="albanna-chat__confirm-actions">
+				<button
+					type="button"
+					class="albanna-chat__confirm-button albanna-chat__confirm-button--confirm"
+					@click="decideWrite('approve')"
+				>
+					{{ __("Confirm") }}
+				</button>
+				<button
+					type="button"
+					class="albanna-chat__confirm-button albanna-chat__confirm-button--cancel"
+					@click="decideWrite('reject')"
+				>
+					{{ __("Cancel") }}
+				</button>
+			</div>
 		</div>
 
 		<!-- The notice is not the error's else-branch: a notice that is

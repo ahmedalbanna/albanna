@@ -9,10 +9,7 @@ import { exampleSet, openDocumentFrom } from "./examples.mjs";
 
 // A form with a document is a form.
 {
-	assert.equal(
-		exampleSet({ view: "form", doctype: "Sales Order", name: "SAL-ORD-001" }),
-		"form",
-	);
+	assert.equal(exampleSet({ view: "form", doctype: "Sales Order", name: "SAL-ORD-001" }), "form");
 }
 
 // A list carries a doctype but no name.

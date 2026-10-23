@@ -759,7 +759,25 @@ invisible until someone waits for an answer that was never announced.
 That is not a hypothesis: it is how the first version of this went, and
 a test now holds the two paths to the same shape.
 
-### 46. The reader is shown an error they can read
+### 46. A write waits for the reader's approval
+
+A write tool does not commit until the reader has approved it.  The
+turn pauses, a card appears in the transcript with a compact summary of
+what will happen — "Create Customer: Acme" — and the reader confirms
+or cancels.  A refusal or a timeout is reported to the model as a denial,
+so it can say so rather than pretend it happened.
+
+The card is in the transcript, not a dialog, so the thread keeps its
+place.  The preview says what will change, in the reader's words rather
+than the JSON's.
+
+The rail is site-wide by default and per-user on top of it: a policy row
+may turn it on for a user who would not otherwise have it, or off for a
+user who would.  A blank override inherits the site default — the same
+rule the connector used, and for the same reason: a missing override is
+the inheritance, not a refusal.
+
+### 47. The reader is shown an error they can read
 
 A provider that answers in anything but Latin-1 — a Chinese error, an em
 dash — used to arrive as mojibake, because the error path read the body
