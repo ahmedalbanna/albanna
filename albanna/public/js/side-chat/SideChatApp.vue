@@ -54,6 +54,7 @@ import { hasTable, renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js"
 import { watchRoute } from "./page.mjs";
 import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
 import { takeRetryQuestion } from "./retry.mjs";
+import { createRenderThrottle, scheduleRender } from "./render-throttle.mjs";
 import { clearInflight, loadInflight, saveInflight } from "./inflight.mjs";
 import { canDecide, remainingSeconds } from "./approval.mjs";
 import { mergeOlder, oldestIdx, olderRequest, windowRequest } from "./window.mjs";
@@ -343,6 +344,21 @@ function setContent(message, text) {
 	message.content = text;
 	refresh(message);
 }
+
+/* The renders a streaming answer asks for.
+ *
+ * Every token mutates the answer's content synchronously — the text is
+ * on the message the instant it arrives — and asks for a render through
+ * this, so a fast token stream coalesces into one render per frame
+ * instead of one full markdown parse per token.  Everything *else* that
+ * writes content (a re-render because the documents arrived, a final
+ * answer, a reopened conversation) is rare, and renders immediately
+ * through setContent.
+ *
+ * The token's own render is never the last one: applyTurnResult writes
+ * the final answer with setContent the moment the turn ends, so nothing
+ * waits for a scheduled render that the turn has already outlived. */
+const renderStreamed = createRenderThrottle(refresh, scheduleRender);
 
 /**
  * Write everything about a message that is *derived* from it.
@@ -711,7 +727,11 @@ function handleTurnEvent(answer, event) {
 		return;
 	}
 	if (event.event === "token") {
-		setContent(answer, answer.content + event.text);
+		// The text lands on the message at once, so nothing is lost if
+		// the render waits for the frame's other tokens; the render
+		// reads whatever the content is when it runs.
+		answer.content += event.text;
+		renderStreamed(answer);
 		scrollToBottom();
 		return;
 	}
