@@ -788,6 +788,42 @@ That message is what the reader is shown.  An error that is a puzzle is
 worse than an error that is dull, because the reader cannot tell whether
 the assistant is broken or the message is.
 
+### 42. A write waits for the reader
+
+When the site asks for it, a write does not run until the reader has
+approved it.  The turn pauses inside the tool call: the worker emits the
+proposed call — the tool, the DocType, the name, the fields that would
+change — and then waits, polling a cache key under the reader's own
+namespace for up to two minutes.  The browser shows the proposal and
+offers **Approve** and **Decline**; clicking either one sets the key, and
+the worker reads it and goes on.  A reader who closes the panel, or who
+does not answer, gets the timeout, and the turn records the write as not
+approved.
+
+The wait is *in the turn*, not beside it.  The worker holds the queue
+slot for the whole window, which is why the window is two minutes and not
+twenty: a turn that holds a worker for twenty minutes is a turn that has
+taken the site's queue hostage.  The alternative — splitting the job at
+the approval point and continuing on a second job when the reader
+answers — is the design that scales, and it is deliberately not here,
+because the messages the continuation needs would have to be carried in
+the cache and re-validated, and the cost of getting that wrong is a turn
+that resumes in the wrong thread.
+
+A declined or timed-out write is a **refusal**, not a failure.  The tool
+returns the refusal to the model with a code of `user_denied`, and the
+model is told in the system prompt that such a result is not a tool
+failure and must not be retried — it should say what it would have
+changed and stop.  The ledger records it as a refusal too, in the tool's
+own entry, with no text.
+
+The rail is off by default, and it is turned on per account through an
+`Albanna User Policy` row: `always` turns it on for one user, `never`
+turns it off for one user, and a blank override inherits the site
+default.  A System Manager is not exempt from the policy — the rail is
+about the *reader*, and an administrator who writes through the chat is
+still a reader.
+
 ## What is deliberately not here
 
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.

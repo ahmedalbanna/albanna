@@ -200,6 +200,8 @@ class ChatService:
 
         history = load_messages(conversation, settings.history_limit)
         company = default_company()
+        from albanna.user_policy import confirm_writes_for
+
         context = PromptContext(
             site=site,
             company=company,
@@ -207,6 +209,7 @@ class ChatService:
             user=principal.user,
             creatable=tuple(creatable_doctypes(principal.user)),
             writable=tuple(writable_doctypes(principal.user)),
+            writes_require_approval=confirm_writes_for(principal.user),
             page_context=request.page_context,
         )
 
@@ -339,6 +342,7 @@ class ChatService:
                     "name": call.name,
                     "ok": result.ok,
                     "denied": result.denied,
+                    "approved": result.approved,
                     "error": result.error,
                     # What the call found, kept with the call so that a
                     # conversation reopened tomorrow still says what was
@@ -563,7 +567,9 @@ class ChatService:
         # timeout is reported to the model as a denial, so it can say so.
         from albanna.user_policy import confirm_writes_for
 
-        if spec.mutating and confirm_writes_for(principal.user):
+        gated = spec.mutating and confirm_writes_for(principal.user)
+
+        if gated:
             import time
             import uuid
 
@@ -605,7 +611,7 @@ class ChatService:
                         "summary": message,
                     }
                 )
-                return ToolResult.refusal(message, "user_denied")
+                return ToolResult(ok=False, content=message, error=message, denied=True, approved=False)
 
         emit({"event": "tool_start", "name": call.name, "arguments": call.arguments})
 
@@ -613,6 +619,8 @@ class ChatService:
         try:
             result = self._backend.call(spec, call.arguments, context)
             result = self._explain_failure(spec, call.arguments, result, authority)
+            if gated:
+                result.approved = True
         except Exception as exc:  # noqa: BLE001 - a tool must not kill the turn
             logger.exception("Tool '%s' could not be run", call.name)
             message = f"The tool '{call.name}' could not be run: {type(exc).__name__}: {exc}"

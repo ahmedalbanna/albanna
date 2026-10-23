@@ -224,6 +224,7 @@ too.
 | Fallback | enabled, kind, base URL, model, API key |
 | Widget | position |
 | Limits | max tool rounds, history limit, turn timeout, turns per minute |
+| Writes | confirm writes (site default), per-user override via Albanna User Policy |
 | Prompt | system prompt (blank uses the built-in one) |
 
 Chat access starts closed: System Managers only.  To let others chat, grant

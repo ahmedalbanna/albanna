@@ -612,6 +612,17 @@ async function resumeInflight() {
 	setActivity(state, __("Thinking"));
 	scrollToBottom(true);
 
+	// A turn that was waiting for approval when the page was reloaded
+	// is still waiting for it.  The card comes back with the request
+	// id it needs, and only if the wait has not already run out.
+	if (entry.approval && entry.approval.request_id) {
+		const age = Date.now() - Number(entry.approval.at || 0);
+		if (age < 120000) {
+			pendingConfirm.value = entry.approval;
+			setActivity(state, __("Waiting for your approval…"));
+		}
+	}
+
 	const controller = new AbortController();
 	abortController.value = controller;
 
@@ -641,11 +652,21 @@ function handleTurnEvent(answer, event) {
 		// A write is proposed and waits for the reader's approval.  The
 		// card is shown in the transcript, so the reader approves a
 		// change and not a JSON blob — and the thread keeps its place.
-		pendingConfirm.value = {
+		const approval = {
 			request_id: event.request_id,
 			name: event.name,
 			preview: event.preview || event.name || __("a change"),
+			at: Date.now(),
 		};
+		pendingConfirm.value = approval;
+		// Write the approval down too, so that a reload during the wait
+		// does not lose the card the reader was about to click.  The
+		// stream id is already stored from onQueued, so it is patched in
+		// rather than re-created.
+		const existing = loadInflight();
+		if (existing && existing.stream_id) {
+			saveInflight({ ...existing, approval });
+		}
 		setActivity(state, __("Waiting for your approval…"));
 		scrollToBottom();
 		return;
@@ -763,6 +784,8 @@ function decideWrite(decision) {
 	const pending = pendingConfirm.value;
 	if (!pending) return;
 	pendingConfirm.value = null;
+	const existing = loadInflight();
+	if (existing) saveInflight({ ...existing, approval: null });
 	call("albanna.api.chat.confirm_write", {
 		request_id: pending.request_id,
 		decision,
@@ -939,6 +962,12 @@ function removeMessage(message) {
  * should not have to watch the rest of it arrive.
  */
 function stop() {
+	if (pendingConfirm.value) {
+		// A write is waiting for the reader.  Stopping is a decision as
+		// much as a click is, and it is the same decision: not to run it.
+		decideWrite("reject");
+		return;
+	}
 	if (!mayStop.value || !abortController.value) return;
 	abortController.value.abort();
 }

@@ -39,6 +39,10 @@ class ToolResult:
     data: Any = None
     error: str = ""
     denied: bool = False
+    #: For a write that waited for the reader: True if they approved it,
+    #: False if they declined or did not respond in time, and None when
+    #: the write did not wait at all.
+    approved: bool | None = None
     #: One line saying what the call found — "Found 24 Sales Order".  It is
     #: what the panel shows beside the tool's name, so that the reader can
     #: see what was looked up without reading the answer.

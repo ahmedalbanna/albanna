@@ -1783,3 +1783,130 @@ class TestTheUpdatePath(FrappeTestCase):
         invoice.flags.ignore_permissions = True
         invoice.insert()
         return invoice.name
+
+
+
+
+
+
+@pytest.mark.integration
+class TestWriteApproval(TestToolPath):
+    """A write waits for the reader before it runs."""
+
+    def setUp(self):
+        super().setUp()
+        self.accounts_user = self._make_user("accounts-approval@example.com", "Accounts User")
+
+    def _make_policy(self, email: str, override: str = "always"):
+        frappe.clear_cache()
+        frappe.set_user("Administrator")
+        frappe.local.session.user = "Administrator"
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+        existing = frappe.db.get_value("Albanna User Policy", {"user": email}, "name")
+        if existing:
+            frappe.delete_doc("Albanna User Policy", existing, force=True)
+        doc = frappe.get_doc(
+            {
+                "doctype": "Albanna User Policy",
+                "user": email,
+                "confirm_writes_override": {"always": "Always", "never": "Never"}.get(override, override),
+            }
+        )
+        doc.flags.ignore_permissions = True
+        doc.insert()
+        frappe.db.commit()
+
+    def _restore_policy(self, email: str):
+        frappe.clear_cache()
+        frappe.set_user("Administrator")
+        frappe.local.session.user = "Administrator"
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+        existing = frappe.db.get_value("Albanna User Policy", {"user": email}, "name")
+        if existing:
+            frappe.delete_doc("Albanna User Policy", existing, force=True)
+        frappe.db.commit()
+
+    def _completion(self):
+        from albanna.core.messages import Message, ToolCall
+        from albanna.providers.base import Completion, Usage
+
+        return Completion(
+            message=Message(
+                role="assistant",
+                content="I will create the invoice.",
+                tool_calls=(
+                    ToolCall(
+                        id="call_1",
+                        name="create_doc",
+                        arguments=self._invoice_arguments(),
+                    ),
+                ),
+            ),
+            provider="openai",
+            model="a-model",
+            usage=Usage(input_tokens=10, output_tokens=5),
+        )
+
+    def _run(self, email, decision):
+        self._make_policy(email, "always")
+        try:
+            self._as(email)
+
+            # The reader's decision is fed back through the emit callback,
+            # so the worker's poll exits at once with the chosen answer.
+            def make_emit(decision):
+                def emit(event):
+                    if event.get("event") == "confirm":
+                        frappe.cache().set_value(
+                            "albanna:confirm:" + event["request_id"],
+                            decision,
+                            user=email,
+                            expires_in_sec=60,
+                        )
+                return emit
+
+            from albanna.services.chat_service import ChatService, TurnRequest
+
+            service = ChatService()
+
+            def fake_complete(config, messages, tools, emit, stream):
+                return self._completion()
+
+            service._complete = fake_complete
+
+            outcome = service.run(
+                TurnRequest(question="create an invoice", page="test|approval|"),
+                emit=make_emit(decision),
+            )
+            return outcome
+        finally:
+            self._restore_policy(email)
+
+    def test_an_approved_write_runs(self):
+        outcome = self._run(self.accounts_user, "approve")
+        self.assertTrue(outcome.ok, "an approved write must complete the turn")
+        self.assertFalse(
+            any(t.get("approved") is False for t in outcome.tool_calls),
+            "no tool call may be recorded as declined",
+        )
+
+    def test_a_declined_write_does_not_run(self):
+        outcome = self._run(self.accounts_user, "reject")
+        self.assertTrue(outcome.ok, "a declined write is still a completed turn")
+        self.assertTrue(
+            any(t.get("approved") is False for t in outcome.tool_calls),
+            "the declined write must be recorded as declined",
+        )
+
+    def test_a_timeout_is_recorded_as_not_approved(self):
+        # A decision of "timeout" is what the worker records when the
+        # reader does not answer in time; seeding it simulates that path
+        # without holding the test for the real two-minute window.
+        outcome = self._run(self.accounts_user, "timeout")
+        self.assertTrue(outcome.ok)
+        self.assertTrue(
+            any(t.get("approved") is False for t in outcome.tool_calls),
+            "a timed-out write must be recorded as not approved",
+        )

@@ -87,6 +87,7 @@ class PromptContext:
     user: str = ""
     creatable: tuple[str, ...] = ()
     writable: tuple[str, ...] = ()
+    writes_require_approval: bool = False
     page_context: str = ""
 
 
@@ -124,6 +125,15 @@ def build_system_prompt(
         sections.append(_creatable_note(context.creatable))
     if context.writable:
         sections.append(_writable_note(context.writable))
+
+    if context.writes_require_approval:
+        sections.append(
+            "Writes require the reader's approval. Every create or change is "
+            "shown to the reader before it runs, and it only runs if they "
+            "approve. A write that is declined, or that is not approved in "
+            "time, is not a failure of the tool — do not retry it. Say what you "
+            "would have changed, and stop."
+        )
 
     if specs:
         lines = "\n".join(f"- {spec.name}: {_one_line(spec.description)}" for spec in specs)
