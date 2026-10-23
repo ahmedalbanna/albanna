@@ -789,7 +789,14 @@ function decideWrite(decision) {
 	call("albanna.api.chat.confirm_write", {
 		request_id: pending.request_id,
 		decision,
-	}).catch(() => {});
+	}).catch((error) => {
+		// The decision did not reach the worker.  The worker will time
+		// out on its own, but the reader should not be left thinking
+		// their click did nothing.
+		state.error = String(
+			(error && error.message) || error || __("The approval could not be recorded."),
+		);
+	});
 }
 
 /**
