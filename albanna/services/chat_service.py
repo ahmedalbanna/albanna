@@ -611,7 +611,10 @@ class ChatService:
             result = self._backend.call(spec, call.arguments, context)
             result = self._explain_failure(spec, call.arguments, result, authority)
             if gated:
-                result.approved = True
+                # The result is frozen, so the flag arrives as a copy, not
+                # an assignment — a write that was approved after the wait
+                # is recorded as approved.
+                result = replace(result, approved=True)
         except Exception as exc:  # noqa: BLE001 - a tool must not kill the turn
             logger.exception("Tool '%s' could not be run", call.name)
             message = f"The tool '{call.name}' could not be run: {type(exc).__name__}: {exc}"

@@ -1891,6 +1891,14 @@ class TestWriteApproval(TestToolPath):
             any(t.get("approved") is False for t in outcome.tool_calls),
             "no tool call may be recorded as declined",
         )
+        # The approval must not merely be recorded — the write itself must
+        # have *run*.  A flag that cannot be set on a frozen result turned
+        # into a tool failure once, and the turn still looked successful:
+        # the ledger said ok, the document was never made.
+        self.assertTrue(
+            any(t.get("ok") for t in outcome.tool_calls),
+            "the approved write must actually have run",
+        )
 
     def test_a_declined_write_does_not_run(self):
         outcome = self._run(self.accounts_user, "reject")
