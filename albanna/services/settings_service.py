@@ -45,6 +45,9 @@ class AppSettings:
     #: Optional monthly budget, in the site's currency.  Zero means
     #: "no limit set".
     monthly_budget: float = 0.0
+    #: Whether a write must wait for the reader's approval before it runs.
+    #: Off by default; a per-user policy can turn it on for one account.
+    confirm_writes: bool = False
     #: The operator's extra options for the provider — the ones the app
     #: has no field for.  See :mod:`albanna.core.options`.
     extra_options: dict[str, Any] = field(default_factory=dict)
@@ -116,6 +119,10 @@ def _build() -> AppSettings:
         # "free" is a lie the ledger would tell.
         price_per_million=_float(getattr(doc, "price_per_million", 0), 0.0),
         monthly_budget=_float(getattr(doc, "monthly_budget", 0), 0.0),
+        # Whether a write waits for the reader's approval.  A Check
+        # field, read as a bool; a missing column (pre-migration) reads
+        # as "off".
+        confirm_writes=bool(getattr(doc, "confirm_writes", 0)),
         # The operator's extra options: the ones the app has no field
         # for, which are added to the request the provider receives.
         extra_options=parse_options(getattr(doc, "extra_options", "")),

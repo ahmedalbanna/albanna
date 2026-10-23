@@ -237,3 +237,39 @@ def _turn_deadline() -> float:
     from albanna.services.settings_service import get_settings
 
     return get_settings().turn_timeout + STALE_GRACE_SECONDS
+
+
+@frappe.whitelist()
+def confirm_write(request_id: str = "", decision: str = "") -> dict[str, Any]:
+    """Record the reader's decision on a write that is waiting for review.
+
+    The worker that proposed the write polls a cache key under the
+    reader's own namespace; this endpoint sets it.  The worker is the
+    authority on whether the key still means anything: a decision
+    recorded after it has stopped polling is inert, and a decision
+    recorded twice leaves the first one in place.
+
+    The decision must be ``approve`` or ``reject``; anything else is a
+    refusal, because a write that is neither approved nor declined is
+    not a thing that can be acted on.
+    """
+    from albanna.permissions import require_chat_access
+
+    require_chat_access()
+
+    request_id = (request_id or "").strip()
+    decision = (decision or "").strip().lower()
+    if not request_id:
+        frappe.throw(_("A request is required."), frappe.ValidationError)
+    if decision not in ("approve", "reject"):
+        frappe.throw(_("That is not a decision."), frappe.ValidationError)
+
+    user = str(frappe.session.user or "")
+    key = f"albanna:confirm:{request_id}"
+
+    # The key is written under the caller's own namespace, exactly as the
+    # worker reads it — the two sides agree on the spelling, or neither
+    # side finds the other.
+    frappe.cache().set_value(key, decision, user=user, expires_in_sec=180)
+
+    return {"status": "ok", "decision": decision}
