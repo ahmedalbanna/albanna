@@ -930,3 +930,7 @@ msgstr "الموضع الذي تجلس فيه أداة المحادثة على �
 
 msgid "floating"
 msgstr "عائم"
+
+
+msgid "Ask Albanna"
+msgstr "اسأل ألبانا"

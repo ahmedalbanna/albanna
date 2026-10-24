@@ -32,7 +32,7 @@ app_license = "mit"
 # ``.bundle.`` and do not start with ``/assets``.  A raw path is served from a
 # URL that never changes under a one-year ``max-age``, which silently pins
 # every returning user to the stylesheet they loaded first.
-app_include_js = ["albanna-side-chat.bundle.js"]
+app_include_js = ["albanna-side-chat.bundle.js", "albanna-form-button.js"]
 app_include_css = ["albanna-side-chat.bundle.css"]
 
 # Chat history is private to the user who created it.  The doctype grants

@@ -261,8 +261,43 @@ body.albanna-side-chat-docked-inline-start {
 	}
 
 	.albanna-side-chat-panel {
-		--albanna-panel-width: calc(100vw - 32px);
-		height: 80vh;
+		position: fixed;
+		inset-block: 16px;
+		inset-inline-end: 16px;
+		inset-inline-start: auto;
+		width: min(480px, calc(100vw - 32px));
+		height: calc(100vh - 32px);
+		max-height: calc(100vh - 32px);
+		border-radius: 12px;
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+		z-index: 1000;
+	}
+
+	.albanna-side-chat-resize {
+		display: none;
+	}
+
+	/* Larger tap targets on touch devices. */
+	.albanna-chat__confirm-button,
+	.albanna-chat__copy,
+	.albanna-side-chat-launcher,
+	.albanna-drawer__action,
+	.albanna-drawer__title {
+		min-height: 44px;
+	}
+
+	/* Tables scroll horizontally instead of overflowing the panel. */
+	.albanna-chat__bubble table {
+		display: block;
+		overflow-x: auto;
+		max-width: 100%;
+	}
+
+	/* Composer stays pinned at the bottom of the panel. */
+	.albanna-chat__composer {
+		position: sticky;
+		bottom: 0;
+		background: var(--albanna-surface, #ffffff);
 	}
 }
 
