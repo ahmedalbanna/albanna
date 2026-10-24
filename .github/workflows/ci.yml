@@ -38,6 +38,11 @@ jobs:
       - name: Ruff
         run: ruff check .
 
+      - name: Translation catalogue
+        # The Arabic catalogue must cover every string the app uses; a
+        # missing entry is a silent English fallback for Arabic readers.
+        run: python scripts/check_translations.py
+
       - name: The domain suite
         # No bench, no site, no network: the domain is pure, and these are
         # the tests that must stay fast.

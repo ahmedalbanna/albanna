@@ -311,10 +311,6 @@ msgid "The table could not be copied."
 msgstr "تعذّر نسخ الجدول."
 
 
-msgid "You moved to another page, so the turn was stopped."
-msgstr "انتقلت إلى صفحة أخرى، لذلك أُوقف الدور."
-
-
 msgid "Remove this question and the answer it brought?"
 msgstr "هل تريد إزالة هذا السؤال والإجابة التي جاء بها؟"
 
@@ -874,3 +870,51 @@ msgstr "أعلى"
 
 msgid "When on, the assistant asks for your approval before creating or changing a document. On by default."
 msgstr "حين يكون مفعَّلاً، يطلب المساعد موافقتك قبل إنشاء مستند أو تغييره. مفعَّل افتراضياً."
+
+
+msgid "A request is required."
+msgstr "يلزم وجود طلب."
+
+
+msgid "Approval wait (seconds)"
+msgstr "انتظار الموافقة (بالثواني)"
+
+
+msgid "How long a write waits for the reader's approval before it is given up on. The reader sees this count down on the approval card."
+msgstr "مدة انتظار الكتابة لموافقة القارئ قبل التخلي عنها. يرى القارئ العد التنازلي على بطاقة الموافقة."
+
+
+msgid "That is not a decision."
+msgstr "هذا ليس قراراً."
+
+
+msgid "The approval could not be recorded."
+msgstr "تعذّر تسجيل الموافقة."
+
+
+msgid "The approval wait is kept between {0} and {1} seconds; {2} was used."
+msgstr "يُحفظ انتظار الموافقة بين {0} و{1} ثانية؛ استُخدم {2}."
+
+
+msgid "The wait ran out — the change was not made."
+msgstr "انتهى وقت الانتظار — لم يُجرَ التغيير."
+
+
+msgid "Waiting {0}s"
+msgstr "انتظار {0}ث"
+
+
+msgid "You"
+msgstr "أنت"
+
+
+msgid "You moved to another page. The turn is still running — its answer will be in that page's conversation."
+msgstr "انتقلت إلى صفحة أخرى. الدور لا يزال قيد التشغيل — ستكون إجابته في محادثة تلك الصفحة."
+
+
+msgid "This removes the document. It cannot be undone from here."
+msgstr "هذا يُزيل المستند. لا يمكن التراجع عنه من هنا."
+
+
+msgid "This cancels the submitted document."
+msgstr "هذا يلغي المستند المرسل."

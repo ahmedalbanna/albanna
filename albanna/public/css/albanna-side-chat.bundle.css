@@ -252,6 +252,7 @@ body.albanna-side-chat-docked-inline-start {
 }
 
 @media (max-width: 991px) {
+
 	/* Too narrow to give up a column: the panel floats over the Desk. */
 	body.albanna-side-chat-docked-inline-end,
 	body.albanna-side-chat-docked-inline-start {
@@ -475,8 +476,8 @@ body.albanna-side-chat-docked-inline-start {
 
 /* A list inside a list is indented a little less, so that the nesting
  * reads as nesting and not as a second list. */
-.albanna-chat__bubble li > ul,
-.albanna-chat__bubble li > ol {
+.albanna-chat__bubble li>ul,
+.albanna-chat__bubble li>ol {
 	margin: 2px 0;
 	padding-inline-start: 15px;
 }
@@ -969,10 +970,22 @@ body.albanna-side-chat-docked-inline-start {
 	font-family: inherit;
 }
 
-.albanna-chat__confirm-button--confirm {
-	background: var(--albanna-primary, #2490ef);
+.albanna-chat__confirm--destructive {
+	border-color: var(--albanna-danger, var(--red, #e02424));
+	background: color-mix(in srgb, var(--albanna-danger, #e02424) 6%, var(--albanna-surface, #ffffff));
+}
+
+.albanna-chat__confirm-consequence {
+	margin: 0;
+	font-size: 12px;
+	color: var(--albanna-danger, var(--red, #e02424));
+	font-weight: 500;
+}
+
+.albanna-chat__confirm-button--danger {
+	background: var(--albanna-danger, var(--red, #e02424));
+	border-color: var(--albanna-danger, var(--red, #e02424));
 	color: #ffffff;
-	border-color: var(--albanna-primary, #2490ef);
 }
 
 .albanna-chat__confirm-button:hover {
@@ -1303,6 +1316,7 @@ body.albanna-side-chat-docked-inline-start {
 	.albanna-chat__spinner {
 		animation: none !important;
 	}
+
 	.albanna-chat * {
 		transition: none !important;
 		animation: none !important;
@@ -1315,6 +1329,7 @@ body.albanna-side-chat-docked-inline-start {
 		width: 100% !important;
 		max-width: 100% !important;
 	}
+
 	body.albanna-docked {
 		margin-inline-end: 0 !important;
 	}

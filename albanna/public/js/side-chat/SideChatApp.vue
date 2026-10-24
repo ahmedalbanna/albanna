@@ -1106,6 +1106,34 @@ function applyTurnResult(result, asked, answer) {
  * @param {string} streamId the turn whose write is waiting
  * @param {string} decision "approve" or "reject"
  */
+/**
+ * Whether a tool's approval is destructive — cancelling or deleting a
+ * document.  Destructive approvals get a danger style and a consequence
+ * line so the reader is not asked to confirm a JSON blob.
+ *
+ * @param {string} toolName the tool that proposed the write
+ * @returns {boolean}
+ */
+function isDestructiveTool(toolName) {
+	return toolName === "cancel_doc" || toolName === "delete_doc";
+}
+
+/**
+ * The consequence line shown on a destructive approval card.
+ *
+ * @param {string} toolName the tool that proposed the write
+ * @returns {string}
+ */
+function destructiveConsequence(toolName) {
+	if (toolName === "delete_doc") {
+		return __("This removes the document. It cannot be undone from here.");
+	}
+	if (toolName === "cancel_doc") {
+		return __("This cancels the submitted document.");
+	}
+	return "";
+}
+
 function decideWrite(streamId, decision) {
 	const pending = streamId ? pendingApprovals.get(streamId) : null;
 	if (!pending) return;
@@ -2395,10 +2423,17 @@ onBeforeUnmount(() => {
 			v-for="wait in visibleApprovals"
 			:key="wait.streamId"
 			class="albanna-chat__confirm"
+			:class="{ 'albanna-chat__confirm--destructive': isDestructiveTool(wait.approval.name) }"
 			role="alertdialog"
 			aria-live="assertive"
 		>
 			<p class="albanna-chat__confirm-preview">{{ wait.approval.preview }}</p>
+			<p
+				v-if="isDestructiveTool(wait.approval.name)"
+				class="albanna-chat__confirm-consequence"
+			>
+				{{ destructiveConsequence(wait.approval.name) }}
+			</p>
 			<p v-if="canDecide(wait.approval, now)" class="albanna-chat__confirm-countdown">
 				{{ __("Waiting {0}s", [remainingSeconds(wait.approval, now)]) }}
 			</p>
@@ -2409,6 +2444,7 @@ onBeforeUnmount(() => {
 				<button
 					type="button"
 					class="albanna-chat__confirm-button albanna-chat__confirm-button--confirm"
+					:class="{ 'albanna-chat__confirm-button--danger': isDestructiveTool(wait.approval.name) }"
 					:disabled="!canDecide(wait.approval, now)"
 					@click="decideWrite(wait.streamId, 'approve')"
 				>
