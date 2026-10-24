@@ -990,6 +990,7 @@ function handleTurnEvent(answer, event, streamId = "") {
 			request_id: event.request_id,
 			name: event.name,
 			preview: event.preview || event.name || __("a change"),
+			diff: event.diff || null,
 			at: Date.now(),
 			// The server's own deadline, in seconds.  The card counts
 			// down from this and stops accepting answers at it — the
@@ -2587,6 +2588,21 @@ onBeforeUnmount(() => {
 			>
 				{{ destructiveConsequence(wait.approval.name) }}
 			</p>
+			<ul
+				v-if="wait.approval.diff && Object.keys(wait.approval.diff).length"
+				class="albanna-chat__confirm-diff"
+			>
+				<li
+					v-for="(change, field) in wait.approval.diff"
+					:key="field"
+					class="albanna-chat__confirm-diff-row"
+				>
+					<span class="albanna-chat__confirm-diff-field">{{ field }}</span>
+					<span class="albanna-chat__confirm-diff-before">{{ change.before }}</span>
+					<span class="albanna-chat__confirm-diff-arrow">→</span>
+					<span class="albanna-chat__confirm-diff-after">{{ change.after }}</span>
+				</li>
+			</ul>
 			<p v-if="canDecide(wait.approval, now)" class="albanna-chat__confirm-countdown">
 				{{ __("Waiting {0}s", [remainingSeconds(wait.approval, now)]) }}
 			</p>

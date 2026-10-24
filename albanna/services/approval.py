@@ -123,7 +123,36 @@ def _preview_title(doctype: str, data: dict) -> str:
     return ""
 
 
-def denial_message(decision: str) -> str:
+def write_diff(name: str, arguments: dict):
+    """The before/after diff for a pending write, or None.
+
+    Only ``update_doc`` carries a diff today: it is the only tool that
+    changes existing fields.  ``create_doc`` makes a new document (there is
+    no "before"), and the lifecycle tools change status rather than fields.
+
+    The diff is computed from the document as it is now and the values the
+    model proposed.  It is a *preview*: the real validation happens when
+    the tool runs, and a refused write carries no diff.
+    """
+    arguments = arguments or {}
+    if name != "update_doc":
+        return None
+
+    doctype = str(arguments.get("doctype") or "").strip()
+    docname = str(arguments.get("name") or "").strip()
+    data = arguments.get("data") or {}
+    if not doctype or not docname or not isinstance(data, dict):
+        return None
+
+    try:
+        document = frappe.get_doc(doctype, docname)
+    except Exception:
+        return None
+
+    before = {field: document.get(field) for field in data}
+    from albanna.core.diff import diff_fields
+
+    return diff_fields(before, data, list(data.keys()))
     """What the model is told when the write did not run.
 
     The wording must let the model explain itself to the reader without

@@ -1543,3 +1543,40 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__source:hover {
 	opacity: 0.8;
 }
+
+/* Diff preview in the approval card. */
+.albanna-chat__confirm-diff {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.albanna-chat__confirm-diff-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 4px 6px;
+	font-size: 12px;
+}
+
+.albanna-chat__confirm-diff-field {
+	font-weight: 600;
+	color: var(--albanna-text, #1f2328);
+}
+
+.albanna-chat__confirm-diff-before {
+	color: var(--albanna-muted, #6c7680);
+	text-decoration: line-through;
+}
+
+.albanna-chat__confirm-diff-after {
+	color: var(--albanna-text, #1f2328);
+	font-weight: 500;
+}
+
+.albanna-chat__confirm-diff-arrow {
+	color: var(--albanna-muted, #6c7680);
+}

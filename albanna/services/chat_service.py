@@ -609,7 +609,7 @@ class ChatService:
         if gated:
             import uuid
 
-            from albanna.services.approval import await_decision, denial_message, wait_seconds, write_preview
+            from albanna.services.approval import await_decision, denial_message, wait_seconds, write_diff, write_preview
 
             request_id = uuid.uuid4().hex
             # One deadline, told to both sides.  The worker waits this
@@ -625,6 +625,7 @@ class ChatService:
                     "name": call.name,
                     "arguments": call.arguments,
                     "preview": write_preview(call.name, call.arguments),
+                    "diff": write_diff(call.name, call.arguments),
                     "window_seconds": seconds,
                 }
             )
