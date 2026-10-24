@@ -475,13 +475,13 @@ body.albanna-side-chat-docked-inline-start {
 }
 
 .albanna-chat__message--user {
-	align-self: flex-start;
-	align-items: flex-start;
+	align-self: flex-end;
+	align-items: flex-end;
 }
 
 .albanna-chat__message--assistant {
-	align-self: flex-end;
-	align-items: flex-end;
+	align-self: flex-start;
+	align-items: flex-start;
 }
 
 .albanna-chat__bubble {
@@ -631,13 +631,13 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__message--user .albanna-chat__bubble {
 	background: var(--albanna-accent, #171717);
 	color: var(--albanna-on-accent, #ffffff);
-	border-bottom-left-radius: 2px;
+	border-bottom-right-radius: 2px;
 }
 
 .albanna-chat__message--assistant .albanna-chat__bubble {
 	background: var(--albanna-bubble, #f3f3f3);
 	border: 1px solid var(--albanna-border, #ededed);
-	border-bottom-right-radius: 2px;
+	border-bottom-left-radius: 2px;
 }
 
 /* The activity line: what the assistant is doing, right now.
