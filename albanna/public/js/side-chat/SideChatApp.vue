@@ -107,6 +107,24 @@ const announcement = ref("");
 /** Whether the transcript is pinned to the bottom. */
 const followBottom = ref(true);
 
+const TOUR_KEY = "albanna.tour.dismissed";
+const showTour = ref(false);
+try {
+	showTour.value = window.localStorage.getItem(TOUR_KEY) !== "1";
+} catch (error) {
+	showTour.value = false;
+}
+
+function dismissTour() {
+	showTour.value = false;
+	try {
+		window.localStorage.setItem(TOUR_KEY, "1");
+	} catch (error) {
+		// A browser that will not remember is a browser that will show
+		// the tour again; that is the safe failure.
+	}
+}
+
 const lastAssistantMessage = computed(() => {
 	const messages = state.messages;
 	for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -2203,6 +2221,19 @@ onBeforeUnmount(() => {
 					</p>
 					<p v-if="pageContext" class="albanna-chat__empty-context">
 						{{ pageContext }}
+					</p>
+					<p
+						v-if="showTour"
+						class="albanna-chat__tour"
+					>
+						{{ __("Type a question in plain language — the assistant reads this page and answers from the site's own data. Dismiss any time.") }}
+						<button
+							type="button"
+							class="albanna-chat__tour-dismiss"
+							@click="dismissTour"
+						>
+							{{ __("Got it") }}
+						</button>
 					</p>
 					<div class="albanna-chat__examples">
 						<button

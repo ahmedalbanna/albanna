@@ -934,3 +934,10 @@ msgstr "عائم"
 
 msgid "Ask Albanna"
 msgstr "اسأل ألبانا"
+
+
+msgid "Type a question in plain language — the assistant reads this page and answers from the site's own data. Dismiss any time."
+msgstr "اكتب سؤالاً بلغة عادية — المساعد يقرأ هذه الصفحة ويجيب من بيانات الموقع نفسها. يمكنك إغلاقه في أي وقت."
+
+msgid "Got it"
+msgstr "فهمت"
