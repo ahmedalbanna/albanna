@@ -1789,6 +1789,7 @@ class TestTheUpdatePath(FrappeTestCase):
 
 
 
+
 @pytest.mark.integration
 class TestWriteApproval(TestToolPath):
     """A write waits for the reader before it runs."""
