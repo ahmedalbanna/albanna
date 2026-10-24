@@ -922,3 +922,7 @@ msgstr "كلفة هذا الدور {0}."
 
 msgid "This turn cost {0}."
 msgstr "كلفة هذا الدور {0}."
+
+
+msgid "Create a {0}"
+msgstr "إنشاء {0}"

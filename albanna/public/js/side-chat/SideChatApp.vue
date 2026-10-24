@@ -146,6 +146,29 @@ let messageCounter = 0;
 /** The page's identity, as a ref so that the examples follow the page. */
 const currentPage = ref("");
 
+/** How many documents the current list page holds, when known. */
+const doctypeCount = ref(null);
+
+watch(
+	currentPage,
+	async () => {
+		const context = resolveContext();
+		if (!context || !context.doctype || context.name) {
+			doctypeCount.value = null;
+			return;
+		}
+		try {
+			const result = await call("albanna.api.context.count_doctype", {
+				doctype: context.doctype,
+			});
+			doctypeCount.value =
+				result && result.count != null ? result.count : null;
+		} catch (failure) {
+			doctypeCount.value = null;
+		}
+	},
+);
+
 /**
  * Whether older messages are behind the window on the screen.
  *
@@ -302,6 +325,9 @@ const examples = computed(() => {
 	}
 
 	if (set === "list" && context.doctype) {
+		if (doctypeCount.value === 0) {
+			return [__("Create a {0}", [context.doctype])];
+		}
 		return [
 			__("How many {0} are there?", [context.doctype]),
 			__("Which {0} are still open?", [context.doctype]),
