@@ -1487,13 +1487,21 @@ async function copyAnswer(message) {
 
 // -- the conversation list ------------------------------------------------
 
-async function showHistory() {
+const historySearch = ref("");
+let searchTimer = null;
+
+async function showHistory(searchTerm = "") {
+	const term = (searchTerm != null ? searchTerm : historySearch.value) || "";
+	historySearch.value = term;
 	view.value = "history";
 	historyLoading.value = true;
 	historyOffset.value = 0;
 	historyHasMore.value = false;
 	try {
-		const result = await call("albanna.api.conversations.list_conversations", { offset: 0 });
+		const result = await call("albanna.api.conversations.list_conversations", {
+			offset: 0,
+			search: term,
+		});
 		const rows = result.conversations || [];
 		conversations.value = rows;
 		historyOffset.value = rows.length;
@@ -1505,6 +1513,14 @@ async function showHistory() {
 	} finally {
 		historyLoading.value = false;
 	}
+}
+
+function onHistorySearch(term) {
+	historySearch.value = term || "";
+	if (searchTimer) clearTimeout(searchTimer);
+	searchTimer = setTimeout(() => {
+		showHistory(historySearch.value);
+	}, 250);
 }
 
 async function pinConversation(conversation, pinned) {
@@ -1526,6 +1542,7 @@ async function loadMoreConversations() {
 	try {
 		const result = await call("albanna.api.conversations.list_conversations", {
 			offset: historyOffset.value,
+			search: historySearch.value,
 		});
 		const rows = result.conversations || [];
 		conversations.value = conversations.value.concat(rows);
@@ -2062,7 +2079,7 @@ onBeforeUnmount(() => {
 					class="albanna-chat__icon"
 					:aria-label="__('Conversations')"
 					:title="__('Conversations')"
-					@click="showHistory"
+					@click="showHistory('')"
 				>
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
 						<path
@@ -2121,12 +2138,14 @@ onBeforeUnmount(() => {
 			:active="conversationId"
 			:has-more="historyHasMore"
 			:loading-more="historyLoadingMore"
+			:search="historySearch"
 			@open="openConversation"
 			@rename="renameConversation"
 			@remove="removeConversation"
 			@back="showTranscript"
 			@loadmore="loadMoreConversations"
 			@pin="pinConversation"
+			@search="onHistorySearch"
 		/>
 
 		<div v-else class="albanna-chat__body">

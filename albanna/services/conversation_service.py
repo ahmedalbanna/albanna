@@ -444,25 +444,33 @@ def display_title(title: str) -> str:
     return "" if text == PLACEHOLDER_TITLE else text
 
 
-def list_conversations(user: str, limit: int = 20, offset: int = 0) -> list[dict]:
+def list_conversations(user: str, limit: int = 20, offset: int = 0, search: str = "") -> list[dict]:
     """The user's conversations, most recent first.
 
-    Each one carries ``last_activity_ts``: the moment as epoch seconds.
-
-    The stored ``last_activity`` is a naive string — "2026-10-21 03:20:00" —
-    with no timezone, so a browser in a different timezone from the server
-    reads it as a different moment.  The epoch has no such ambiguity, and it
-    is what the drawer formats.
+    An optional *search* term narrows the list to conversations whose title
+    or page identity contains it (case-insensitive).  The match is done in
+    SQL so that a search reaches conversations that have not been loaded
+    into the panel yet — a client-side filter over one page of results is
+    not a search, it is a guess.
     """
+
+    search = (search or "").strip()
+    params: list[Any] = [user]
+    where = "where user = %s"
+    if search:
+        where += " and (title like %s or page like %s)"
+        like = f"%{search}%"
+        params.extend([like, like])
+
     rows = frappe.db.sql(
-        """
+        f"""
         select name, title, page, model, last_activity, pinned
         from `tabAlbanna Conversation`
-        where user = %s
+        {where}
         order by pinned desc, last_activity desc
         limit %s offset %s
         """,
-        (user, int(limit), int(offset)),
+        (*params, int(limit), int(offset)),
         as_dict=True,
     )
 

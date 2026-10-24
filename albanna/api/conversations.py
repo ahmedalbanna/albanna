@@ -50,13 +50,18 @@ def _as_int(value: Any, default: int = 0) -> int:
 
 
 @frappe.whitelist()
-def list_conversations(limit: int = PAGE_SIZE, offset: int = 0) -> dict:
+def list_conversations(limit: int = PAGE_SIZE, offset: int = 0, search: str = "") -> dict:
     """The caller's conversations, most recent first."""
     require_chat_access()
 
     from albanna.services.conversation_service import list_conversations as _list
 
-    conversations = _list(str(frappe.session.user or ""), limit=min(int(limit or PAGE_SIZE), PAGE_SIZE), offset=int(offset or 0))
+    conversations = _list(
+        str(frappe.session.user or ""),
+        limit=min(int(limit or PAGE_SIZE), PAGE_SIZE),
+        offset=int(offset or 0),
+        search=str(search or ""),
+    )
 
     for conversation in conversations:
         conversation["preview"] = _preview(conversation["name"])

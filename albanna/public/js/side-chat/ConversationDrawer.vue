@@ -22,21 +22,33 @@ const props = defineProps({
 	hasMore: { type: Boolean, default: false },
 	/** Whether more conversations are being loaded. */
 	loadingMore: { type: Boolean, default: false },
+	/** The current search term (controlled by the parent). */
+	search: { type: String, default: "" },
 });
 
-const search = ref("");
+const emit = defineEmits(["open", "rename", "remove", "new", "back", "loadmore", "pin", "search"]);
 
-const filtered = computed(() => {
-	const term = search.value.trim().toLowerCase();
-	if (!term) return props.conversations;
-	return props.conversations.filter((conversation) => {
-		const title = String(conversation.title || "").toLowerCase();
-		const page = String(conversation.page || "").toLowerCase();
-		return title.includes(term) || page.includes(term);
-	});
+const searchInput = ref(props.search);
+
+watch(
+	() => props.search,
+	(value) => {
+		searchInput.value = value;
+	},
+);
+
+const onSearchInput = (event) => {
+	const value = event.target.value || "";
+	searchInput.value = value;
+	emit("search", value);
+};
+
+const filtered = computed(() => props.conversations);
+
+const hasMatches = computed(() => {
+	if (!searchInput.value.trim()) return true;
+	return props.conversations.length > 0;
 });
-
-const emit = defineEmits(["open", "rename", "remove", "new", "back", "loadmore", "pin"]);
 
 const editing = ref("");
 
@@ -47,7 +59,7 @@ const editing = ref("");
  * reader scans rather than reads.  Grouping them by day turns it into
  * something a person can navigate.
  */
-const groups = computed(() => groupByDate(filtered.value));
+const groups = computed(() => groupByDate(props.conversations));
 
 /**
  * The heading of a group, in the reader's language.
@@ -119,12 +131,13 @@ function commitRename(conversation, event) {
 				class="albanna-drawer__search-input"
 				:placeholder="__('Search conversations…')"
 				:aria-label="__('Search conversations')"
-				v-model="search"
+				:value="searchInput"
+				@input="onSearchInput"
 			/>
 		</div>
 
 		<div
-			v-if="!loading && conversations.length && !filtered.length"
+			v-if="!loading && conversations.length && !hasMatches"
 			class="albanna-drawer__empty"
 		>
 			<p class="albanna-drawer__empty-title">{{ __("No matches") }}</p>
