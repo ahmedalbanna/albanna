@@ -969,3 +969,19 @@ msgstr "تم التصعيد إلى الدعم."
 
 msgid "Could not escalate the conversation."
 msgstr "تعذّر تصعيد المحادثة."
+
+
+msgid "Undo"
+msgstr "تراجع"
+
+msgid "Undo this turn"
+msgstr "تراجع عن هذا الدور"
+
+msgid "The turn was undone."
+msgstr "تم التراجع عن الدور."
+
+msgid "Nothing to undo."
+msgstr "لا شيء للتراجع عنه."
+
+msgid "Could not undo this turn."
+msgstr "تعذّر التراجع عن هذا الدور."

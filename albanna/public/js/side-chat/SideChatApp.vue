@@ -382,6 +382,35 @@ function openSource(doc) {
 		// they are rather than breaking the panel.
 	}
 }
+function canUndo(message) {
+	if (!message || !Array.isArray(message.tools)) return false;
+	return message.tools.some((tool) => {
+		return (
+			(tool.name === "create_doc" || tool.name === "update_doc") &&
+			tool.ok !== false
+		);
+	});
+}
+
+async function undoTurn(message) {
+	if (!conversationId.value || !message || !message.name) return;
+	try {
+		const result = await call("albanna.api.conversations.undo_turn", {
+			conversation: conversationId.value,
+			message: message.name,
+		});
+		const undone = (result && result.undone) || [];
+		if (undone.length) {
+			state.notice = "undone";
+		} else {
+			state.error = String((result && result.status) || __("Nothing to undo."));
+		}
+	} catch (failure) {
+		state.error = String(
+			(failure && failure.message) || failure || __("Could not undo this turn."),
+		);
+	}
+}
 function nextId() {
 	messageCounter += 1;
 	return `m${messageCounter}`;
@@ -683,6 +712,8 @@ function noticeText(notice) {
 			return __("The answer was cut off before it was finished.");
 		case "escalated":
 			return __("Escalated to support.");
+		case "undone":
+			return __("The turn was undone.");
 		default:
 			return "";
 	}
@@ -2519,9 +2550,20 @@ onBeforeUnmount(() => {
 							{{ __("Download") }}
 						</button>
 						<button
+							v-if="message.role === 'assistant' && message.name && canUndo(message)"
+							type="button"
+							class="albanna-chat__copy"
+							:aria-label="__('Undo this turn')"
+							:title="__('Undo this turn')"
+							@click="undoTurn(message)"
+						>
+							{{ __("Undo") }}
+						</button>
+
+						<button
 							v-if="message.role === 'user' && message.name"
 							type="button"
-							class="albanna-chat__remove"
+							class="albanna-chat__copy"
 							:aria-label="__('Remove this turn')"
 							:title="__('Remove this turn')"
 							@click="removeTurn(message)"

@@ -918,6 +918,15 @@ def tool_entry(call: ToolCall, result: ToolResult) -> dict[str, Any]:
     created = _created_name(result)
     if created:
         entry["created"] = created
+        entry["undo"] = {"action": "delete", "doctype": str(call.arguments.get("doctype") or "").strip(), "name": created}
+    data = getattr(result, "data", None) or {}
+    if isinstance(data, dict) and data.get("before"):
+        entry["undo"] = {
+            "action": "update",
+            "doctype": str(data.get("doctype") or call.arguments.get("doctype") or "").strip(),
+            "name": str(data.get("name") or call.arguments.get("name") or "").strip(),
+            "data": data.get("before"),
+        }
     return entry
 
 

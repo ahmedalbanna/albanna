@@ -310,6 +310,67 @@ def escalate_conversation(conversation: str = "") -> dict:
     return {"issue": issue.name}
 
 
+@frappe.whitelist()
+def undo_turn(conversation: str = "", message: str = "") -> dict:
+    """Undo the writes of one turn.
+
+    Reads the tool calls stored on the message, reverts each write in
+    reverse order, and reports what was undone.  Only writes that carried
+    an ``undo`` entry are reverted; reads and refused writes are skipped.
+    """
+    require_chat_access()
+
+    from albanna.services.conversation_service import assert_owns
+
+    user = str(frappe.session.user or "")
+    assert_owns(conversation, user)
+
+    row = frappe.db.sql(
+        """
+        select tool_calls from `tabAlbanna Message`
+        where name = %s and parent = %s and parentfield = 'messages'
+        """,
+        (message, conversation),
+        as_dict=True,
+    )
+    if not row or not row[0].get("tool_calls"):
+        return {"undone": [], "status": "nothing to undo"}
+
+    try:
+        calls = frappe.parse_json(row[0]["tool_calls"]) or []
+    except Exception:
+        calls = []
+
+    undone = []
+    for call in reversed(calls):
+        undo = call.get("undo") if isinstance(call, dict) else None
+        if not undo or not isinstance(undo, dict):
+            continue
+        action = undo.get("action")
+        doctype = str(undo.get("doctype") or "").strip()
+        name = str(undo.get("name") or "").strip()
+        if not doctype or not name:
+            continue
+        try:
+            if action == "delete":
+                frappe.delete_doc(doctype, name, ignore_permissions=False)
+                undone.append({"action": "deleted", "doctype": doctype, "name": name})
+            elif action == "update":
+                data = undo.get("data") or {}
+                if isinstance(data, dict) and data:
+                    doc = frappe.get_doc(doctype, name)
+                    for field, value in data.items():
+                        doc.set(field, value)
+                    doc.save()
+                    undone.append({"action": "reverted", "doctype": doctype, "name": name})
+        except Exception as exc:
+            frappe.log_error(str(exc), "Albanna undo")
+            break
+
+    frappe.db.commit()
+    return {"undone": undone, "status": "ok" if undone else "nothing to undo"}
+
+
 def delete_conversation(conversation: str = "") -> dict:
     """Delete a conversation and its messages."""
     require_chat_access()

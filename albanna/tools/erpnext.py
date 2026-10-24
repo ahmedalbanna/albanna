@@ -770,6 +770,10 @@ def update_doc(doctype: str, name: str, data: Any, submit: bool = False) -> str:
             name=name,
         )
 
+    # The values the document held before this change, so that the change
+    # can be taken back.  Only the fields that actually changed are kept.
+    before = {field: document.get(field) for field in changes}
+
     lines_before = _table_lengths(document, changes)
 
     refusal = _apply_update(document, changes, doctype, name)
@@ -789,6 +793,7 @@ def update_doc(doctype: str, name: str, data: Any, submit: bool = False) -> str:
             "doctype": doctype,
             "name": name,
             "changed": changes,
+            "before": before,
             "submitted": submitted,
         },
         doctype=doctype,
