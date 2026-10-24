@@ -1513,3 +1513,33 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-drawer__search-input::placeholder {
 	color: var(--albanna-muted, #7c7c7c);
 }
+
+/* Sources: the documents the assistant read to answer. */
+.albanna-chat__sources {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 8px;
+	padding: 0 10px;
+	font-size: 11px;
+	color: var(--albanna-muted, #7c7c7c);
+}
+
+.albanna-chat__sources-label {
+	font-weight: 600;
+}
+
+.albanna-chat__source {
+	border: 0;
+	background: transparent;
+	color: var(--albanna-accent, #171717);
+	font-size: 11px;
+	cursor: pointer;
+	padding: 0;
+	font-family: inherit;
+	text-decoration: underline;
+}
+
+.albanna-chat__source:hover {
+	opacity: 0.8;
+}

@@ -371,7 +371,17 @@ const examples = computed(() => {
 	];
 });
 
-function nextId() {
+function openSource(doc) {
+	if (!doc || !doc.doctype || !doc.name) return;
+	try {
+		if (window.frappe && typeof window.frappe.set_route === "function") {
+			window.frappe.set_route("Form", doc.doctype, doc.name);
+		}
+	} catch (error) {
+		// Navigation is best-effort; a failure leaves the reader where
+		// they are rather than breaking the panel.
+	}
+}
 	messageCounter += 1;
 	return `m${messageCounter}`;
 }
@@ -2320,6 +2330,22 @@ onBeforeUnmount(() => {
 						class="albanna-chat__bubble"
 						v-html="message.html"
 					></div>
+
+					<div
+						v-if="message.role === 'assistant' && message.documents && message.documents.length"
+						class="albanna-chat__sources"
+					>
+						<span class="albanna-chat__sources-label">{{ __("Sources") }}:</span>
+						<button
+							v-for="(doc, index) in message.documents"
+							:key="index"
+							type="button"
+							class="albanna-chat__source"
+							@click="openSource(doc)"
+						>
+							{{ doc.doctype }} {{ doc.name }}
+						</button>
+					</div>
 
 					<div class="albanna-chat__footer">
 						<span

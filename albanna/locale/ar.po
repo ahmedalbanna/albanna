@@ -955,3 +955,7 @@ msgstr "لماذا حدث هذا الخطأ في {0}؟ {1}"
 
 msgid "Why did this error happen? {0}"
 msgstr "لماذا حدث هذا الخطأ؟ {0}"
+
+
+msgid "Sources"
+msgstr "المصادر"
