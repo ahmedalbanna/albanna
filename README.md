@@ -54,9 +54,10 @@ Anthropic.  It has no other runtime dependency.
 
 ## What it does
 
-* **Six tools.** `list_docs`, `get_doc`, `get_doctype_meta`, `run_report`,
-  `create_doc`, `update_doc`. The model is told about six tools, and only
-  six.
+* **Ten tools.** `list_docs`, `get_doc`, `get_doctype_meta`, `run_report`,
+  `create_doc`, `update_doc`, `submit_doc`, `cancel_doc`, `amend_doc`,
+  `delete_doc`. The model is told about ten tools, and only
+  ten.
 * **One model provider at a time, with a fallback.** OpenAI-compatible
   (OpenRouter, OpenAI, Groq, vLLM, LM Studio), Ollama, or Anthropic.
 * **A side chat, not a page.** A launcher on every Desk page; the panel
@@ -168,7 +169,7 @@ named place to change:
 `tests/test_tool_manifest.py` fails if the manifest and the adapter name
 different tools, so the first two rows of that table cannot drift.
 
-## The six tools
+## The ten tools
 
 | Tool | Tier | What it does |
 |---|---|---|
@@ -178,11 +179,17 @@ different tools, so the first two rows of that table cannot drift.
 | `run_report` | read | run an ERPNext report |
 | `create_doc` | write | create a document |
 | `update_doc` | write | change the fields of a document that exists |
+| `submit_doc` | write | submit a draft document, making it permanent |
+| `cancel_doc` | write | cancel a submitted document |
+| `amend_doc` | write | cancel a submitted document and create a new draft from it |
+| `delete_doc` | write | delete a draft or cancelled document |
 
-The two writes are different rights, and the manifest says which:
-`create_doc` is authorised against Frappe's `create` permission, and
-`update_doc` against `write`. A role model that grants one does not
-necessarily grant the other.
+The writes are different rights, and the manifest says which:
+`create_doc` is authorised against Frappe's `create` permission,
+`update_doc` against `write`, `submit_doc` against `submit`,
+`cancel_doc` against `cancel`, `amend_doc` against `amend`, and
+`delete_doc` against `delete`. A role model that grants one does not
+necessarily grant another.
 
 `update_doc` changes a document's **own** fields. It will not touch the
 framework's fields (`owner`, `docstatus`, `name`), it will not touch a

@@ -88,6 +88,22 @@ class PermissionChecker(Protocol):
         """
         ...
 
+    def can_submit(self, doctype: str) -> bool:
+        """True when the principal may submit documents of *doctype*."""
+        ...
+
+    def can_cancel(self, doctype: str) -> bool:
+        """True when the principal may cancel documents of *doctype*."""
+        ...
+
+    def can_amend(self, doctype: str) -> bool:
+        """True when the principal may amend documents of *doctype*."""
+        ...
+
+    def can_delete(self, doctype: str) -> bool:
+        """True when the principal may delete documents of *doctype*."""
+        ...
+
     def can_read(self, doctype: str) -> bool:
         """True when the principal may read documents of *doctype*."""
         ...
@@ -112,6 +128,10 @@ class PermissionChecker(Protocol):
 WRITE_VERBS = {
     "create": {"infinitive": "create", "verb": "Creating", "participle": "created"},
     "write": {"infinitive": "edit", "verb": "Editing", "participle": "changed"},
+    "submit": {"infinitive": "submit", "verb": "Submitting", "participle": "submitted"},
+    "cancel": {"infinitive": "cancel", "verb": "Cancelling", "participle": "cancelled"},
+    "amend": {"infinitive": "amend", "verb": "Amending", "participle": "amended"},
+    "delete": {"infinitive": "delete", "verb": "Deleting", "participle": "deleted"},
 }
 
 
@@ -264,10 +284,10 @@ class Authority:
             )
 
         try:
-            if spec.write_permission == "create":
-                allowed = self._checker.can_create(doctype)
-            else:
-                allowed = self._checker.can_write(doctype)
+            checker = getattr(self._checker, f"can_{spec.write_permission}", None)
+            if checker is None:
+                raise AttributeError(f"no can_{spec.write_permission}")
+            allowed = bool(checker(doctype))
         except Exception:
             # A checker that fails is a checker that says no.  Letting the
             # exception through would turn a broken permission query into an

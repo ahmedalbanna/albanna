@@ -994,6 +994,250 @@ def _update_message(
     return message
 
 
+def submit_doc(doctype: str, name: str) -> str:
+    """Submit a draft document, making it permanent.
+
+    Args:
+        doctype: The DocType of the document, e.g. "Sales Invoice".
+        name: The document's name, e.g. "ACC-SINV-00042".
+    """
+    if not doctype:
+        return error("A doctype is required.")
+    if not name:
+        return error("A document name is required.")
+
+    try:
+        document = frappe.get_doc(doctype, name)
+    except frappe.DoesNotExistError:
+        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
+    except Exception as exc:
+        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+
+    if document.docstatus != 0:
+        return error(
+            f"{doctype} '{name}' is not a draft and cannot be submitted.",
+            doctype=doctype,
+            name=name,
+            actionable=(
+                "Only a draft document can be submitted. Say that as a fact "
+                "about the document, and do not apologise for it."
+            ),
+        )
+
+    savepoint = _savepoint("submit_doc")
+    try:
+        document.submit()
+    except frappe.PermissionError as exc:
+        _rollback_to(savepoint)
+        return error(
+            f"Failed to submit {doctype} '{name}': {exc}",
+            doctype=doctype,
+            name=name,
+            actionable=(
+                "This account's roles allow this kind of document but not its "
+                "submission — the submit permission is held by other roles. "
+                "Say that as a fact about the account, and do not apologise "
+                "for it."
+            ),
+        )
+    except frappe.ValidationError as exc:
+        _rollback_to(savepoint)
+        return error(f"Validation failed for {doctype} '{name}': {exc}", doctype=doctype, name=name)
+    except Exception as exc:
+        _rollback_to(savepoint)
+        return error(f"Failed to submit {doctype} '{name}': {exc}", doctype=doctype, name=name)
+
+    return ok(
+        f"Submitted {doctype} '{name}'.",
+        data={"doctype": doctype, "name": name, "submitted": True},
+        doctype=doctype,
+        name=name,
+    )
+
+
+def cancel_doc(doctype: str, name: str) -> str:
+    """Cancel a submitted document.
+
+    Args:
+        doctype: The DocType of the document, e.g. "Sales Invoice".
+        name: The document's name, e.g. "ACC-SINV-00042".
+    """
+    if not doctype:
+        return error("A doctype is required.")
+    if not name:
+        return error("A document name is required.")
+
+    try:
+        document = frappe.get_doc(doctype, name)
+    except frappe.DoesNotExistError:
+        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
+    except Exception as exc:
+        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+
+    if document.docstatus != 1:
+        return error(
+            f"{doctype} '{name}' is not submitted and cannot be cancelled.",
+            doctype=doctype,
+            name=name,
+            actionable=(
+                "Only a submitted document can be cancelled. Say that as a "
+                "fact about the document, and do not apologise for it."
+            ),
+        )
+
+    savepoint = _savepoint("cancel_doc")
+    try:
+        document.cancel()
+    except frappe.PermissionError as exc:
+        _rollback_to(savepoint)
+        return error(
+            f"Failed to cancel {doctype} '{name}': {exc}",
+            doctype=doctype,
+            name=name,
+            actionable=(
+                "This account's roles allow this kind of document but not its "
+                "cancellation — the cancel permission is held by other roles. "
+                "Say that as a fact about the account, and do not apologise "
+                "for it."
+            ),
+        )
+    except Exception as exc:
+        _rollback_to(savepoint)
+        return error(f"Failed to cancel {doctype} '{name}': {exc}", doctype=doctype, name=name)
+
+    return ok(
+        f"Cancelled {doctype} '{name}'.",
+        data={"doctype": doctype, "name": name, "cancelled": True},
+        doctype=doctype,
+        name=name,
+    )
+
+
+def amend_doc(doctype: str, name: str) -> str:
+    """Amend a submitted document: cancel it and create a new draft.
+
+    Args:
+        doctype: The DocType of the document, e.g. "Sales Invoice".
+        name: The document's name, e.g. "ACC-SINV-00042".
+    """
+    if not doctype:
+        return error("A doctype is required.")
+    if not name:
+        return error("A document name is required.")
+
+    try:
+        document = frappe.get_doc(doctype, name)
+    except frappe.DoesNotExistError:
+        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
+    except Exception as exc:
+        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+
+    if document.docstatus != 1:
+        return error(
+            f"{doctype} '{name}' is not submitted and cannot be amended.",
+            doctype=doctype,
+            name=name,
+            actionable=(
+                "Only a submitted document can be amended. Say that as a fact "
+                "about the document, and do not apologise for it."
+            ),
+        )
+
+    # Cancel the original and create a new draft based on it.  The
+    # savepoint covers both: if the new draft cannot be created, the
+    # cancellation is undone, so the original is left as it was.  The
+    # original's on_cancel hooks may still have run their side effects —
+    # those are not undone by a savepoint — but the document itself is.
+    savepoint = _savepoint("amend_doc")
+    try:
+        document.cancel()
+        new_doc = frappe.get_doc(document.as_dict())
+        new_doc.name = None
+        new_doc.docstatus = 0
+        new_doc.amended_from = name
+        new_doc.insert()
+    except frappe.PermissionError as exc:
+        _rollback_to(savepoint)
+        return error(
+            f"Failed to amend {doctype} '{name}': {exc}",
+            doctype=doctype,
+            name=name,
+            actionable=(
+                "This account's roles allow this kind of document but not its "
+                "amendment — the amend permission is held by other roles. Say "
+                "that as a fact about the account, and do not apologise for it."
+            ),
+        )
+    except Exception as exc:
+        _rollback_to(savepoint)
+        return error(f"Failed to amend {doctype} '{name}': {exc}", doctype=doctype, name=name)
+
+    return ok(
+        f"Amended {doctype} '{name}': created '{new_doc.name}' (draft).",
+        data={"doctype": doctype, "name": name, "amended": new_doc.name},
+        doctype=doctype,
+        name=name,
+    )
+
+
+def delete_doc(doctype: str, name: str) -> str:
+    """Delete a document.
+
+    Args:
+        doctype: The DocType of the document, e.g. "Customer".
+        name: The document's name, e.g. "CUST-0001".
+    """
+    if not doctype:
+        return error("A doctype is required.")
+    if not name:
+        return error("A document name is required.")
+
+    try:
+        document = frappe.get_doc(doctype, name)
+    except frappe.DoesNotExistError:
+        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
+    except Exception as exc:
+        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+
+    if document.docstatus not in (0, 2):
+        return error(
+            f"{doctype} '{name}' is submitted and cannot be deleted.",
+            doctype=doctype,
+            name=name,
+            actionable=(
+                "A submitted document is deleted by cancelling it first, which "
+                "this tool does not do. Say so rather than trying again."
+            ),
+        )
+
+    savepoint = _savepoint("delete_doc")
+    try:
+        frappe.delete_doc(doctype, name, ignore_permissions=False)
+    except frappe.PermissionError as exc:
+        _rollback_to(savepoint)
+        return error(
+            f"Failed to delete {doctype} '{name}': {exc}",
+            doctype=doctype,
+            name=name,
+            actionable=(
+                "This account's roles allow this kind of document but not its "
+                "deletion — the delete permission is held by other roles. Say "
+                "that as a fact about the account, and do not apologise for it."
+            ),
+        )
+    except Exception as exc:
+        _rollback_to(savepoint)
+        return error(f"Failed to delete {doctype} '{name}': {exc}", doctype=doctype, name=name)
+
+    return ok(
+        f"Deleted {doctype} '{name}'.",
+        data={"doctype": doctype, "name": name, "deleted": True},
+        doctype=doctype,
+        name=name,
+    )
+
+
+
 def list_doctypes(
     module: str = "",
     search: str = "",

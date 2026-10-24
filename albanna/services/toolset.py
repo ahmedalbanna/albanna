@@ -15,7 +15,14 @@ model is never told about a tool it cannot use.
 from __future__ import annotations
 
 from albanna.core.tools import TOOL_MANIFEST
-from albanna.permissions import creatable_doctypes, writable_doctypes
+from albanna.permissions import (
+    amendable_doctypes,
+    cancellable_doctypes,
+    creatable_doctypes,
+    deletable_doctypes,
+    submittable_doctypes,
+    writable_doctypes,
+)
 
 
 def tool_registry(user: str):
@@ -28,4 +35,8 @@ def tool_registry(user: str):
     return TOOL_MANIFEST.without_writes_out_of_reach(
         creatable_doctypes(user),
         writable_doctypes(user),
+        submittable_doctypes(user),
+        cancellable_doctypes(user),
+        amendable_doctypes(user),
+        deletable_doctypes(user),
     )

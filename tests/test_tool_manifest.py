@@ -130,16 +130,25 @@ def test_every_tool_is_classified():
         assert spec.parameters.get("properties") is not None
 
 
-def test_the_write_surface_is_exactly_two_tools():
+def test_the_write_surface_is_the_six_lifecycle_tools():
     """The writes are few, and each one is a thing a person asks for.
 
     A tool set that could make things and never change them would leave
-    the person who mistyped a field with no way to fix it.  A tool set that
-    could also delete things would be a different kind of application, and
-    the one that matters is that this list is short enough to read.
+    the person who mistyped a field with no way to fix it.  A tool set
+    that could also submit, cancel, amend or delete would be a different
+    kind of application — and now it is, deliberately, because a person
+    asks for those things too.  What matters is that this list stays short
+    enough to read.
     """
     writers = [spec.name for spec in TOOL_MANIFEST.all() if spec.mutating]
-    assert writers == ["create_doc", "update_doc"]
+    assert writers == [
+        "create_doc",
+        "update_doc",
+        "submit_doc",
+        "cancel_doc",
+        "amend_doc",
+        "delete_doc",
+    ]
 
 
 def test_the_two_writes_are_authorised_against_different_rights():
@@ -151,6 +160,20 @@ def test_the_two_writes_are_authorised_against_different_rights():
     """
     assert TOOL_MANIFEST.get("create_doc").write_permission == "create"
     assert TOOL_MANIFEST.get("update_doc").write_permission == "write"
+
+
+def test_the_lifecycle_writes_are_authorised_against_their_own_rights():
+    """Each lifecycle write is authorised against its own Frappe right.
+
+    A role model that grants submit does not necessarily grant cancel,
+    amend or delete, so the manifest has to name the right each write is
+    checked against — otherwise the authority layer would ask the wrong
+    question and a refusal would name the wrong missing right.
+    """
+    assert TOOL_MANIFEST.get("submit_doc").write_permission == "submit"
+    assert TOOL_MANIFEST.get("cancel_doc").write_permission == "cancel"
+    assert TOOL_MANIFEST.get("amend_doc").write_permission == "amend"
+    assert TOOL_MANIFEST.get("delete_doc").write_permission == "delete"
 
 
 def test_a_read_tool_is_not_a_write():

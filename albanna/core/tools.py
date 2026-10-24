@@ -132,7 +132,15 @@ class ToolRegistry:
         disabled = set(names)
         return self._build({spec.name: spec.enabled and spec.name not in disabled for spec in self._specs.values()})
 
-    def without_writes_out_of_reach(self, creatable: set[str] | frozenset[str], writable: set[str] | frozenset[str]) -> ToolRegistry:
+    def without_writes_out_of_reach(
+        self,
+        creatable: set[str] | frozenset[str],
+        writable: set[str] | frozenset[str],
+        submittable: set[str] | frozenset[str] = frozenset(),
+        cancellable: set[str] | frozenset[str] = frozenset(),
+        amendable: set[str] | frozenset[str] = frozenset(),
+        deletable: set[str] | frozenset[str] = frozenset(),
+    ) -> ToolRegistry:
         """A copy with the write tools the caller may not make switched off.
 
         The visibility of a write tool follows the caller's own rights,
@@ -151,6 +159,10 @@ class ToolRegistry:
         reachable = {
             "create": bool(creatable),
             "write": bool(writable),
+            "submit": bool(submittable),
+            "cancel": bool(cancellable),
+            "amend": bool(amendable),
+            "delete": bool(deletable),
         }
         return self._build(
             {
@@ -500,9 +512,167 @@ UPDATE_DOC = ToolSpec(
     write_permission="write",
 )
 
+SUBMIT_DOC = ToolSpec(
+    name="submit_doc",
+    description=(
+        "Submit a draft document, making it permanent. Use this when the "
+        "user names a draft document and asks for it to be submitted. A "
+        "document that is already submitted cannot be submitted again, and "
+        "a cancelled one cannot either — say so rather than trying. "
+        "Submitting runs the document's own rules, so a document that fails "
+        "validation is refused and the reason is returned."
+    ),
+    parameters={
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "doctype": {
+                "type": "string",
+                "description": (
+                    "The DocType of the document, e.g. 'Sales Invoice', "
+                    "'Sales Order', 'Purchase Invoice'."
+                ),
+            },
+            "name": {
+                "type": "string",
+                "description": (
+                    "The document's name, exactly as the site knows it — "
+                    "e.g. 'SAL-ORD-00042'. Get it from list_docs or get_doc; "
+                    "do not guess it."
+                ),
+            },
+        },
+        "required": ["doctype", "name"],
+    },
+    tier=WRITE,
+    doctype_arg="doctype",
+    write_permission="submit",
+)
+
+CANCEL_DOC = ToolSpec(
+    name="cancel_doc",
+    description=(
+        "Cancel a submitted document. Use this when the user names a "
+        "submitted document and asks for it to be cancelled. Only a "
+        "submitted document can be cancelled; a draft or an already "
+        "cancelled one cannot. Cancelling runs the document's own rules "
+        "(including its on-cancel hooks), so a document that cannot be "
+        "cancelled is refused and the reason is returned."
+    ),
+    parameters={
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "doctype": {
+                "type": "string",
+                "description": (
+                    "The DocType of the document, e.g. 'Sales Invoice', "
+                    "'Sales Order', 'Purchase Invoice'."
+                ),
+            },
+            "name": {
+                "type": "string",
+                "description": (
+                    "The document's name, exactly as the site knows it — "
+                    "e.g. 'SAL-ORD-00042'. Get it from list_docs or get_doc; "
+                    "do not guess it."
+                ),
+            },
+        },
+        "required": ["doctype", "name"],
+    },
+    tier=WRITE,
+    doctype_arg="doctype",
+    write_permission="cancel",
+)
+
+AMEND_DOC = ToolSpec(
+    name="amend_doc",
+    description=(
+        "Amend a submitted document: cancel the original and create a new "
+        "draft based on it. Use this when the user names a submitted "
+        "document and asks to change it — a submitted document cannot be "
+        "edited in place, so it must be amended. Only a submitted document "
+        "can be amended; a draft or a cancelled one cannot. The original is "
+        "left cancelled and the new draft is returned."
+    ),
+    parameters={
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "doctype": {
+                "type": "string",
+                "description": (
+                    "The DocType of the document, e.g. 'Sales Invoice', "
+                    "'Sales Order', 'Purchase Invoice'."
+                ),
+            },
+            "name": {
+                "type": "string",
+                "description": (
+                    "The document's name, exactly as the site knows it — "
+                    "e.g. 'SAL-ORD-00042'. Get it from list_docs or get_doc; "
+                    "do not guess it."
+                ),
+            },
+        },
+        "required": ["doctype", "name"],
+    },
+    tier=WRITE,
+    doctype_arg="doctype",
+    write_permission="amend",
+)
+
+DELETE_DOC = ToolSpec(
+    name="delete_doc",
+    description=(
+        "Delete a document. Use this only when the user has explicitly "
+        "asked for the document to be deleted. Only a draft or a cancelled "
+        "document can be deleted; a submitted one must be cancelled first, "
+        "which this tool does not do. Say so rather than trying. Deletion "
+        "cannot be undone from here."
+    ),
+    parameters={
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "doctype": {
+                "type": "string",
+                "description": (
+                    "The DocType of the document, e.g. 'Customer', 'Item', "
+                    "'ToDo'."
+                ),
+            },
+            "name": {
+                "type": "string",
+                "description": (
+                    "The document's name, exactly as the site knows it — "
+                    "e.g. 'CUST-0001'. Get it from list_docs or get_doc; do "
+                    "not guess it."
+                ),
+            },
+        },
+        "required": ["doctype", "name"],
+    },
+    tier=WRITE,
+    doctype_arg="doctype",
+    write_permission="delete",
+)
+
 #: Every tool the app knows about.
 TOOL_MANIFEST = ToolRegistry(
-    [LIST_DOCS, GET_DOC, GET_DOCTYPE_META, RUN_REPORT, CREATE_DOC, UPDATE_DOC]
+    [
+        LIST_DOCS,
+        GET_DOC,
+        GET_DOCTYPE_META,
+        RUN_REPORT,
+        CREATE_DOC,
+        UPDATE_DOC,
+        SUBMIT_DOC,
+        CANCEL_DOC,
+        AMEND_DOC,
+        DELETE_DOC,
+    ]
 )
 
 

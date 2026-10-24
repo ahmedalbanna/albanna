@@ -186,6 +186,26 @@ def writable_doctypes(user: str) -> list[str]:
     return _doctypes_for_permission(user, "write")
 
 
+def submittable_doctypes(user: str) -> list[str]:
+    """The DocTypes this account may submit."""
+    return _doctypes_for_permission(user, "submit")
+
+
+def cancellable_doctypes(user: str) -> list[str]:
+    """The DocTypes this account may cancel."""
+    return _doctypes_for_permission(user, "cancel")
+
+
+def amendable_doctypes(user: str) -> list[str]:
+    """The DocTypes this account may amend."""
+    return _doctypes_for_permission(user, "amend")
+
+
+def deletable_doctypes(user: str) -> list[str]:
+    """The DocTypes this account may delete."""
+    return _doctypes_for_permission(user, "delete")
+
+
 def current_principal() -> Principal:
     """The person this request is for."""
     user = frappe.session.user
@@ -214,6 +234,18 @@ class FrappePermissionChecker:
 
     def can_write(self, doctype: str) -> bool:
         return self._has_permission(doctype, "write")
+
+    def can_submit(self, doctype: str) -> bool:
+        return self._has_permission(doctype, "submit")
+
+    def can_cancel(self, doctype: str) -> bool:
+        return self._has_permission(doctype, "cancel")
+
+    def can_amend(self, doctype: str) -> bool:
+        return self._has_permission(doctype, "amend")
+
+    def can_delete(self, doctype: str) -> bool:
+        return self._has_permission(doctype, "delete")
 
     def can_read(self, doctype: str) -> bool:
         return self._has_permission(doctype, "read")
