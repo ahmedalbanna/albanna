@@ -153,6 +153,9 @@ def write_diff(name: str, arguments: dict):
     from albanna.core.diff import diff_fields
 
     return diff_fields(before, data, list(data.keys()))
+
+
+def denial_message(decision: str) -> str:
     """What the model is told when the write did not run.
 
     The wording must let the model explain itself to the reader without
