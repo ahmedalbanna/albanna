@@ -628,7 +628,15 @@ body.albanna-side-chat-docked-inline-start {
 }
 
 .albanna-chat__message--user .albanna-chat__bubble {
-	background: var(--albanna-accent-soft, #f3f3f3);
+	background: var(--albanna-accent, #171717);
+	color: var(--albanna-on-accent, #ffffff);
+	border-bottom-right-radius: 2px;
+}
+
+.albanna-chat__message--assistant .albanna-chat__bubble {
+	background: var(--albanna-bubble, #f3f3f3);
+	border: 1px solid var(--albanna-border, #ededed);
+	border-bottom-left-radius: 2px;
 }
 
 /* The activity line: what the assistant is doing, right now.
