@@ -107,6 +107,9 @@ const announcement = ref("");
 /** Whether the transcript is pinned to the bottom. */
 const followBottom = ref(true);
 
+/** Handler for the "ask" event dispatched by the launcher. */
+const askHandler = ref(null);
+
 const TOUR_KEY = "albanna.tour.dismissed";
 const showTour = ref(false);
 try {
@@ -1987,6 +1990,17 @@ onMounted(() => {
 	// `page.mjs` holds the name, and `page.test.mjs` holds it to account.
 	unwatch = watchRoute(onRouteChange);
 
+	const onAsk = (event) => {
+		const question = (event && event.detail) || "";
+		if (question) {
+			draft.value = question;
+			ask(question);
+		}
+	};
+	document.addEventListener("albanna:ask", onAsk);
+	askHandler.value = onAsk;
+	const askHandler = onAsk;
+
 	// Keyboard: Escape closes the panel, Ctrl/Cmd+K focuses the composer.
 	// Both are the affordances a reader expects of a chat panel, and
 	// neither should be a mouse-only action.
@@ -2017,6 +2031,7 @@ onBeforeUnmount(() => {
 
 	if (unwatch) unwatch();
 	if (keydownHandler.value) document.removeEventListener("keydown", keydownHandler.value);
+	if (askHandler.value) document.removeEventListener("albanna:ask", askHandler.value);
 });
 </script>
 

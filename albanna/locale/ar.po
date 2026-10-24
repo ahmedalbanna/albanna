@@ -945,3 +945,13 @@ msgstr "فهمت"
 
 msgid "No conversations match “{0}”."
 msgstr "لا توجد محادثات تطابق “{0}”."
+
+
+msgid "Ask Albanna about this error"
+msgstr "اسأل ألبانا عن هذا الخطأ"
+
+msgid "Why did this error happen on {0}? {1}"
+msgstr "لماذا حدث هذا الخطأ في {0}؟ {1}"
+
+msgid "Why did this error happen? {0}"
+msgstr "لماذا حدث هذا الخطأ؟ {0}"

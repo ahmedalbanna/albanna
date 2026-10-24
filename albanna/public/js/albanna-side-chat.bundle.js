@@ -381,6 +381,13 @@ async function boot() {
 		isOpen: () => open,
 		open: () => setOpen(true),
 		close: () => setOpen(false),
+		/** Ask a question in the open (or to-be-opened) panel. */
+		ask: (question) => {
+			setOpen(true);
+			window.setTimeout(() => {
+				panel.dispatchEvent(new CustomEvent("albanna:ask", { detail: String(question || ""), bubbles: true }));
+			}, 0);
+		},
 		/** The page description the widget last derived (diagnostics only). */
 		getContext: () => lastContext,
 	};
