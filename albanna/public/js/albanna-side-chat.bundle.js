@@ -157,14 +157,16 @@ async function boot() {
 	// so a physical rule written for a right-to-left interface ends up on the
 	// wrong side, and a logical one is left alone and resolved by the
 	// browser.
+	const position = config.position || config.position_default || "bottom-right";
+	const floating = position === "floating";
 	const side =
-		(config.position || config.position_default || "bottom-right") === "bottom-left"
+		position === "bottom-left"
 			? "inline-start"
 			: "inline-end";
 
 	const root = document.createElement("div");
 	root.id = ROOT_ID;
-	root.className = `albanna-side-chat-pos-${side}`;
+	root.className = `albanna-side-chat-pos-${side}` + (floating ? " albanna-side-chat--floating" : "");
 
 	const panel = document.createElement("aside");
 	panel.className = "albanna-side-chat-panel";
@@ -225,10 +227,12 @@ async function boot() {
 	 *
 	 * Toggled from exactly one place, `setDock`, so it cannot drift out of
 	 * sync with the panel's own visibility. */
-	const DOCK_CLASS = {
-		"inline-end": "albanna-side-chat-docked-inline-end",
-		"inline-start": "albanna-side-chat-docked-inline-start",
-	};
+	const DOCK_CLASS = floating
+		? {}
+		: {
+				"inline-end": "albanna-side-chat-docked-inline-end",
+				"inline-start": "albanna-side-chat-docked-inline-start",
+		  };
 
 	/* The width.
 	 *
@@ -323,6 +327,7 @@ async function boot() {
 	});
 
 	const setDock = (next) => {
+		if (floating) return;
 		for (const name of Object.values(DOCK_CLASS)) {
 			document.body.classList.remove(name);
 		}

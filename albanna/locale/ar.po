@@ -500,9 +500,6 @@ msgstr "حين يفشل المزوّد الأساسي، جرّب هذا قبل �
 msgid "Which API the model is called through. `openai` covers every OpenAI-compatible endpoint — OpenRouter, OpenAI, Groq, vLLM, LM Studio."
 msgstr "الواجهة التي يُنادى النموذج عبرها. `openai` تغطي كل نقطة نهاية متوافقة مع OpenAI — OpenRouter وOpenAI وGroq وvLLM وLM Studio."
 
-msgid "Which corner the widget sits in. On an Arabic interface it mirrors automatically."
-msgstr "الركن الذي تجلس فيه الأداة. على واجهة عربية تنعكس تلقائياً."
-
 msgid "Widget Position"
 msgstr "موضع الأداة"
 msgid "anthropic"
@@ -926,3 +923,10 @@ msgstr "كلفة هذا الدور {0}."
 
 msgid "Create a {0}"
 msgstr "إنشاء {0}"
+
+
+msgid "Where the side-chat widget sits on the Desk. 'floating' overlays a helpdesk-style bubble instead of docking beside the Desk."
+msgstr "الموضع الذي تجلس فيه أداة المحادثة على المكتب. 'floating' تضع فقاعة على طريقة مكتب المساعدة فوق المكتب بدلاً من الالتصاق بجانبه."
+
+msgid "floating"
+msgstr "عائم"

@@ -1373,3 +1373,42 @@ body.albanna-side-chat-docked-inline-start {
 		max-width: 100%;
 	}
 }
+
+
+/* Floating mode: a helpdesk-style overlay instead of a docked column.
+   The panel floats over the Desk and the launcher is a bubble; the Desk
+   does not give up any space. */
+.albanna-side-chat--floating .albanna-side-chat-panel {
+	position: fixed;
+	inset-block-end: 16px;
+	inset-inline-end: 16px;
+	width: min(400px, calc(100vw - 32px));
+	max-height: calc(100vh - 32px);
+	border-radius: 12px;
+	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+	z-index: 1000;
+	display: none;
+}
+
+.albanna-side-chat--floating .albanna-side-chat-panel.albanna-side-chat-open {
+	display: flex;
+}
+
+.albanna-side-chat--floating .albanna-side-chat-resize {
+	display: none;
+}
+
+.albanna-side-chat--floating .albanna-side-chat-launcher {
+	position: fixed;
+	inset-block-end: 16px;
+	inset-inline-end: 16px;
+	width: 56px;
+	height: 56px;
+	border-radius: 50%;
+	z-index: 1001;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.albanna-side-chat--floating .albanna-side-chat-launcher[hidden] {
+	display: none;
+}
