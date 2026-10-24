@@ -203,10 +203,6 @@ msgid "A new conversation was started."
 msgstr "تم بدء محادثة جديدة."
 
 
-msgid "Could not start a new conversation."
-msgstr "تعذّر بدء محادثة جديدة."
-
-
 msgid "Delete the conversation “{0}”? This cannot be undone."
 msgstr "حذف المحادثة «{0}»؟ لا يمكن التراجع عن ذلك."
 
@@ -918,3 +914,11 @@ msgstr "هذا يُزيل المستند. لا يمكن التراجع عنه م
 
 msgid "This cancels the submitted document."
 msgstr "هذا يلغي المستند المرسل."
+
+
+msgid "This turn cost {0}."
+msgstr "كلفة هذا الدور {0}."
+
+
+msgid "This turn cost {0}."
+msgstr "كلفة هذا الدور {0}."

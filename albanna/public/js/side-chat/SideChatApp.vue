@@ -367,6 +367,10 @@ function makeMessage(role, content, at) {
 		hasTable: false,
 		// What the turn's tool calls did, in one line.
 		summary: "",
+		// What the turn cost, in the site's currency.  Null until the
+		// turn has finished, so the line is not drawn for a streamed
+		// answer that has not landed yet.
+		cost: null,
 	});
 	message.time = clockTime(at || Date.now() / 1000);
 	setContent(message, content || "");
@@ -1077,6 +1081,10 @@ function applyTurnResult(result, asked, answer) {
 		setContent(answer, result.reply);
 		endTurn(state, answer);
 
+		if (result && result.cost != null) {
+			answer.cost = result.cost;
+		}
+
 		// The answer was cut off at the token ceiling.  It is not wrong
 		// — it is unfinished, and the reader is told so, because an
 		// answer that looks complete and is not is worse than one that
@@ -1786,24 +1794,20 @@ async function deleteConversation(conversation) {
  */
 async function newConversation() {
 	state.error = "";
-	try {
-		const result = await call("albanna.api.conversations.new_conversation", {
-			page: currentPage.value,
-		});
-		conversationId.value = result.conversation || "";
-		state.messages = [];
-		recentQuestions.value = [];
-		view.value = "chat";
-		state.notice = "started";
-		scrollToBottom(true);
-		// The thread being left keeps its turns running; the watching
-		// stops here, and the new thread is empty of them.
-		stopOtherWaits();
-	} catch (failure) {
-		state.error = String(
-			(failure && failure.message) || failure || __("Could not start a new conversation."),
-		);
-	}
+	// A conversation is created lazily: the "New" button only clears the
+	// thread the panel is showing.  The first question asked in it is what
+	// creates the conversation on the server, named after that question.
+	// Creating it here would leave an empty, orphaned conversation every
+	// time the button is pressed without a question following.
+	conversationId.value = "";
+	state.messages = [];
+	recentQuestions.value = [];
+	view.value = "chat";
+	state.notice = "started";
+	scrollToBottom(true);
+	// The thread being left keeps its turns running; the watching
+	// stops here, and the new thread is empty of them.
+	stopOtherWaits();
 }
 
 /**
@@ -2225,6 +2229,13 @@ onBeforeUnmount(() => {
 						class="albanna-chat__bubble"
 						v-html="message.html"
 					></div>
+
+					<p
+						v-if="message.role === 'assistant' && message.cost != null && message.cost > 0"
+						class="albanna-chat__cost"
+					>
+						{{ __("This turn cost {0}.", [Number(message.cost).toFixed(4)]) }}
+					</p>
 
 					<div class="albanna-chat__footer">
 						<button

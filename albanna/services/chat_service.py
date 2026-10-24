@@ -106,6 +106,10 @@ class TurnOutcome:
     rounds: int = 0
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     usage: Usage | None = None
+    #: The cost of this turn in the site's currency, priced with the
+    #: operator's price per million tokens.  Carried on the outcome so the
+    #: browser can show it without a second request.
+    cost: float = 0.0
     error: str = ""
     capped: bool = False
     #: True when the provider cut the answer off at the token ceiling.
@@ -181,6 +185,12 @@ def turn_payload(outcome: TurnOutcome) -> dict[str, Any]:
         # worse than one that says it was cut.
         "truncated": outcome.truncated,
         "error": outcome.error,
+        # What the turn cost, so the reader can see it without a second
+        # request.  Tokens and price both come from the turn; the browser
+        # shows the cost in the site's currency.
+        "input_tokens": (outcome.usage.input_tokens if outcome.usage else 0),
+        "output_tokens": (outcome.usage.output_tokens if outcome.usage else 0),
+        "cost": outcome.cost,
         # The rows the turn wrote, so that the browser can address this
         # turn later — a row that can be named is a row that can be
         # removed.
@@ -360,6 +370,15 @@ class ChatService:
                     usage=usage,
                     truncated=completion.truncated,
                     written=written,
+                    cost=(
+                        cost_of_turn(
+                            usage.input_tokens,
+                            usage.output_tokens,
+                            settings.price_per_million,
+                        )
+                        if usage is not None
+                        else 0.0
+                    ),
                 )
 
             # The model asked for tools.  Record the request, run them, and
@@ -421,6 +440,15 @@ class ChatService:
             truncated=truncated,
             diagnosis=diagnosis,
             written=written,
+            cost=(
+                cost_of_turn(
+                    usage.input_tokens,
+                    usage.output_tokens,
+                    settings.price_per_million,
+                )
+                if usage is not None
+                else 0.0
+            ),
         )
 
     # -- the model --------------------------------------------------------
