@@ -681,6 +681,8 @@ function noticeText(notice) {
 			return __("The question and its answer were removed.");
 		case "truncated":
 			return __("The answer was cut off before it was finished.");
+		case "escalated":
+			return __("Escalated to support.");
 		default:
 			return "";
 	}
@@ -1549,6 +1551,23 @@ async function copyAnswer(message) {
 const historySearch = ref("");
 let searchTimer = null;
 
+async function escalateConversation() {
+	if (!conversationId.value) return;
+	try {
+		const result = await call("albanna.api.conversations.escalate_conversation", {
+			conversation: conversationId.value,
+		});
+		state.notice = "escalated";
+		if (result && result.issue) {
+			state.error = "";
+		}
+	} catch (failure) {
+		state.error = String(
+			(failure && failure.message) || failure || __("Could not escalate the conversation."),
+		);
+	}
+}
+
 async function showHistory(searchTerm = "") {
 	const term = (searchTerm != null ? searchTerm : historySearch.value) || "";
 	historySearch.value = term;
@@ -2062,6 +2081,24 @@ onBeforeUnmount(() => {
 			</div>
 
 			<div class="albanna-chat__actions">
+				<button
+					v-if="conversationId"
+					type="button"
+					class="albanna-chat__icon"
+					:aria-label="__('Escalate to support')"
+					:title="__('Escalate to support')"
+					@click="escalateConversation"
+				>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+						<path
+							d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+					</svg>
+				</button>
 				<button
 					v-if="view === 'history'"
 					type="button"

@@ -266,6 +266,50 @@ def rate_message(conversation: str = "", message: str = "", rating: str = "") ->
 
 
 @frappe.whitelist()
+@frappe.whitelist()
+def escalate_conversation(conversation: str = "") -> dict:
+    """Hand a conversation off to a human: create a Frappe Issue carrying
+    the transcript, so a person can pick it up with full context.
+
+    The conversation must belong to the caller.  The Issue is created as
+    the caller, so Frappe's own permission engine applies.
+    """
+    require_chat_access()
+
+    from albanna.services.conversation_service import (
+        assert_owns,
+        transcript_window,
+    )
+
+    user = str(frappe.session.user or "")
+    assert_owns(conversation, user)
+
+    title = frappe.db.get_value("Albanna Conversation", conversation, "title") or ""
+    subject = (title or "AI conversation").strip()[:140] or "AI conversation"
+
+    window = transcript_window(conversation, limit=400, before_idx=0)
+    messages = window.get("messages") or []
+
+    lines = [f"# {subject}", "", "Escalated from an Albanna conversation.", ""]
+    for message in messages:
+        role = "User" if message.get("role") == "user" else "Assistant"
+        content = (message.get("content") or "").strip()
+        if not content:
+            continue
+        lines.append(f"**{role}:** {content}")
+        lines.append("")
+
+    description = "\n".join(lines).strip()
+
+    issue = frappe.new_doc("Issue")
+    issue.subject = subject
+    issue.description = description
+    issue.raised_by = user
+    issue.insert()
+
+    return {"issue": issue.name}
+
+
 def delete_conversation(conversation: str = "") -> dict:
     """Delete a conversation and its messages."""
     require_chat_access()

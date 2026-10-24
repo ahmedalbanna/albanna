@@ -959,3 +959,13 @@ msgstr "لماذا حدث هذا الخطأ؟ {0}"
 
 msgid "Sources"
 msgstr "المصادر"
+
+
+msgid "Escalate to support"
+msgstr "تصعيد إلى الدعم"
+
+msgid "Escalated to support."
+msgstr "تم التصعيد إلى الدعم."
+
+msgid "Could not escalate the conversation."
+msgstr "تعذّر تصعيد المحادثة."
