@@ -475,12 +475,13 @@ body.albanna-side-chat-docked-inline-start {
 }
 
 .albanna-chat__message--user {
-	align-self: flex-end;
-	align-items: flex-end;
+	align-self: flex-start;
+	align-items: flex-start;
 }
 
 .albanna-chat__message--assistant {
-	align-self: flex-start;
+	align-self: flex-end;
+	align-items: flex-end;
 }
 
 .albanna-chat__bubble {
@@ -630,13 +631,13 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__message--user .albanna-chat__bubble {
 	background: var(--albanna-accent, #171717);
 	color: var(--albanna-on-accent, #ffffff);
-	border-bottom-right-radius: 2px;
+	border-bottom-left-radius: 2px;
 }
 
 .albanna-chat__message--assistant .albanna-chat__bubble {
 	background: var(--albanna-bubble, #f3f3f3);
 	border: 1px solid var(--albanna-border, #ededed);
-	border-bottom-left-radius: 2px;
+	border-bottom-right-radius: 2px;
 }
 
 /* The activity line: what the assistant is doing, right now.
@@ -746,7 +747,7 @@ body.albanna-side-chat-docked-inline-start {
  * clock and the reader's language, so an Arabic interface gets Arabic
  * digits without a second table. */
 .albanna-chat__footer {
-	align-self: flex-end;
+	align-self: flex-start;
 	display: flex;
 	align-items: center;
 	gap: 8px;
