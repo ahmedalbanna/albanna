@@ -2306,14 +2306,13 @@ onBeforeUnmount(() => {
 						v-html="message.html"
 					></div>
 
-					<p
-						v-if="message.role === 'assistant' && message.cost != null && message.cost > 0"
-						class="albanna-chat__cost"
-					>
-						{{ __("This turn cost {0}.", [Number(message.cost).toFixed(4)]) }}
-					</p>
-
 					<div class="albanna-chat__footer">
+						<span
+							v-if="message.role === 'assistant' && message.cost != null && message.cost > 0"
+							class="albanna-chat__cost"
+						>
+							{{ __("This turn cost {0}.", [Number(message.cost).toFixed(4)]) }}
+						</span>
 						<button
 							v-if="message.role === 'assistant' && message.content"
 							type="button"
@@ -2379,7 +2378,20 @@ onBeforeUnmount(() => {
 							:title="__('Helpful')"
 							@click="rateMessage(message, 'up')"
 						>
-							👍
+							<svg
+								width="13"
+								height="13"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"
+							>
+								<path d="M7 10v12" />
+								<path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
+							</svg>
 						</button>
 						<button
 							v-if="message.role === 'assistant' && message.name"
@@ -2391,7 +2403,20 @@ onBeforeUnmount(() => {
 							:title="__('Not helpful')"
 							@click="rateMessage(message, 'down')"
 						>
-							👎
+							<svg
+								width="13"
+								height="13"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"
+							>
+								<path d="M17 14V2" />
+								<path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" />
+							</svg>
 						</button>
 						<button
 							v-if="message.role === 'assistant' && message.hasTable"
