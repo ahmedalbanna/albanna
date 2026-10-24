@@ -67,6 +67,7 @@
 	--albanna-border: var(--gray-800, #232323);
 	--albanna-hover: var(--gray-800, #232323);
 	--albanna-bubble: var(--gray-800, #232323);
+	--albanna-bubble: var(--gray-800, #232323);
 	--albanna-accent-soft: var(--gray-800, #232323);
 	--albanna-accent: var(--gray-700, #383838);
 	--albanna-error-bg: var(--red-900, #3a1a19);
@@ -269,7 +270,7 @@ body.albanna-side-chat-docked-inline-start {
 		height: calc(100vh - 32px);
 		max-height: calc(100vh - 32px);
 		border-radius: 12px;
-		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+		box-shadow: var(--albanna-shadow, 0 8px 32px rgba(0, 0, 0, 0.18));
 		z-index: 1000;
 	}
 
@@ -836,7 +837,7 @@ body.albanna-side-chat-docked-inline-start {
  * rather than a red or a green, so that neither direction is dressed as
  * an error or a success. */
 .albanna-chat__rating--on {
-	color: var(--albanna-primary, var(--primary, #2490ef));
+	color: var(--albanna-accent, var(--primary, #2490ef));
 	background: var(--albanna-hover, #f2f4f5);
 }
 
@@ -1020,10 +1021,7 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__confirm-button--danger {
 	background: var(--albanna-danger, var(--red, #e02424));
 	border-color: var(--albanna-danger, var(--red, #e02424));
-	color: #ffffff;
-}
-
-.albanna-chat__confirm-button:hover {
+	color: var(--albanna-on-accent, #ffffff);
 	filter: brightness(0.97);
 }
 
@@ -1420,7 +1418,7 @@ body.albanna-side-chat-docked-inline-start {
 	width: min(400px, calc(100vw - 32px));
 	max-height: calc(100vh - 32px);
 	border-radius: 12px;
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+	box-shadow: var(--albanna-shadow, 0 8px 32px rgba(0, 0, 0, 0.18));
 	z-index: 1000;
 	display: none;
 }
@@ -1441,7 +1439,7 @@ body.albanna-side-chat-docked-inline-start {
 	height: 56px;
 	border-radius: 50%;
 	z-index: 1001;
-	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+	box-shadow: var(--albanna-shadow, 0 4px 16px rgba(0, 0, 0, 0.2));
 }
 
 .albanna-side-chat--floating .albanna-side-chat-launcher[hidden] {
@@ -1472,7 +1470,7 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__tour-dismiss {
 	border: 0;
 	background: transparent;
-	color: var(--albanna-primary, #2490ef);
+	color: var(--albanna-accent, #2490ef);
 	font-size: 12px;
 	cursor: pointer;
 	padding: 0;
