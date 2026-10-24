@@ -107,6 +107,23 @@ def write_preview(name: str, arguments: dict) -> str:
             return f"Change {doctype} {docname}"
         return f"Change a {doctype}"
 
+    if name == "bulk_update_doc":
+        filters = arguments.get("filters") or []
+        limit = arguments.get("limit") or 50
+        fields = ", ".join(f"{key} = {value}" for key, value in list(data.items())[:6])
+        try:
+            names = frappe.get_all(doctype, filters=filters, pluck="name", limit=int(limit))
+        except Exception:
+            names = []
+        count = len(names)
+        sample = ", ".join(names[:5])
+        if count == 0:
+            return f"Change {doctype}: no documents match the filters"
+        suffix = f" (showing {sample})" if sample else ""
+        if fields:
+            return f"Change {count} {doctype} document(s): {fields}{suffix}"
+        return f"Change {count} {doctype} document(s){suffix}"
+
     return f"{name}({doctype})"
 
 

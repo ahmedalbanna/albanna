@@ -659,6 +659,49 @@ DELETE_DOC = ToolSpec(
     write_permission="delete",
 )
 
+BULK_UPDATE_DOC = ToolSpec(
+    name="bulk_update_doc",
+    description=(
+        "Change the same fields on many documents of one DocType at once. "
+        "Use this when the user asks for a change that applies to a set of "
+        "documents described by a condition. Give the condition as filters and "
+        "only the fields to change. The change is proposed first and waits for "
+        "the reader's approval before it runs. A submitted document is never "
+        "changed this way."
+    ),
+    parameters={
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "doctype": {"type": "string", "description": "The DocType to change."},
+            "filters": {
+                "type": "array",
+                "description": "A list of [field, operator, value] triples.",
+                "items": {
+                    "type": "array",
+                    "items": {"type": ["string", "number", "boolean", "null"]},
+                    "minItems": 3,
+                    "maxItems": 3,
+                },
+            },
+            "data": {
+                "type": "object",
+                "description": "The field values to change on every matching document.",
+                "additionalProperties": True,
+            },
+            "limit": {
+                "type": "integer",
+                "description": "The most documents to change (default 50, max 200).",
+            },
+        },
+        "required": ["doctype", "filters", "data"],
+    },
+    tier=WRITE,
+    doctype_arg="doctype",
+    write_permission="write",
+)
+
+
 #: Every tool the app knows about.
 TOOL_MANIFEST = ToolRegistry(
     [
@@ -668,6 +711,7 @@ TOOL_MANIFEST = ToolRegistry(
         RUN_REPORT,
         CREATE_DOC,
         UPDATE_DOC,
+        BULK_UPDATE_DOC,
         SUBMIT_DOC,
         CANCEL_DOC,
         AMEND_DOC,

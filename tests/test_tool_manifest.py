@@ -130,7 +130,7 @@ def test_every_tool_is_classified():
         assert spec.parameters.get("properties") is not None
 
 
-def test_the_write_surface_is_the_six_lifecycle_tools():
+def test_the_write_surface_is_the_seven_lifecycle_tools():
     """The writes are few, and each one is a thing a person asks for.
 
     A tool set that could make things and never change them would leave
@@ -144,6 +144,7 @@ def test_the_write_surface_is_the_six_lifecycle_tools():
     assert writers == [
         "create_doc",
         "update_doc",
+        "bulk_update_doc",
         "submit_doc",
         "cancel_doc",
         "amend_doc",
@@ -160,6 +161,7 @@ def test_the_two_writes_are_authorised_against_different_rights():
     """
     assert TOOL_MANIFEST.get("create_doc").write_permission == "create"
     assert TOOL_MANIFEST.get("update_doc").write_permission == "write"
+    assert TOOL_MANIFEST.get("bulk_update_doc").write_permission == "write"
 
 
 def test_the_lifecycle_writes_are_authorised_against_their_own_rights():

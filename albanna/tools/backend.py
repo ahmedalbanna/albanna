@@ -40,6 +40,7 @@ _BOUND_TOOLS: dict[str, Callable[..., str]] = {
     "run_report": erpnext.run_report,
     "create_doc": erpnext.create_doc,
     "update_doc": erpnext.update_doc,
+    "bulk_update_doc": erpnext.bulk_update_doc,
     "submit_doc": erpnext.submit_doc,
     "cancel_doc": erpnext.cancel_doc,
     "amend_doc": erpnext.amend_doc,

@@ -1243,6 +1243,77 @@ def delete_doc(doctype: str, name: str) -> str:
 
 
 
+def bulk_update_doc(doctype: str, filters: Any, data: Any, limit: int = 50) -> str:
+    """Change the same fields on many documents of one DocType at once.
+
+    Args:
+        doctype: The DocType to change, e.g. "Sales Order".
+        filters: A list of [field, operator, value] triples.
+        data: The field values to change on every matching document.
+        limit: The most documents to change (default 50, max 200).
+    """
+    if not doctype:
+        return error("A doctype is required.")
+    if not isinstance(filters, list) or not filters:
+        return error("At least one filter is required.")
+    if not isinstance(data, dict) or not data:
+        return error("The changes are required, as an object of field values.")
+
+    try:
+        limit = int(limit or 50)
+    except (TypeError, ValueError):
+        limit = 50
+    limit = max(1, min(limit, 200))
+
+    # Build the filter list in the shape Frappe expects.
+    frappe_filters = []
+    for entry in filters:
+        if not isinstance(entry, (list, tuple)) or len(entry) != 3:
+            return error("Each filter must be a [field, operator, value] triple.")
+        frappe_filters.append([str(entry[0]), str(entry[1]), entry[2]])
+
+    try:
+        names = frappe.get_all(doctype, filters=frappe_filters, pluck="name", limit=limit)
+    except Exception as exc:
+        return error(f"Could not look up {doctype}: {exc}", doctype=doctype)
+
+    if not names:
+        return ok(
+            f"No {doctype} documents matched the filters; nothing was changed.",
+            data={"doctype": doctype, "changed": 0, "names": []},
+            doctype=doctype,
+        )
+
+    changed = 0
+    failed: list[str] = []
+    for name in names:
+        savepoint = _savepoint("bulk_update_doc")
+        try:
+            document = frappe.get_doc(doctype, name)
+            if document.docstatus:
+                failed.append(f"{name}: submitted")
+                _rollback_to(savepoint)
+                continue
+            document.update(data)
+            document.save()
+            changed += 1
+        except Exception as exc:
+            _rollback_to(savepoint)
+            failed.append(f"{name}: {exc}")
+
+    message = f"Changed {changed} of {len(names)} {doctype} document(s)."
+    if failed:
+        message += " Failed: " + "; ".join(failed[:5])
+        if len(failed) > 5:
+            message += f" (and {len(failed) - 5} more)"
+
+    return ok(
+        message,
+        data={"doctype": doctype, "changed": changed, "total": len(names), "failed": failed},
+        doctype=doctype,
+    )
+
+
 def list_doctypes(
     module: str = "",
     search: str = "",
