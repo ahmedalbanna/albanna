@@ -742,6 +742,7 @@ body.albanna-side-chat-docked-inline-start {
 	display: flex;
 	align-items: center;
 	gap: 8px;
+	padding: 0 10px;
 }
 
 .albanna-chat__time {
@@ -905,7 +906,7 @@ body.albanna-side-chat-docked-inline-start {
 }
 
 .albanna-chat__error {
-	margin: 0 12px 8px;
+	margin: 0 0 8px;
 	padding: 8px 10px;
 	border-radius: 6px;
 	background: var(--albanna-error-bg, #fff1f0);
@@ -937,7 +938,7 @@ body.albanna-side-chat-docked-inline-start {
 
 /* A message that is not an error: "Stopped.", and so on. */
 .albanna-chat__notice {
-	margin: 0 12px 8px;
+	margin: 0 0 8px;
 	padding: 7px 10px;
 	border-radius: 6px;
 	background: var(--albanna-hover, #f2f4f5);
@@ -955,7 +956,7 @@ body.albanna-side-chat-docked-inline-start {
    reader approves a change and not a JSON blob, and the thread keeps
    its place. */
 .albanna-chat__confirm {
-	margin: 0 12px 8px;
+	margin: 0 0 8px;
 	padding: 10px 12px;
 	border-radius: 8px;
 	border: 1px solid var(--albanna-border, #ededed);
@@ -1449,6 +1450,7 @@ body.albanna-side-chat-docked-inline-start {
 /* Per-turn cost line. */
 .albanna-chat__cost {
 	margin: 4px 0 0;
+	padding: 0 10px;
 	font-size: 11px;
 	color: var(--albanna-muted, #6c7680);
 }
