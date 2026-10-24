@@ -1334,3 +1334,42 @@ body.albanna-side-chat-docked-inline-start {
 		margin-inline-end: 0 !important;
 	}
 }
+
+
+/* Mobile: the panel becomes a full-screen sheet, because a docked column
+   on a phone is a full-screen takeover with a resize handle nobody can
+   use.  The Desk stops giving up space and the panel covers it, with a
+   clear way back (the close button). */
+@media (max-width: 640px) {
+	.albanna-side-chat-panel {
+		inset: 0 !important;
+		width: 100% !important;
+		max-width: 100% !important;
+		border-radius: 0 !important;
+	}
+
+	.albanna-side-chat-resize {
+		display: none;
+	}
+
+	/* Larger tap targets on touch screens. */
+	.albanna-chat__confirm-button,
+	.albanna-chat__copy,
+	.albanna-side-chat-launcher {
+		min-height: 44px;
+		min-width: 44px;
+	}
+
+	/* Composer stays pinned at the bottom of the sheet. */
+	.albanna-chat__composer {
+		position: sticky;
+		bottom: 0;
+	}
+
+	/* Tables scroll horizontally instead of overflowing the sheet. */
+	.albanna-chat__bubble table {
+		display: block;
+		overflow-x: auto;
+		max-width: 100%;
+	}
+}
