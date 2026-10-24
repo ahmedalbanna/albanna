@@ -1487,3 +1487,29 @@ body.albanna-side-chat-docked-inline-start {
 	padding: 0;
 	font-family: inherit;
 }
+
+/* The conversation search. */
+.albanna-drawer__search {
+	padding: 8px 12px 4px;
+}
+
+.albanna-drawer__search-input {
+	width: 100%;
+	padding: 6px 10px;
+	font-size: 13px;
+	border: 1px solid var(--albanna-border, #ededed);
+	border-radius: 6px;
+	background: var(--albanna-surface, #ffffff);
+	color: var(--albanna-text, #1f2328);
+	font-family: inherit;
+}
+
+.albanna-drawer__search-input:focus {
+	outline: none;
+	border-color: var(--albanna-accent, #171717);
+	box-shadow: 0 0 0 2px var(--albanna-focus-ring, rgba(23, 23, 23, 0.08));
+}
+
+.albanna-drawer__search-input::placeholder {
+	color: var(--albanna-muted, #7c7c7c);
+}

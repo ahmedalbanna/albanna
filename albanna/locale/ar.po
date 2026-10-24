@@ -941,3 +941,7 @@ msgstr "اكتب سؤالاً بلغة عادية — المساعد يقرأ ه
 
 msgid "Got it"
 msgstr "فهمت"
+
+
+msgid "No conversations match “{0}”."
+msgstr "لا توجد محادثات تطابق “{0}”."

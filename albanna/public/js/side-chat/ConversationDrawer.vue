@@ -141,6 +141,9 @@ function commitRename(conversation, event) {
 			class="albanna-drawer__empty"
 		>
 			<p class="albanna-drawer__empty-title">{{ __("No matches") }}</p>
+			<p class="albanna-drawer__empty-detail">
+				{{ __("No conversations match “{0}”.", [searchInput]) }}
+			</p>
 		</div>
 
 		<div
