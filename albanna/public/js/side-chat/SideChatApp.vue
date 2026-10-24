@@ -382,6 +382,7 @@ function openSource(doc) {
 		// they are rather than breaking the panel.
 	}
 }
+function nextId() {
 	messageCounter += 1;
 	return `m${messageCounter}`;
 }
