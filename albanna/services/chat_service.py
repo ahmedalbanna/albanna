@@ -368,7 +368,7 @@ class ChatService:
                 written = append_messages(
                     conversation,
                     [
-                        {"role": "user", "content": question, "round_no": 0},
+                        {"role": "user", "content": question, "round_no": 0, "image_url": image_url},
                         {
                             "role": "assistant",
                             "content": reply,
@@ -452,7 +452,7 @@ class ChatService:
         written = append_messages(
             conversation,
             [
-                {"role": "user", "content": question, "round_no": 0},
+                {"role": "user", "content": question, "round_no": 0, "image_url": image_url},
                 {"role": "assistant", "content": reply, "round_no": rounds},
             ],
         )

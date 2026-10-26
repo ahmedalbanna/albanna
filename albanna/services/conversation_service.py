@@ -164,11 +164,11 @@ def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]
             insert into `tabAlbanna Message`
                 (name, owner, creation, modified, modified_by, docstatus, idx,
                  parent, parentfield, parenttype,
-                 role, content, tool_name, round_no, tool_calls)
+                 role, content, image_url, tool_name, round_no, tool_calls)
             values
                 (%s, %s, %s, %s, %s, 0, %s,
                  %s, %s, %s,
-                 %s, %s, %s, %s, %s)
+                 %s, %s, %s, %s, %s, %s)
             """,
             (
                 name,
@@ -182,6 +182,7 @@ def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]
                 "Albanna Conversation",
                 row.get("role") or "assistant",
                 row.get("content") or "",
+                row.get("image_url") or "",
                 row.get("tool_name") or "",
                 int(row.get("round_no") or 0),
                 row.get("tool_calls") or "",
@@ -298,7 +299,7 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
     if before_idx > 0:
         rows = frappe.db.sql(
             """
-            select name, role, content, tool_calls, creation, idx, rating
+            select name, role, content, image_url, tool_calls, creation, idx, rating
             from `tabAlbanna Message`
             where parent = %s and parentfield = %s and idx < %s
             order by idx desc
@@ -310,7 +311,7 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
     else:
         rows = frappe.db.sql(
             """
-            select name, role, content, tool_calls, creation, idx, rating
+            select name, role, content, image_url, tool_calls, creation, idx, rating
             from `tabAlbanna Message`
             where parent = %s and parentfield = %s
             order by idx desc
@@ -359,6 +360,7 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
                 "idx": int(row.idx or 0),
                 "role": role,
                 "content": row.content or "",
+                "image": row.image_url or "",
                 "rating": row.rating or "",
                 "tools": tools,
                 # When it was said, so that the transcript can say so.

@@ -1,72 +1,78 @@
 {
- "actions": [],
- "allow_rename": 0,
- "creation": "2026-10-21 00:00:00.000000",
- "doctype": "DocType",
- "editable_grid": 1,
- "engine": "InnoDB",
- "field_order": [
-  "role",
-  "content",
-  "tool_name",
-  "round_no",
-  "tool_calls"
- ],
- "fields": [
-  {
-   "columns": 1,
-   "description": "Who produced this turn.",
-   "fieldname": "role",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "label": "Role",
-   "options": "user\nassistant\ntool",
-   "reqd": 1
-  },
-  {
-   "columns": 7,
-   "description": "The message text, exactly as it is replayed to the model.",
-   "fieldname": "content",
-   "fieldtype": "Long Text",
-   "in_list_view": 1,
-   "label": "Content"
-  },
-  {
-   "description": "The tool this turn's result belongs to. Set on `tool` rows only.",
-   "fieldname": "tool_name",
-   "fieldtype": "Data",
-   "label": "Tool"
-  },
-  {
-   "description": "Which tool round this turn belongs to. Round 0 is the first.",
-   "fieldname": "round_no",
-   "fieldtype": "Int",
-   "label": "Round"
-  },
-  {
-   "description": "The tool calls the model asked for, as a JSON array.",
-   "fieldname": "tool_calls",
-   "fieldtype": "Long Text",
-   "label": "Tool Calls"
-  },
-  {
-   "description": "The reader's rating of this answer, if they gave one. Blank means unrated.",
-   "fieldname": "rating",
-   "fieldtype": "Select",
-   "label": "Rating",
-   "options": "\nup\ndown"
-  }
- ],
- "index_web_pages_for_search": 0,
- "istable": 1,
- "links": [],
- "modified": "2026-10-21 00:00:00.000000",
- "modified_by": "Administrator",
- "module": "Albanna",
- "name": "Albanna Message",
- "owner": "Administrator",
- "permissions": [],
- "sort_field": "creation",
- "sort_order": "DESC",
- "states": []
+    "actions": [],
+    "allow_rename": 0,
+    "creation": "2026-10-21 00:00:00.000000",
+    "doctype": "DocType",
+    "editable_grid": 1,
+    "engine": "InnoDB",
+    "field_order": [
+        "role",
+        "content",
+        "tool_name",
+        "round_no",
+        "tool_calls"
+    ],
+    "fields": [
+        {
+            "columns": 1,
+            "description": "Who produced this turn.",
+            "fieldname": "role",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "label": "Role",
+            "options": "user\nassistant\ntool",
+            "reqd": 1
+        },
+        {
+            "columns": 7,
+            "description": "The message text, exactly as it is replayed to the model.",
+            "fieldname": "content",
+            "fieldtype": "Long Text",
+            "in_list_view": 1,
+            "label": "Content"
+        },
+        {
+            "fieldname": "image_url",
+            "fieldtype": "Data",
+            "label": "Image URL",
+            "read_only": 1
+        },
+        {
+            "description": "The tool this turn's result belongs to. Set on `tool` rows only.",
+            "fieldname": "tool_name",
+            "fieldtype": "Data",
+            "label": "Tool"
+        },
+        {
+            "description": "Which tool round this turn belongs to. Round 0 is the first.",
+            "fieldname": "round_no",
+            "fieldtype": "Int",
+            "label": "Round"
+        },
+        {
+            "description": "The tool calls the model asked for, as a JSON array.",
+            "fieldname": "tool_calls",
+            "fieldtype": "Long Text",
+            "label": "Tool Calls"
+        },
+        {
+            "description": "The reader's rating of this answer, if they gave one. Blank means unrated.",
+            "fieldname": "rating",
+            "fieldtype": "Select",
+            "label": "Rating",
+            "options": "\nup\ndown"
+        }
+    ],
+    "index_web_pages_for_search": 0,
+    "istable": 1,
+    "links": [],
+    "modified": "2026-10-21 00:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "Albanna",
+    "name": "Albanna Message",
+    "owner": "Administrator",
+    "permissions": [],
+    "sort_field": "creation",
+    "sort_order": "DESC",
+    "states": []
 }

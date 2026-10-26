@@ -589,6 +589,7 @@ function messageFromServer(message) {
 	// conversation grows.
 	item.name = message.name || "";
 	item.rating = message.rating || "";
+	item.image = message.image || "";
 	// The stored index, which is how the panel asks for the page of
 	// messages behind this one.  A message that has not been stored yet
 	// has no index, and it is the newest one.
