@@ -1676,10 +1676,14 @@ body.albanna-side-chat-docked-inline-start {
 	background: transparent;
 	color: var(--albanna-muted, #6c7680);
 	cursor: pointer;
-	padding: 4px;
-	border-radius: 4px;
+	padding: 6px;
+	border-radius: 50%;
 	display: inline-flex;
 	align-items: center;
+	justify-content: center;
+	min-width: 32px;
+	min-height: 32px;
+	transition: background 120ms ease, color 120ms ease, transform 120ms ease;
 }
 
 .albanna-chat__voice:hover {
@@ -1687,12 +1691,22 @@ body.albanna-side-chat-docked-inline-start {
 	background: var(--albanna-hover, #f3f3f3);
 }
 
+.albanna-chat__voice:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
 .albanna-chat__voice--listening {
-	color: var(--albanna-danger, #d13b34);
-	animation: albanna-pulse 1s ease-in-out infinite;
+	color: #ffffff;
+	background: var(--albanna-danger, #d13b34);
+	animation: albanna-pulse 1.2s ease-in-out infinite;
+}
+
+.albanna-chat__voice--listening:hover {
+	background: var(--albanna-danger, #d13b34);
 }
 
 @keyframes albanna-pulse {
-	0%, 100% { opacity: 1; }
-	50% { opacity: 0.4; }
+	0%, 100% { transform: scale(1); opacity: 1; }
+	50% { transform: scale(1.08); opacity: 0.85; }
 }
