@@ -262,17 +262,18 @@ class ChatService:
         image_url = ""
         if request.image:
             image_url = self._store_image(request.image, principal.user)
+            is_image = str(request.image).startswith("data:image/")
+            kind = "image" if is_image else "file"
             if image_url:
                 extra = (
-                    f"\n\nAn image was attached to this question and stored as a "
+                    f"\n\nA {kind} was attached to this question and stored as a "
                     f"Frappe File. Its URL is: {image_url}. If the user asks to "
-                    f"set it as a document's image, use this URL as the field "
-                    f"value (e.g. image = \"{image_url}\")."
+                    f"set it as a document's field, use this URL as the value."
                 )
             else:
                 extra = (
-                    "\n\nAn image was attached to this question but could not be "
-                    "stored as a file. Do not attempt to set it as an image."
+                    f"\n\nA {kind} was attached to this question but could not be "
+                    "stored as a file. Do not attempt to use it."
                 )
             request = TurnRequest(
                 question=request.question,
@@ -593,26 +594,27 @@ class ChatService:
             return "Home"
 
     def _store_image(self, image: str, user: str) -> str:
-        """Store an attached image as a Frappe File and return its URL."""
+        """Store an attached file as a Frappe File and return its URL."""
         if not image:
             return ""
         try:
             import base64
+            import mimetypes
 
-            payload = image.split(",", 1)[-1]
+            header, payload = (image.split(",", 1) + [""])[:2]
             raw = base64.b64decode(payload, validate=True)
+            mime = header.split(";")[0].split(":")[-1].strip() if header.startswith("data:") else ""
+            ext = mimetypes.guess_extension(mime) or ".bin"
+            if ext == ".bin" and "image" in mime:
+                ext = ".png"
+            filename = f"albanna-{frappe.generate_hash(length=8)}{ext}"
             folder = self._ensure_albanna_folder()
             saved = frappe.utils.file_manager.save_file(
-                f"albanna-{frappe.generate_hash(length=8)}.png",
-                raw,
-                "User",
-                user,
-                is_private=0,
-                folder=folder,
+                filename, raw, "User", user, is_private=0, folder=folder
             )
             return str(getattr(saved, "file_url", "") or "")
         except Exception:
-            logger.exception("Could not store an attached image")
+            logger.exception("Could not store an attached file")
             return ""
 
     def _resolve_conversation(self, request: TurnRequest, user: str, question: str) -> str:

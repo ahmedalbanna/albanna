@@ -9,10 +9,11 @@ const props = defineProps({
 	busy: { type: Boolean, default: false },
 	canChat: { type: Boolean, default: false },
 	image: { type: String, default: "" },
+	fileName: { type: String, default: "" },
 	imageSupport: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(["update:modelValue", "send", "stop", "update:image"]);
+const emit = defineEmits(["update:modelValue", "send", "stop", "update:image", "update:fileName"]);
 
 const inputEl = ref(null);
 const fileInput = ref(null);
@@ -64,7 +65,6 @@ function toggleVoice() {
 }
 
 const MAX_HEIGHT = 140;
-const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
 function resize() {
 	const el = inputEl.value;
@@ -101,8 +101,10 @@ function onAction() {
 
 const uploading = ref(false);
 
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
 function attachFile(file) {
-	if (!file || !file.type.startsWith("image/")) return;
+	if (!file) return;
 	if (file.size > MAX_IMAGE_BYTES) {
 		emit("update:image", "");
 		return;
@@ -112,6 +114,7 @@ function attachFile(file) {
 	reader.onload = () => {
 		uploading.value = false;
 		emit("update:image", String(reader.result || ""));
+		emit("update:fileName", file.name || "");
 	};
 	reader.onerror = () => {
 		uploading.value = false;
@@ -153,6 +156,7 @@ function onDragOver(event) {
 
 function removeImage() {
 	emit("update:image", "");
+	emit("update:fileName", "");
 }
 
 function openFilePicker() {
@@ -163,7 +167,15 @@ function openFilePicker() {
 <template>
 	<div class="albanna-chat__composer">
 		<div v-if="image || uploading" class="albanna-chat__attach-preview">
-			<img v-if="image" :src="image" alt="" class="albanna-chat__attach-thumb" />
+			<img
+				v-if="image && image.startsWith('data:image/')"
+				:src="image"
+				alt=""
+				class="albanna-chat__attach-thumb"
+			/>
+			<span v-else-if="image" class="albanna-chat__attach-file">
+				{{ fileName || __("Attached file") }}
+			</span>
 			<span v-else class="albanna-chat__attach-uploading">{{ __("Uploading…") }}</span>
 			<button
 				v-if="image"
@@ -225,7 +237,6 @@ function openFilePicker() {
 			<input
 				ref="fileInput"
 				type="file"
-				accept="image/*"
 				class="albanna-chat__file-input"
 				@change="onFileChange"
 			/>

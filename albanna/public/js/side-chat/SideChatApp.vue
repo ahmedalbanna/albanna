@@ -403,6 +403,12 @@ const examples = computed(() => {
 	];
 });
 
+function isImageSrc(src) {
+	if (!src) return false;
+	if (src.startsWith("data:image/")) return true;
+	return /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(src);
+}
+
 function openSource(doc) {
 	if (!doc || !doc.name) return;
 	try {
@@ -2513,11 +2519,17 @@ onBeforeUnmount(() => {
 						class="albanna-chat__bubble albanna-chat__bubble--plain"
 					>
 						<img
-							v-if="message.image"
+							v-if="message.image && isImageSrc(message.image)"
 							:src="message.image"
 							alt=""
 							class="albanna-chat__user-image"
 						/>
+						<span
+							v-else-if="message.image"
+							class="albanna-chat__user-file"
+						>
+							📎 {{ __("Attached file") }}
+						</span>
 						<span v-if="message.content">{{ message.content }}</span>
 					</div>
 					<!-- The assistant's answer is markdown.  `renderMarkdown`
