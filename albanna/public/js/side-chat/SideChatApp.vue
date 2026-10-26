@@ -403,14 +403,17 @@ const examples = computed(() => {
 });
 
 function openSource(doc) {
-	if (!doc || !doc.doctype || !doc.name) return;
+	if (!doc || !doc.name) return;
 	try {
-		if (window.frappe && typeof window.frappe.set_route === "function") {
+		if (doc.doctype && window.frappe && typeof window.frappe.set_route === "function") {
 			window.frappe.set_route("Form", doc.doctype, doc.name);
+			return;
+		}
+		if (doc.url) {
+			window.location.href = doc.url;
 		}
 	} catch (error) {
-		// Navigation is best-effort; a failure leaves the reader where
-		// they are rather than breaking the panel.
+		// Navigation is best-effort.
 	}
 }
 function canUndo(message) {
@@ -626,6 +629,7 @@ function documentLink(document) {
 
 	return {
 		name,
+		doctype,
 		url: `/app/${encodeURIComponent(slug)}/${encodeURIComponent(name)}`,
 	};
 }
@@ -1626,7 +1630,7 @@ async function copyAnswer(message) {
 	let text = message.content || "";
 	if (message.documents && message.documents.length) {
 		text += "\n\n**Sources:**\n" + message.documents
-			.map((doc) => `- ${doc.doctype} ${doc.name}`)
+			.map((doc) => `- ${doc.doctype ? doc.doctype + " " : ""}${doc.name}`)
 			.join("\n");
 	}
 	if (!text) return;
@@ -2521,7 +2525,7 @@ onBeforeUnmount(() => {
 								class="albanna-chat__source"
 								@click="openSource(doc)"
 							>
-								{{ doc.doctype }} {{ doc.name }}
+								{{ doc.doctype ? doc.doctype + ' ' + doc.name : doc.name }}
 							</button>
 						</template>
 						<button
