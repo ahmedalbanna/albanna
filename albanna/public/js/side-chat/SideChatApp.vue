@@ -2508,10 +2508,16 @@ onBeforeUnmount(() => {
 					<!-- The user's own words are shown literally: `{{ }}` escapes
 					     them, and a user who types `**` meant a literal `**`. -->
 					<div
-						v-if="message.role === 'user' && message.content"
+						v-if="message.role === 'user' && (message.content || message.image)"
 						class="albanna-chat__bubble albanna-chat__bubble--plain"
 					>
-						{{ message.content }}
+						<img
+							v-if="message.image"
+							:src="message.image"
+							alt=""
+							class="albanna-chat__user-image"
+						/>
+						<span v-if="message.content">{{ message.content }}</span>
 					</div>
 					<!-- The assistant's answer is markdown.  `renderMarkdown`
 					     escapes before it builds any markup, so this is safe. -->

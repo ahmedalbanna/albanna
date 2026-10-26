@@ -1710,3 +1710,12 @@ body.albanna-side-chat-docked-inline-start {
 	0%, 100% { transform: scale(1); opacity: 1; }
 	50% { transform: scale(1.08); opacity: 0.85; }
 }
+
+/* Image attached to a user question. */
+.albanna-chat__user-image {
+	max-height: 120px;
+	max-width: 100%;
+	border-radius: 6px;
+	display: block;
+	margin: 0 0 4px;
+}
