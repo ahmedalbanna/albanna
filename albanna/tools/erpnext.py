@@ -902,6 +902,23 @@ def _adopt_attachments(document, changes: dict[str, Any]) -> dict[str, Any]:
             content = source.get_content()
             if isinstance(content, str):
                 content = content.encode()
+            # The document may already own this image: setting it again
+            # must not leave a second File row behind it.  The bytes are
+            # the same file, so the content hash is the same row.
+            owned_url = frappe.db.get_value(
+                "File",
+                {
+                    "attached_to_doctype": document.doctype,
+                    "attached_to_name": document.name,
+                    "attached_to_field": fieldname,
+                    "is_private": 0,
+                    "content_hash": frappe.utils.file_manager.get_content_hash(content),
+                },
+                "file_url",
+            )
+            if owned_url:
+                changes[fieldname] = owned_url
+                continue
             owned = frappe.utils.file_manager.save_file(
                 source.file_name,
                 content,

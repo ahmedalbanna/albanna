@@ -59,6 +59,28 @@ class TestAdoptingAnAttachment(FrappeTestCase):
 
 		self.assertTrue(frappe.db.get_value("File", {"file_url": self.url}, "is_private"))
 
+	def test_setting_the_same_image_twice_adds_no_second_row(self):
+		"""Setting an image the document already owns must not leave a
+		second File row behind it."""
+		from albanna.tools.erpnext import _adopt_attachments
+
+		doc = self._document()
+		first = {"image": self.url}
+		_adopt_attachments(doc, first)
+		second = {"image": self.url}
+		_adopt_attachments(doc, second)
+
+		self.assertEqual(first["image"], second["image"])
+		rows = frappe.get_all(
+			"File",
+			filters={
+				"attached_to_doctype": "Contact",
+				"attached_to_name": doc.name,
+				"attached_to_field": "image",
+			},
+		)
+		self.assertEqual(len(rows), 1)
+
 	def test_a_field_that_is_not_an_attachment_is_left_alone(self):
 		from albanna.tools.erpnext import _adopt_attachments
 
