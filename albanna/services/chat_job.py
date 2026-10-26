@@ -61,6 +61,7 @@ def run_turn_job(
         )
         question = str(parked.get("question") or "")
         page_context = str(parked.get("page_context") or "")
+        image = str(parked.get("image") or "")
 
     try:
         outcome = ChatService().run(
@@ -70,6 +71,7 @@ def run_turn_job(
                 page=page,
                 page_context=page_context,
                 stream=True,
+                image=image,
             ),
             emit=emit,
         )

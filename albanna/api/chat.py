@@ -105,6 +105,7 @@ def ask(
     conversation_id: str = "",
     page: str = "",
     page_context: Any = None,
+    image: str = "",
 ) -> dict[str, Any]:
     """Ask a question and wait for the answer."""
     require_chat_access()
@@ -114,6 +115,25 @@ def ask(
     check_turn_allowed(str(frappe.session.user or ""), SURFACE_ASK)
 
     from albanna.services.chat_service import ChatService, TurnRequest, turn_payload
+    from albanna.services.settings_service import get_settings
+
+    settings = get_settings()
+    if not settings.image_support:
+        image = ""
+
+    # Size check.
+    if image:
+        import base64
+
+        try:
+            # strip data URL prefix
+            payload = image.split(",", 1)[-1]
+            raw = base64.b64decode(payload, validate=True)
+        except Exception:
+            image = ""
+        else:
+            if len(raw) > settings.max_image_size_kb * 1024:
+                return {"status": "error", "error": "Image is too large."}
 
     request = TurnRequest(
         question=question or "",
@@ -121,6 +141,7 @@ def ask(
         page=page or "",
         page_context=_render_page_context(page_context),
         stream=False,
+        image=image or "",
     )
     outcome = ChatService().run(request)
 
@@ -134,6 +155,7 @@ def ask_stream(
     conversation_id: str = "",
     page: str = "",
     page_context: Any = None,
+    image: str = "",
 ) -> dict[str, Any]:
     """Ask a question and get the answer as it happens.
 
@@ -148,6 +170,21 @@ def ask_stream(
     check_turn_allowed(str(frappe.session.user or ""), SURFACE_STREAM)
 
     settings = get_settings()
+    if not settings.image_support:
+        image = ""
+
+    if image:
+        import base64
+
+        try:
+            payload = image.split(",", 1)[-1]
+            raw = base64.b64decode(payload, validate=True)
+        except Exception:
+            image = ""
+        else:
+            if len(raw) > settings.max_image_size_kb * 1024:
+                return {"status": "error", "error": "Image is too large."}
+
     stream_id = uuid.uuid4().hex
 
     # A "running" marker, written before the job is queued.  It exists for
@@ -170,6 +207,7 @@ def ask_stream(
             "status": "running",
             "started_at": time.time(),
             "question": question or "",
+            "image": image or "",
             "page_context": _render_page_context(page_context),
         },
         user=frappe.session.user,

@@ -1619,3 +1619,53 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__source-toggle:hover {
 	color: var(--albanna-text, #1f2328);
 }
+
+/* Composer image attach. */
+.albanna-chat__attach-preview {
+	position: relative;
+	display: inline-block;
+	margin: 0 0 6px;
+}
+
+.albanna-chat__attach-thumb {
+	max-height: 80px;
+	max-width: 100%;
+	border-radius: 6px;
+	border: 1px solid var(--albanna-border, #ededed);
+}
+
+.albanna-chat__attach-remove {
+	position: absolute;
+	top: 2px;
+	inset-inline-end: 2px;
+	width: 20px;
+	height: 20px;
+	border: 0;
+	border-radius: 50%;
+	background: rgba(0, 0, 0, 0.6);
+	color: #ffffff;
+	cursor: pointer;
+	font-size: 14px;
+	line-height: 1;
+	padding: 0;
+}
+
+.albanna-chat__attach {
+	border: 0;
+	background: transparent;
+	color: var(--albanna-muted, #6c7680);
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 4px;
+	display: inline-flex;
+	align-items: center;
+}
+
+.albanna-chat__attach:hover {
+	color: var(--albanna-text, #1f2328);
+	background: var(--albanna-hover, #f3f3f3);
+}
+
+.albanna-chat__file-input {
+	display: none;
+}

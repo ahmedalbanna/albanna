@@ -1021,3 +1021,29 @@ msgstr "عرض المزيد ({0})"
 
 msgid "The answer could not be copied."
 msgstr "تعذّر نسخ الإجابة."
+
+
+msgid "Image Support"
+msgstr "دعم الصور"
+
+msgid "When on, users may attach an image to a question. Only vision-capable models can see it."
+msgstr "عند التفعيل، يمكن للمستخدمين إرفاق صورة بسؤال. فقط النماذج القادرة على الرؤية يمكنها رؤيتها."
+
+msgid "Max Image Size (KB)"
+msgstr "أقصى حجم للصورة (كيلوبايت)"
+
+msgid "The largest image that may be attached, in kilobytes."
+msgstr "أكبر صورة يمكن إرفاقها، بالكيلوبايت."
+
+msgid "Attach image"
+msgstr "إرفاق صورة"
+
+msgid "Remove image"
+msgstr "إزالة الصورة"
+
+msgid "This model cannot see images; the image was ignored."
+msgstr "هذا النموذج لا يمكنه رؤية الصور؛ تم تجاهل الصورة."
+
+
+msgid "Had Image"
+msgstr "احتوت صورة"

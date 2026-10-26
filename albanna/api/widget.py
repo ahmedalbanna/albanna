@@ -57,4 +57,6 @@ def options() -> dict[str, Any]:
         "position": settings.widget_position,
         "position_default": settings.widget_position,
         "tools": tools,
+        "image_support": settings.image_support,
+        "max_image_size_kb": settings.max_image_size_kb,
     }

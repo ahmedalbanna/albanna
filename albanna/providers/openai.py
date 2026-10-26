@@ -231,9 +231,18 @@ class OpenAIProvider:
         tools: list[ToolSpec],
         stream: bool,
     ) -> dict[str, Any]:
+        if config.supports_vision:
+            wire_messages = [message.to_wire() for message in messages]
+        else:
+            # The model cannot see images: drop them so the request is
+            # valid, and the chat service reports the drop to the reader.
+            wire_messages = [
+                Message(role=m.role, content=m.content, tool_calls=m.tool_calls, tool_call_id=m.tool_call_id).to_wire()
+                for m in messages
+            ]
         payload: dict[str, Any] = {
             "model": config.model,
-            "messages": [message.to_wire() for message in messages],
+            "messages": wire_messages,
             "temperature": config.temperature,
             "max_tokens": config.max_tokens,
         }

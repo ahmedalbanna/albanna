@@ -56,6 +56,8 @@ class ProviderConfig:
     timeout: int = 120
     temperature: float = 0.2
     supports_tools: bool = True
+    #: Whether the model can accept images in the prompt.
+    supports_vision: bool = False
     #: The operator's extra options — the ones the app has no field for.
     #: They are added to the request body; see :mod:`albanna.core.options`.
     extra_options: dict[str, Any] = field(default_factory=dict)

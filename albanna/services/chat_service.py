@@ -92,6 +92,7 @@ class TurnRequest:
     page: str = ""
     page_context: str = ""
     stream: bool = False
+    image: str = ""
 
 
 @dataclass
@@ -118,6 +119,8 @@ class TurnOutcome:
     #: so, because an answer that looks complete and is not is worse
     #: than one that says it was cut.
     truncated: bool = False
+    #: True when an image was sent but no provider could see it.
+    image_dropped: bool = False
     diagnosis: dict[str, Any] = field(default_factory=dict)
     #: The rows this turn wrote, as ``(name, role)`` pairs.
     #:
@@ -160,6 +163,7 @@ class TurnAudit:
     error_class: str = ""
     error_message: str = ""
     price_per_million: float = 0.0
+    had_image: bool = False
 
 def turn_payload(outcome: TurnOutcome) -> dict[str, Any]:
     """The wire shape of a turn.
@@ -184,6 +188,7 @@ def turn_payload(outcome: TurnOutcome) -> dict[str, Any]:
         # told, because an answer that looks complete and is not is
         # worse than one that says it was cut.
         "truncated": outcome.truncated,
+        "image_dropped": outcome.image_dropped,
         "error": outcome.error,
         "dry_run": any(
             isinstance(tc, dict) and tc.get("dry_run") for tc in (outcome.tool_calls or [])
@@ -230,6 +235,11 @@ class ChatService:
         started = time.monotonic()
         settings = get_settings()
 
+        image_dropped = bool(request.image) and not (
+            getattr(settings.provider, "supports_vision", False)
+            or (settings.fallback is not None and getattr(settings.fallback, "supports_vision", False))
+        )
+
         if not settings.enabled:
             return TurnOutcome(ok=False, error=_("The chat is switched off on this site."))
 
@@ -264,7 +274,7 @@ class ChatService:
             system(build_system_prompt(visible, context, settings.system_prompt))
         ]
         messages.extend(sanitize(as_plain_history(history)))
-        messages.append(user(question))
+        messages.append(user(question, image=request.image or None))
 
         tool_calls_made: list[dict[str, Any]] = []
         rounds = 0
@@ -304,6 +314,7 @@ class ChatService:
                         error_class="provider_error",
                         error_message=str(exc),
                         price_per_million=settings.price_per_million,
+                        had_image=bool(request.image),
                     )
                 )
                 return TurnOutcome(
@@ -312,6 +323,7 @@ class ChatService:
                     conversation_id=conversation,
                     rounds=rounds,
                     tool_calls=tool_calls_made,
+                    image_dropped=image_dropped,
                 )
 
             provider_name = completion.provider
@@ -360,6 +372,7 @@ class ChatService:
                         started=started,
                         status="truncated" if completion.truncated else "ok",
                         price_per_million=settings.price_per_million,
+                        had_image=bool(request.image),
                     )
                 )
                 return TurnOutcome(
@@ -372,6 +385,7 @@ class ChatService:
                     tool_calls=tool_calls_made,
                     usage=usage,
                     truncated=completion.truncated,
+                    image_dropped=image_dropped,
                     written=written,
                     cost=(
                         cost_of_turn(
@@ -441,6 +455,7 @@ class ChatService:
             usage=usage,
             capped=True,
             truncated=truncated,
+            image_dropped=image_dropped,
             diagnosis=diagnosis,
             written=written,
             cost=(
@@ -864,6 +879,7 @@ class ChatService:
                 doc.error_class = audit.error_class
             if audit.error_message:
                 doc.error_message = audit.error_message[:500]
+            doc.had_image = 1 if audit.had_image else 0
             doc.insert(ignore_permissions=True)
         except Exception:
             logger.exception("Could not write the chat log row")

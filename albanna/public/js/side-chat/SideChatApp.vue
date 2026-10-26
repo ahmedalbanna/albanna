@@ -100,6 +100,7 @@ const props = defineProps({
 const state = reactive(initialState());
 
 const draft = ref("");
+const attachedImage = ref("");
 const conversationId = ref("");
 const transcriptEl = ref(null);
 /** What a screen reader is told, once a turn is over. */
@@ -770,6 +771,8 @@ function noticeText(notice) {
 			return __("The question and its answer were removed.");
 		case "truncated":
 			return __("The answer was cut off before it was finished.");
+		case "image-dropped":
+			return __("This model cannot see images; the image was ignored.");
 		case "dry-run":
 			return __("Dry run — nothing was saved.");
 		case "escalated":
@@ -1245,6 +1248,7 @@ function applyTurnResult(result, asked, answer) {
 		// says it was cut.
 		if (result.truncated) state.notice = "truncated";
 		if (result.dry_run) state.notice = "dry-run";
+		if (result.image_dropped) state.notice = "image-dropped";
 	} else {
 		// A turn that ended without an answer and without an error is
 		// still over.
@@ -1332,13 +1336,18 @@ function decideWrite(streamId, decision) {
  */
 async function send(question) {
 	const text = String(question || draft.value || "").trim();
-	if (!text || !maySend.value) return;
+	if (!text && !attachedImage.value) return;
+	if (!maySend.value) return;
+
+	const image = attachedImage.value || "";
+	attachedImage.value = "";
 
 	draft.value = "";
 	followBottom.value = true;
 	showScrollButton.value = false;
 
 	const asked = makeMessage("user", text);
+	if (image) asked.image = image;
 	const answer = makeMessage("assistant", "");
 	answer.pending = true;
 
@@ -1376,6 +1385,7 @@ async function send(question) {
 	try {
 		result = await runTurn({
 			question: text,
+			image: image,
 			conversationId: conversationId.value,
 			page: page,
 			pageContext: {
@@ -2860,8 +2870,11 @@ onBeforeUnmount(() => {
 		<Composer
 			v-if="view === 'chat' && !locked"
 			v-model="draft"
+			:image="attachedImage"
+			:image-support="config && config.image_support"
 			:busy="busy"
 			:can-chat="canChat"
+			@update:image="attachedImage = $event"
 			@send="send"
 			@stop="stop"
 		/>

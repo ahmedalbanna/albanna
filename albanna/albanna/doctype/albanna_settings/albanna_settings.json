@@ -239,6 +239,20 @@
             "description": "When on, write tools run their validation and report what they would do, but nothing is saved. Use it to test prompts or train users without touching data."
         },
         {
+            "fieldname": "image_support",
+            "fieldtype": "Check",
+            "label": "Image Support",
+            "default": "0",
+            "description": "When on, users may attach an image to a question. Only vision-capable models can see it."
+        },
+        {
+            "fieldname": "max_image_size_kb",
+            "fieldtype": "Int",
+            "label": "Max Image Size (KB)",
+            "default": "2048",
+            "description": "The largest image that may be attached, in kilobytes."
+        },
+        {
             "fieldname": "confirm_timeout",
             "fieldtype": "Int",
             "label": "Approval wait (seconds)",

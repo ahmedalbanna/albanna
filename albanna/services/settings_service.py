@@ -53,6 +53,10 @@ class AppSettings:
     #: Whether a write must wait for the reader's approval before it runs.
     #: Off by default; a per-user policy can turn it on for one account.
     confirm_writes: bool = False
+    #: Whether images can be attached to a question.
+    image_support: bool = False
+    #: The largest image that may be attached, in KB.
+    max_image_size_kb: int = 2048
     #: When on, write tools run their validation and report what they would
     #: do, but nothing is saved.  Useful for testing prompts and training.
     dry_run: bool = False
@@ -105,6 +109,7 @@ def _build() -> AppSettings:
         timeout=_int(doc.timeout, 120),
         temperature=_float(doc.temperature, 0.2),
         extra_options=parse_options(getattr(doc, "extra_options", "")),
+        supports_vision=bool(getattr(doc, "image_support", 0)),
     )
 
     fallback: ProviderConfig | None = None
@@ -118,6 +123,7 @@ def _build() -> AppSettings:
             max_tokens=_int(doc.max_tokens, 8192),
             timeout=_int(doc.timeout, 120),
             temperature=_float(doc.temperature, 0.2),
+            supports_vision=bool(getattr(doc, "image_support", 0)),
         )
 
     return AppSettings(
@@ -140,6 +146,8 @@ def _build() -> AppSettings:
         # as "off".
         confirm_writes=bool(getattr(doc, "confirm_writes", 0)),
         dry_run=bool(getattr(doc, "dry_run", 0)),
+        image_support=bool(getattr(doc, "image_support", 0)),
+        max_image_size_kb=_int(getattr(doc, "max_image_size_kb", 0), 2048) or 2048,
         # A missing column (pre-migration) or nonsense reads as the
         # default rather than as "no wait at all".
         confirm_timeout=_int(getattr(doc, "confirm_timeout", 0), DEFAULT_CONFIRM_TIMEOUT),

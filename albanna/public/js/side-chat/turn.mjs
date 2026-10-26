@@ -261,6 +261,7 @@ export function subscribe(streamId, handler) {
  */
 export async function runTurn({
 	question,
+	image,
 	conversationId,
 	page,
 	pageContext,
@@ -268,13 +269,13 @@ export async function runTurn({
 	onQueued,
 	signal,
 }) {
-	// A turn that was stopped before it started is stopped, not queued.
 	if (signal && signal.aborted) {
 		return { status: "aborted" };
 	}
 
 	const queued = await call(ASK_ENDPOINT, {
 		question,
+		image: image || "",
 		conversation_id: conversationId || "",
 		page: page || "",
 		page_context: pageContext ? JSON.stringify(pageContext) : "",
