@@ -2,7 +2,9 @@
 /**
  * The composer: the question box, the send button, and the hint.
  */
-import { nextTick, onMounted, ref, watch } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+
+import { MAX_SESSION_MS, mergeTranscript, readResults, voiceErrorText } from "./voice.mjs";
 
 const props = defineProps({
 	modelValue: { type: String, default: "" },
@@ -25,45 +27,120 @@ const speechSupported = ref(
 );
 const listening = ref(false);
 let recognition = null;
+// A transcript that arrives after the question has been sent belongs to a
+// turn that has already gone; it must not write itself back into the
+// composer.  A reader who saw their question reappear after sending it
+// would believe the send had failed.
+let ignoreTranscript = false;
+let sessionTimer = null;
+
+/**
+ * Close the microphone.
+ *
+ * @param {boolean} keepTranscript whether the last words are still
+ *   wanted — a deliberate stop keeps them, an abandonment does not
+ */
+function stopVoice(keepTranscript = true) {
+	if (sessionTimer) {
+		clearTimeout(sessionTimer);
+		sessionTimer = null;
+	}
+	if (!recognition) {
+		listening.value = false;
+		return;
+	}
+	try {
+		if (keepTranscript) recognition.stop();
+		else recognition.abort();
+	} catch (error) {
+		// It had already stopped.
+	}
+	if (!keepTranscript) {
+		recognition = null;
+		listening.value = false;
+	}
+}
 
 function toggleVoice() {
 	if (!speechSupported.value || props.busy || !props.canChat) return;
 	if (listening.value) {
-		if (recognition) recognition.stop();
+		stopVoice(true);
 		return;
 	}
 	const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
-	recognition = new Ctor();
-	recognition.continuous = false;
-	recognition.interimResults = true;
-	recognition.lang = (window.frappe && window.frappe.boot && window.frappe.boot.lang) || "en-US";
+	// A session that never ended must not be started twice: `start()` on a
+	// running recogniser throws, and the microphone would stay open behind a
+	// button that says it is closed.
+	stopVoice(false);
+
+	const session = new Ctor();
+	recognition = session;
+	// Long questions are the point of a dictation.  A session that ends at
+	// the first pause cuts the sentence in half.
+	session.continuous = true;
+	session.interimResults = true;
+	session.lang = (window.frappe && window.frappe.boot && window.frappe.boot.lang) || "en-US";
+	ignoreTranscript = false;
+
 	let finalText = props.modelValue || "";
-	recognition.onresult = (event) => {
-		let interim = "";
-		for (let i = event.resultIndex; i < event.results.length; i++) {
-			const transcript = event.results[i][0].transcript;
-			if (event.results[i].isFinal) {
-				finalText = (finalText ? finalText + " " : "") + transcript;
-			} else {
-				interim += transcript;
-			}
+	let nextFinal = 0;
+	let lastEmitted = props.modelValue || "";
+
+	session.onresult = (event) => {
+		const read = readResults(event.results, event.resultIndex, nextFinal);
+		nextFinal = read.nextFinal;
+		if (read.finals.length) {
+			finalText = [finalText, read.finals.join(" ")].filter(Boolean).join(" ");
 		}
-		emit("update:modelValue", finalText + (interim ? " " + interim : ""));
+		const spoken = [finalText, read.interim].filter(Boolean).join(" ");
+		lastEmitted = mergeTranscript({
+			spoken,
+			current: props.modelValue,
+			lastEmitted,
+		});
+		emit("update:modelValue", lastEmitted);
 	};
-	recognition.onend = () => {
+	session.onend = () => {
 		listening.value = false;
+		recognition = null;
+		if (sessionTimer) {
+			clearTimeout(sessionTimer);
+			sessionTimer = null;
+		}
+		if (ignoreTranscript) return;
 		emit("update:modelValue", finalText.trim());
 	};
-	recognition.onerror = () => {
+	session.onerror = (event) => {
 		listening.value = false;
+		const message = voiceErrorText(event && event.error, __);
+		if (message) noticeText.value = message;
 	};
+
 	listening.value = true;
 	try {
-		recognition.start();
+		session.start();
+		// A microphone left open is one of the things a reader does not
+		// expect, so one session has a life of its own.
+		sessionTimer = setTimeout(() => stopVoice(true), MAX_SESSION_MS);
 	} catch (error) {
-		listening.value = false;
+		stopVoice(false);
 	}
 }
+
+// The microphone does not outlive the panel: a reader who closes the
+// widget, or switches to the conversations, must not leave it open.
+onBeforeUnmount(() => stopVoice(false));
+
+// A turn that has started is a turn that has the question.  The
+// microphone is closed for it, and its transcript is not allowed back.
+watch(
+	() => props.busy,
+	(busy) => {
+		if (!busy) return;
+		ignoreTranscript = true;
+		stopVoice(false);
+	},
+);
 
 const MAX_HEIGHT = 140;
 
@@ -89,6 +166,11 @@ function submit() {
 	if (props.busy || !props.canChat) return;
 	const question = (props.modelValue || "").trim();
 	if (!question && !props.image) return;
+	// The question is on its way.  Whatever the microphone says now belongs
+	// to a turn that has already been sent, so it is closed and its
+	// transcript is not allowed back into the composer.
+	ignoreTranscript = true;
+	stopVoice(false);
 	emit("update:modelValue", "");
 	emit("send", question);
 }
@@ -101,8 +183,8 @@ function onAction() {
 	submit();
 }
 
-const uploading = ref(false);
 const noticeText = ref("");
+const uploading = ref(false);
 
 const ATTACHABLE_TYPES = ["image/", "application/pdf"];
 
