@@ -255,6 +255,24 @@ class ChatService:
 
         conversation = self._resolve_conversation(request, principal.user, question)
 
+        # An image attached to the question is stored as a Frappe File so
+        # that the assistant can reference it by URL — for example, to set
+        # it as a document's image field.  The bytes travel with the turn
+        # only; what is stored is the file, not the chat.
+        image_url = ""
+        if request.image:
+            image_url = self._store_image(request.image, principal.user)
+            if image_url:
+                extra = f"\n\nAn image was attached to this question. Its Frappe file URL is: {image_url}"
+                request = TurnRequest(
+                    question=request.question,
+                    conversation_id=request.conversation_id,
+                    page=request.page,
+                    page_context=(request.page_context or "") + extra,
+                    stream=request.stream,
+                    image=request.image,
+                )
+
         history = load_messages(conversation, settings.history_limit)
         company = default_company()
         from albanna.user_policy import confirm_writes_for
@@ -546,6 +564,23 @@ class ChatService:
         return completion
 
     # -- the tools --------------------------------------------------------
+
+    def _store_image(self, image: str, user: str) -> str:
+        """Store an attached image as a Frappe File and return its URL."""
+        if not image:
+            return ""
+        try:
+            import base64
+
+            payload = image.split(",", 1)[-1]
+            raw = base64.b64decode(payload, validate=True)
+            saved = frappe.utils.file_manager.save_file(
+                "albanna-attachment.png", raw, "User", user, is_private=1
+            )
+            return str(getattr(saved, "file_url", "") or "")
+        except Exception:
+            logger.exception("Could not store an attached image")
+            return ""
 
     def _resolve_conversation(self, request: TurnRequest, user: str, question: str) -> str:
         """The conversation this turn belongs to.
