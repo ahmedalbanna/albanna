@@ -28,6 +28,8 @@ import time
 import uuid
 from typing import Any
 
+import base64
+
 import frappe
 from frappe import _
 
@@ -39,6 +41,33 @@ logger = logging.getLogger(__name__)
 
 #: The socket.io event the client listens on.
 STREAM_EVENT = "albanna_chat_progress"
+
+
+def _prepare_image(image: str, settings: Any) -> tuple[str, str]:
+    """Validate an attached image against the site's settings.
+
+    Returns ``(``image``, ``error)``.  When ``error`` is empty the image is
+    ready to use; otherwise the turn must not start, and the error is shown
+    to the caller — dropping the attachment silently would leave the user
+    convinced the model saw it.
+    """
+    image = image or ""
+    if not image:
+        return "", ""
+    if not getattr(settings, "image_support", False):
+        return "", ""
+    try:
+        payload = image.split(",", 1)[-1]
+        raw = base64.b64decode(payload, validate=True)
+    except Exception:
+        return "", "The attached file could not be read."
+    max_bytes = int(getattr(settings, "max_image_size_kb", 0) or 0) * 1024
+    if max_bytes and len(raw) > max_bytes:
+        return "", (
+            f"The attached image is too large. The maximum is "
+            f"{getattr(settings, 'max_image_size_kb', 0)} KB."
+        )
+    return image, ""
 
 #: Where a finished turn is parked for the polling fallback.
 TURN_CACHE_KEY = "albanna:turn:{stream_id}"
@@ -118,22 +147,9 @@ def ask(
     from albanna.services.settings_service import get_settings
 
     settings = get_settings()
-    if not settings.image_support:
-        image = ""
-
-    # Size check.
-    if image:
-        import base64
-
-        try:
-            # strip data URL prefix
-            payload = image.split(",", 1)[-1]
-            raw = base64.b64decode(payload, validate=True)
-        except Exception:
-            image = ""
-        else:
-            if len(raw) > settings.max_image_size_kb * 1024:
-                return {"status": "error", "error": "Image is too large."}
+    image, error = _prepare_image(image, settings)
+    if error:
+        return {"status": "error", "error": error}
 
     request = TurnRequest(
         question=question or "",
@@ -170,20 +186,9 @@ def ask_stream(
     check_turn_allowed(str(frappe.session.user or ""), SURFACE_STREAM)
 
     settings = get_settings()
-    if not settings.image_support:
-        image = ""
-
-    if image:
-        import base64
-
-        try:
-            payload = image.split(",", 1)[-1]
-            raw = base64.b64decode(payload, validate=True)
-        except Exception:
-            image = ""
-        else:
-            if len(raw) > settings.max_image_size_kb * 1024:
-                return {"status": "error", "error": "Image is too large."}
+    image, error = _prepare_image(image, settings)
+    if error:
+        return {"status": "error", "error": error}
 
     stream_id = uuid.uuid4().hex
 

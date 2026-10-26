@@ -11,6 +11,7 @@ const props = defineProps({
 	image: { type: String, default: "" },
 	fileName: { type: String, default: "" },
 	imageSupport: { type: Boolean, default: false },
+	maxImageSizeKb: { type: Number, default: 0 },
 });
 
 const emit = defineEmits(["update:modelValue", "send", "stop", "update:image", "update:fileName"]);
@@ -84,6 +85,7 @@ function onKeydown(event) {
 }
 
 function submit() {
+	noticeText.value = "";
 	if (props.busy || !props.canChat) return;
 	const question = (props.modelValue || "").trim();
 	if (!question && !props.image) return;
@@ -100,13 +102,20 @@ function onAction() {
 }
 
 const uploading = ref(false);
+const noticeText = ref("");
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const ATTACHABLE_TYPES = ["image/", "application/pdf"];
 
 function attachFile(file) {
 	if (!file) return;
-	if (file.size > MAX_IMAGE_BYTES) {
-		emit("update:image", "");
+	noticeText.value = "";
+	if (!ATTACHABLE_TYPES.some((t) => file.type.startsWith(t))) {
+		noticeText.value = __("Only images and PDFs can be attached.");
+		return;
+	}
+	const max = props.maxImageSizeKb > 0 ? props.maxImageSizeKb * 1024 : 0;
+	if (max && file.size > max) {
+		noticeText.value = __("The file is larger than {0} KB.", [props.maxImageSizeKb]);
 		return;
 	}
 	uploading.value = true;
@@ -146,8 +155,13 @@ function onPaste(event) {
 
 function onDrop(event) {
 	event.preventDefault();
+	noticeText.value = "";
 	const files = event.dataTransfer && event.dataTransfer.files;
-	if (files && files.length) attachFile(files[0]);
+	if (!files || !files.length) return;
+	if (files.length > 1) {
+		noticeText.value = __("One file at a time — attaching the first.");
+	}
+	attachFile(files[0]);
 }
 
 function onDragOver(event) {
@@ -155,6 +169,7 @@ function onDragOver(event) {
 }
 
 function removeImage() {
+	noticeText.value = "";
 	emit("update:image", "");
 	emit("update:fileName", "");
 }
@@ -166,7 +181,8 @@ function openFilePicker() {
 
 <template>
 	<div class="albanna-chat__composer">
-		<div v-if="image || uploading" class="albanna-chat__attach-preview">
+		<div v-if="image || uploading || noticeText" class="albanna-chat__attach-preview">
+			<span v-if="noticeText" class="albanna-chat__attach-notice">{{ noticeText }}</span>
 			<img
 				v-if="image && image.startsWith('data:image/')"
 				:src="image"
@@ -237,6 +253,7 @@ function openFilePicker() {
 			<input
 				ref="fileInput"
 				type="file"
+				accept="image/*,application/pdf"
 				class="albanna-chat__file-input"
 				@change="onFileChange"
 			/>

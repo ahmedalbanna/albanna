@@ -593,24 +593,42 @@ class ChatService:
                 return "Home/Attachments"
             return "Home"
 
+    #: The file types an attachment may carry.  Anything else is rejected
+    #: rather than stored with a guessed extension — a broad accept would
+    #: happily file away ``image/svg+xml`` (which executes as HTML) or
+    #: ``text/html`` under a ``.bin`` name the chromium postfix would not.
+    ATTACHABLE = {
+        "image/png": ".png",
+        "image/jpeg": ".jpg",
+        "image/webp": ".webp",
+        "image/gif": ".gif",
+        "application/pdf": ".pdf",
+    }
+
     def _store_image(self, image: str, user: str) -> str:
         """Store an attached file as a Frappe File and return its URL."""
         if not image:
             return ""
         try:
             import base64
-            import mimetypes
 
             header, payload = (image.split(",", 1) + [""])[:2]
             raw = base64.b64decode(payload, validate=True)
-            mime = header.split(";")[0].split(":")[-1].strip() if header.startswith("data:") else ""
-            ext = mimetypes.guess_extension(mime) or ".bin"
-            if ext == ".bin" and "image" in mime:
-                ext = ".png"
+            mime = (
+                header.split(";")[0].split(":")[-1].strip()
+                if header.startswith("data:")
+                else ""
+            )
+            ext = self.ATTACHABLE.get(mime)
+            if ext is None:
+                logger.warning(
+                    "Rejected an attached file of unsupported type %r", mime or "(none)"
+                )
+                return ""
             filename = f"albanna-{frappe.generate_hash(length=8)}{ext}"
             folder = self._ensure_albanna_folder()
             saved = frappe.utils.file_manager.save_file(
-                filename, raw, "User", user, is_private=0, folder=folder
+                filename, raw, "User", user, is_private=1, folder=folder
             )
             return str(getattr(saved, "file_url", "") or "")
         except Exception:

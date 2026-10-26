@@ -2891,6 +2891,7 @@ onBeforeUnmount(() => {
 			v-model="draft"
 			:image="attachedImage"
 			:image-support="config && config.image_support"
+			:max-image-size-kb="config && config.max_image_size_kb"
 			:busy="busy"
 			:can-chat="canChat"
 			@update:image="attachedImage = $event"
