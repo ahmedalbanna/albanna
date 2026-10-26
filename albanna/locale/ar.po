@@ -148,8 +148,6 @@ msgstr "تلك المحادثة تخصّ شخصاً آخر."
 msgid "A conversation's owner cannot be changed."
 msgstr "لا يمكن تغيير مالك المحادثة."
 
-msgid "The value in {0} is stored in plain text. Clear the field, save, and enter the key again."
-msgstr "القيمة في {0} مخزّنة كنص صريح. امسح الحقل واحفظ ثم أعد إدخال المفتاح."
 
 msgid "Something went wrong."
 msgstr "حدث خطأ ما."
@@ -1058,3 +1056,24 @@ msgstr "إيقاف الاستماع"
 
 msgid "Uploading…"
 msgstr "جارٍ الرفع…"
+
+msgid "Attached file"
+msgstr "ملف مرفق"
+
+msgid "Image URL"
+msgstr "رابط الصورة"
+
+msgid "Image attachments are not enabled on this site."
+msgstr "إرفاق الصور غير مُفعّل على هذا الموقع."
+
+msgid "One file at a time — attaching the first."
+msgstr "ملف واحد في كل مرة — سيتم إرفاق الأول."
+
+msgid "Only images and PDFs can be attached."
+msgstr "يمكن إرفاق الصور وملفات PDF فقط."
+
+msgid "The file is larger than {0} KB."
+msgstr "حجم الملف أكبر من {0} كيلوبايت."
+
+msgid "The {0} was stored in plain text and has been encrypted."
+msgstr "كان {0} مخزّنًا كنص صريح، وتم تشفيره الآن."

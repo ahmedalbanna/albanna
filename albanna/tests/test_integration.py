@@ -1957,3 +1957,136 @@ class TestWriteApproval(TestToolPath):
             any(t.get("approved") is False for t in outcome.tool_calls),
             "a timed-out write must be recorded as not approved",
         )
+
+
+@pytest.mark.integration
+class TestTheSettingsHealAPlainTextKey(FrappeTestCase):
+    """A key that was stored in the clear is repaired, not refused.
+
+    The old behaviour was to throw, which left the operator with a
+    document they could not save *and* the secret still sitting in the
+    table — the worst of both.  A repair that happens on the next
+    ordinary save needs no operator action at all.
+    """
+
+    DOCTYPE = "Albanna Settings"
+    NAME = "Albanna Settings"
+
+    def setUp(self):
+        super().setUp()
+        # The settings are a Single, so writing one touches every reader
+        # on the site: the test runs as the operator who owns it.
+        self._original_user = frappe.session.user
+        frappe.set_user("Administrator")
+        self._snapshot()
+
+    def tearDown(self):
+        self._restore()
+        frappe.set_user(self._original_user)
+        super().tearDown()
+
+    # -- the secret store ------------------------------------------------
+
+    def _secret(self, fieldname):
+        """What the encrypted store holds, or None."""
+        from frappe.utils.password import get_decrypted_password
+
+        return get_decrypted_password(
+            self.DOCTYPE, self.NAME, fieldname, raise_exception=False
+        )
+
+    def _column(self, fieldname):
+        return frappe.db.get_single_value(self.DOCTYPE, fieldname, cache=False)
+
+    def _snapshot(self):
+        self._saved = {
+            fieldname: (self._secret(fieldname), self._column(fieldname))
+            for fieldname in ("api_key", "fallback_api_key")
+        }
+
+    def _restore(self):
+        from frappe.utils.password import remove_encrypted_password, set_encrypted_password
+
+        for fieldname, (secret, column) in self._saved.items():
+            remove_encrypted_password(self.DOCTYPE, self.NAME, fieldname)
+            if secret is not None:
+                set_encrypted_password(self.DOCTYPE, self.NAME, secret, fieldname)
+            frappe.db.set_single_value(self.DOCTYPE, fieldname, column or "")
+
+    # -- the tests -------------------------------------------------------
+
+    def test_a_plain_text_key_is_encrypted_and_masked_on_save(self):
+        frappe.db.set_single_value(self.DOCTYPE, "api_key", "sk-plain-text-secret")
+
+        doc = frappe.get_single(self.DOCTYPE)
+        doc.api_key = "sk-plain-text-secret"
+        doc.save()
+
+        self.assertNotIn(
+            "sk-plain-text-secret",
+            str(self._column("api_key") or ""),
+            "the plain text must not survive in the column",
+        )
+        self.assertEqual(
+            self._secret("api_key"),
+            "sk-plain-text-secret",
+            "the key must be readable from the encrypted store",
+        )
+
+    def test_a_plain_text_key_no_longer_blocks_the_save(self):
+        """The regression itself: the save must go through."""
+        frappe.db.set_single_value(self.DOCTYPE, "api_key", "sk-another-secret")
+
+        doc = frappe.get_single(self.DOCTYPE)
+        doc.api_key = "sk-another-secret"
+        # The old code raised ValidationError here.
+        doc.save()
+
+        self.assertTrue(doc.name, "the settings document must still save")
+
+    def test_a_mask_is_left_alone(self):
+        """A saved key must not be re-encrypted as the literal asterisks."""
+        from frappe.utils.password import set_encrypted_password
+
+        set_encrypted_password(
+            self.DOCTYPE, self.NAME, "sk-a-real-key", "api_key"
+        )
+
+        doc = frappe.get_single(self.DOCTYPE)
+        doc.api_key = "*" * 10
+        doc.validate()
+
+        self.assertEqual(
+            self._secret("api_key"),
+            "sk-a-real-key",
+            "a mask means 'unchanged' and must not overwrite the key",
+        )
+
+    def test_the_settings_service_can_still_read_the_key(self):
+        """The whole point: the reader gets the key back, not the mask."""
+        from frappe.utils.password import set_encrypted_password
+
+        set_encrypted_password(
+            self.DOCTYPE, self.NAME, "sk-read-back", "api_key"
+        )
+
+        settings = get_settings(refresh=True)
+        self.assertEqual(settings.provider.api_key, "sk-read-back")
+
+    def test_the_plain_text_is_never_written_to_the_table(self):
+        """The stronger half of the fix: validate masks before db_insert.
+
+        A save that only cleaned up *afterwards* would still leave the
+        plain text in ``tabSingles`` for as long as the request ran.
+        """
+        frappe.db.set_single_value(self.DOCTYPE, "api_key", "sk-never-stored")
+
+        doc = frappe.get_single(self.DOCTYPE)
+        doc.api_key = "sk-never-stored"
+        doc.validate()
+
+        self.assertEqual(
+            doc.api_key,
+            "*" * 10,
+            "validate must mask the value before the document is written",
+        )

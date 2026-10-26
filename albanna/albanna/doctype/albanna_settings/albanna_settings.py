@@ -1,15 +1,18 @@
 """``Albanna Settings`` — the Single that holds the site's configuration.
 
 The controller exists for one reason: the API key.  A ``Password`` field
-stores its value in two halves — the ciphertext in the ``__Auth`` table and
-a mask in the column — and Frappe v16 has no ``Document.set_password``.
+stores its value in two halves — the ciphertext in ``tabAuth`` and a mask
+in the column — and Frappe v16 has no ``Document.set_password``.
 Saving a document with a ``Password`` field through the ORM writes the
 *plaintext* into the column, which is exactly the thing that must not
 happen to a credential.
 
-So the key is written after the save, through the encryption API, and the
-column is left holding the mask.  The controller is the only place that
-knows this, and the only place it needs to be known.
+So the key is written during ``validate``, through the encryption API,
+and the column is left holding the mask.  ``validate`` runs after
+``set_new_name`` and before ``db_insert``, so the plain text never
+reaches the table at all — not even briefly.  The same pass repairs a
+key that was already stored in the clear.  The controller is the only
+place that knows this, and the only place it needs to be known.
 """
 
 import frappe
@@ -20,40 +23,74 @@ class AlbannaSettings(Document):
     """Site-wide settings for the Albanna side chat."""
 
     def validate(self):
-        self._enforce_one_key()
+        self._secure_secrets()
         self._enforce_valid_options()
         self._clamp_approval_wait()
 
     def on_update(self):
+        # ``validate`` has already moved the secrets, so this is a no-op
+        # for an ordinary save.  It stays because a save made with
+        # ``ignore_validate`` skips ``validate`` — and a key that skipped
+        # the one place that knows how to store it must still be stored.
         self._store_secret("api_key", self.api_key)
         self._store_secret("fallback_api_key", self.fallback_api_key)
 
     # -- helpers ----------------------------------------------------------
 
-    def _enforce_one_key(self):
-        """Reject a document that carries a secret in a plain column.
+    def _secure_secrets(self):
+        """Leave no secret in the plain column, whatever the operator typed.
 
-        A ``Password`` field is masked in the column, so a value that is not
-        a mask means the value was written in the clear — either by a script
-        that used ``db_set`` or by a hand-edited row.  Refusing to save is
-        the only response that does not leave the secret sitting in the
-        table in plain text.
+        A ``Password`` field stores its value in two halves: the ciphertext
+        in ``tabAuth`` and a mask in the column.  Saving through the ORM
+        writes the *plaintext* into the column, which is the one thing that
+        must not happen to a credential.
+
+        So the value is encrypted *here*, during ``validate``, and the
+        column is replaced with the mask.  ``validate`` runs after
+        ``set_new_name`` and before ``db_insert``, so the plain text is
+        never written to the table at all — not even briefly.
+
+        The same pass repairs a document that is already wrong.  When the
+        column holds a secret in the clear — a script that used
+        ``db_set``, a hand-edited row, or a save that failed before the
+        key could be moved — the value is moved now, and the operator is
+        told.  Refusing to save instead would leave them with a document
+        they cannot save *and* the secret still sitting in the table,
+        which is the worst of both.
         """
         for fieldname in ("api_key", "fallback_api_key"):
             value = self.get(fieldname)
-            if not value:
+            if not value or _is_mask(value):
                 continue
-            if self.is_new() and not frappe.db.exists("__Auth", {"parent": self.name, "parenttype": self.doctype, "parentfield": fieldname}):
-                # A new document legitimately has no stored secret yet.
-                continue
-            if not _is_mask(value):
-                frappe.throw(
+
+            stored = self._stored_value(fieldname)
+            if stored is not None and not _is_mask(stored):
+                frappe.msgprint(
                     frappe._(
-                        "The value in {0} is stored in plain text. "
-                        "Clear the field, save, and enter the key again."
+                        "The {0} was stored in plain text and has been encrypted."
                     ).format(fieldname),
-                    frappe.ValidationError,
+                    indicator="green",
+                    alert=True,
                 )
+
+            self._encrypt(fieldname, value)
+
+    def _stored_value(self, fieldname: str):
+        """What the table holds right now, mask or secret, or None."""
+        try:
+            return frappe.db.get_single_value(self.doctype, fieldname, cache=False)
+        except Exception:
+            # A settings document that has never been saved, or a column
+            # that does not exist yet: either way there is nothing stored
+            # in the clear to repair.
+            return None
+
+    def _encrypt(self, fieldname: str, value: str):
+        """Write a secret into ``tabAuth`` and leave a mask in the column."""
+        from frappe.utils.password import set_encrypted_password
+
+        set_encrypted_password(self.doctype, self.name, value, fieldname)
+        self.set(fieldname, "*" * 10)
 
     def _clamp_approval_wait(self):
         """Keep the approval wait inside the bounds the wait itself honours.
@@ -125,7 +162,16 @@ class AlbannaSettings(Document):
             )
 
     def _store_secret(self, fieldname: str, value: str | None):
-        """Write a secret into ``__Auth`` and leave a mask in the column."""
+        """Write a secret into ``tabAuth`` and leave a mask in the column.
+
+        The fallback for a save made with ``ignore_validate``, which
+        skips :meth:`_secure_secrets`.  An ordinary save has already been
+        through that, so the value is a mask here and this returns.
+
+        The document is already written by the time this runs, so the mask
+        has to reach the table with its own write rather than with the
+        in-memory change :meth:`_encrypt` makes.
+        """
         if not value:
             return
         if _is_mask(value):
