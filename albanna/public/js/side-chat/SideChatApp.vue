@@ -442,6 +442,29 @@ async function undoTurn(message) {
 		);
 	}
 }
+const expandedSources = ref(new Set());
+
+function isSourcesExpanded(message) {
+	return expandedSources.value.has(message.id);
+}
+
+function toggleSources(message) {
+	const set = new Set(expandedSources.value);
+	if (set.has(message.id)) {
+		set.delete(message.id);
+	} else {
+		set.add(message.id);
+	}
+	expandedSources.value = set;
+}
+
+function sourcesToShow(message) {
+	if (!message || !Array.isArray(message.documents)) return [];
+	if (isSourcesExpanded(message) || message.documents.length <= 3) {
+		return message.documents;
+	}
+	return message.documents.slice(0, 3);
+}
 function nextId() {
 	messageCounter += 1;
 	return `m${messageCounter}`;
@@ -2453,14 +2476,29 @@ onBeforeUnmount(() => {
 						class="albanna-chat__sources"
 					>
 						<span class="albanna-chat__sources-label">{{ __("Sources") }}:</span>
-						<button
-							v-for="(doc, index) in message.documents"
+						<template
+							v-for="(doc, index) in sourcesToShow(message)"
 							:key="index"
-							type="button"
-							class="albanna-chat__source"
-							@click="openSource(doc)"
 						>
-							{{ doc.doctype }} {{ doc.name }}
+							<button
+								type="button"
+								class="albanna-chat__source"
+								@click="openSource(doc)"
+							>
+								{{ doc.doctype }} {{ doc.name }}
+							</button>
+						</template>
+						<button
+							v-if="message.documents.length > 3"
+							type="button"
+							class="albanna-chat__source-toggle"
+							@click="toggleSources(message)"
+						>
+							{{
+								isSourcesExpanded(message)
+									? __("See less")
+									: __("See more ({0})", [message.documents.length - 3])
+							}}
 						</button>
 					</div>
 

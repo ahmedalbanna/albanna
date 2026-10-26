@@ -1010,3 +1010,10 @@ msgstr "{0} متأخر {1} — هل تريد مني صياغة تذكيرات؟"
 
 msgid "Dry run — nothing was saved."
 msgstr "تشغيل تجريبي — لم يُحفظ شيء."
+
+
+msgid "See less"
+msgstr "عرض أقل"
+
+msgid "See more ({0})"
+msgstr "عرض المزيد ({0})"
