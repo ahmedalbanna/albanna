@@ -927,6 +927,12 @@ def tool_entry(call: ToolCall, result: ToolResult) -> dict[str, Any]:
             "name": str(data.get("name") or call.arguments.get("name") or "").strip(),
             "data": data.get("before"),
         }
+    # A submitted document is taken back by cancelling it.
+    if call.name == "submit_doc" and result.ok:
+        doctype = str(call.arguments.get("doctype") or "").strip()
+        docname = str(call.arguments.get("name") or "").strip()
+        if doctype and docname:
+            entry["undo"] = {"action": "cancel", "doctype": doctype, "name": docname}
     return entry
 
 

@@ -985,3 +985,10 @@ msgstr "لا شيء للتراجع عنه."
 
 msgid "Could not undo this turn."
 msgstr "تعذّر التراجع عن هذا الدور."
+
+
+msgid "Copy this {0} from the last one for {1}"
+msgstr "نسخ هذا {0} من آخر واحد لـ {1}"
+
+msgid "What fields are required for this {0}?"
+msgstr "ما الحقول المطلوبة لهذا {0}؟"

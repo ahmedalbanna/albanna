@@ -363,6 +363,11 @@ def undo_turn(conversation: str = "", message: str = "") -> dict:
                         doc.set(field, value)
                     doc.save()
                     undone.append({"action": "reverted", "doctype": doctype, "name": name})
+            elif action == "cancel":
+                doc = frappe.get_doc(doctype, name)
+                if doc.docstatus == 1:
+                    doc.cancel()
+                    undone.append({"action": "cancelled", "doctype": doctype, "name": name})
         except Exception as exc:
             frappe.log_error(str(exc), "Albanna undo")
             break

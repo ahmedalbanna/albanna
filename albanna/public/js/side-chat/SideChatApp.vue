@@ -343,6 +343,25 @@ const examples = computed(() => {
 				__("What is the total of this {0}?", [document.doctype]),
 			];
 		}
+		// A brand-new document: offer to seed it from the last similar one.
+		let party = "";
+		try {
+			const frm = window.cur_frm;
+			if (frm && frm.doc) {
+				party = frm.doc.customer || frm.doc.supplier || frm.doc.party || "";
+			}
+		} catch (error) {
+			party = "";
+		}
+		if (party && context.doctype) {
+			return [
+				__("Copy this {0} from the last one for {1}", [context.doctype, party]),
+				__("What fields are required for this {0}?", [context.doctype]),
+			];
+		}
+		return [
+			__("What fields are required for this {0}?", [context.doctype]),
+		];
 	}
 
 	if (set === "list" && context.doctype) {
