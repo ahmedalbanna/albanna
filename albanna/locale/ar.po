@@ -1054,3 +1054,7 @@ msgstr "إدخال صوتي"
 
 msgid "Stop listening"
 msgstr "إيقاف الاستماع"
+
+
+msgid "Uploading…"
+msgstr "جارٍ الرفع…"

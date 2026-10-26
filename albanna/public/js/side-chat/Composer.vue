@@ -99,15 +99,22 @@ function onAction() {
 	submit();
 }
 
+const uploading = ref(false);
+
 function attachFile(file) {
 	if (!file || !file.type.startsWith("image/")) return;
 	if (file.size > MAX_IMAGE_BYTES) {
 		emit("update:image", "");
 		return;
 	}
+	uploading.value = true;
 	const reader = new FileReader();
 	reader.onload = () => {
+		uploading.value = false;
 		emit("update:image", String(reader.result || ""));
+	};
+	reader.onerror = () => {
+		uploading.value = false;
 	};
 	reader.readAsDataURL(file);
 }
@@ -155,9 +162,11 @@ function openFilePicker() {
 
 <template>
 	<div class="albanna-chat__composer">
-		<div v-if="image" class="albanna-chat__attach-preview">
-			<img :src="image" alt="" class="albanna-chat__attach-thumb" />
+		<div v-if="image || uploading" class="albanna-chat__attach-preview">
+			<img v-if="image" :src="image" alt="" class="albanna-chat__attach-thumb" />
+			<span v-else class="albanna-chat__attach-uploading">{{ __("Uploading…") }}</span>
 			<button
+				v-if="image"
 				type="button"
 				class="albanna-chat__attach-remove"
 				:aria-label="__('Remove image')"

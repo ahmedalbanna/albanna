@@ -269,14 +269,19 @@ class ChatService:
                     f"set it as a document's image, use this URL as the field "
                     f"value (e.g. image = \"{image_url}\")."
                 )
-                request = TurnRequest(
-                    question=request.question,
-                    conversation_id=request.conversation_id,
-                    page=request.page,
-                    page_context=(request.page_context or "") + extra,
-                    stream=request.stream,
-                    image=request.image,
+            else:
+                extra = (
+                    "\n\nAn image was attached to this question but could not be "
+                    "stored as a file. Do not attempt to set it as an image."
                 )
+            request = TurnRequest(
+                question=request.question,
+                conversation_id=request.conversation_id,
+                page=request.page,
+                page_context=(request.page_context or "") + extra,
+                stream=request.stream,
+                image=request.image,
+            )
 
         history = load_messages(conversation, settings.history_limit)
         company = default_company()
