@@ -1630,24 +1630,32 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__attach-thumb {
 	max-height: 80px;
 	max-width: 100%;
-	border-radius: 6px;
+	border-radius: 8px;
 	border: 1px solid var(--albanna-border, #ededed);
+	box-shadow: var(--albanna-shadow, 0 2px 8px rgba(0, 0, 0, 0.1));
 }
 
 .albanna-chat__attach-remove {
 	position: absolute;
-	top: 2px;
-	inset-inline-end: 2px;
-	width: 20px;
-	height: 20px;
+	top: 4px;
+	inset-inline-end: 4px;
+	width: 22px;
+	height: 22px;
 	border: 0;
 	border-radius: 50%;
-	background: rgba(0, 0, 0, 0.6);
-	color: #ffffff;
+	background: rgba(0, 0, 0, 0.65);
+	color: var(--albanna-on-accent, #ffffff);
 	cursor: pointer;
 	font-size: 14px;
 	line-height: 1;
 	padding: 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.albanna-chat__attach-remove:hover {
+	background: rgba(0, 0, 0, 0.8);
 }
 
 .albanna-chat__attach {
@@ -1655,15 +1663,41 @@ body.albanna-side-chat-docked-inline-start {
 	background: transparent;
 	color: var(--albanna-muted, #6c7680);
 	cursor: pointer;
-	padding: 4px;
-	border-radius: 4px;
+	padding: 6px;
+	border-radius: 50%;
 	display: inline-flex;
 	align-items: center;
+	justify-content: center;
+	min-width: 32px;
+	min-height: 32px;
+	transition: background 120ms ease, color 120ms ease;
 }
 
 .albanna-chat__attach:hover {
 	color: var(--albanna-text, #1f2328);
 	background: var(--albanna-hover, #f3f3f3);
+}
+
+.albanna-chat__attach:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.albanna-chat__attach-file {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 8px;
+	font-size: 12px;
+	color: var(--albanna-text, #1f2328);
+	background: var(--albanna-hover, #f3f3f3);
+	border-radius: 6px;
+}
+
+.albanna-chat__attach-uploading {
+	font-size: 12px;
+	color: var(--albanna-muted, #6c7680);
+	padding: 4px 8px;
 }
 
 .albanna-chat__file-input {
