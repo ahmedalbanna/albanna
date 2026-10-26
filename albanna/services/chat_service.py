@@ -263,7 +263,12 @@ class ChatService:
         if request.image:
             image_url = self._store_image(request.image, principal.user)
             if image_url:
-                extra = f"\n\nAn image was attached to this question. Its Frappe file URL is: {image_url}"
+                extra = (
+                    f"\n\nAn image was attached to this question and stored as a "
+                    f"Frappe File. Its URL is: {image_url}. If the user asks to "
+                    f"set it as a document's image, use this URL as the field "
+                    f"value (e.g. image = \"{image_url}\")."
+                )
                 request = TurnRequest(
                     question=request.question,
                     conversation_id=request.conversation_id,
@@ -575,7 +580,7 @@ class ChatService:
             payload = image.split(",", 1)[-1]
             raw = base64.b64decode(payload, validate=True)
             saved = frappe.utils.file_manager.save_file(
-                "albanna-attachment.png", raw, "User", user, is_private=1
+                "albanna-attachment.png", raw, "User", user, is_private=0
             )
             return str(getattr(saved, "file_url", "") or "")
         except Exception:
