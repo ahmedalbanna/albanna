@@ -1669,3 +1669,30 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__file-input {
 	display: none;
 }
+
+/* Voice input. */
+.albanna-chat__voice {
+	border: 0;
+	background: transparent;
+	color: var(--albanna-muted, #6c7680);
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 4px;
+	display: inline-flex;
+	align-items: center;
+}
+
+.albanna-chat__voice:hover {
+	color: var(--albanna-text, #1f2328);
+	background: var(--albanna-hover, #f3f3f3);
+}
+
+.albanna-chat__voice--listening {
+	color: var(--albanna-danger, #d13b34);
+	animation: albanna-pulse 1s ease-in-out infinite;
+}
+
+@keyframes albanna-pulse {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.4; }
+}

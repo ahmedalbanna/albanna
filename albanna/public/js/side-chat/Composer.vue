@@ -17,6 +17,52 @@ const emit = defineEmits(["update:modelValue", "send", "stop", "update:image"]);
 const inputEl = ref(null);
 const fileInput = ref(null);
 
+const speechSupported = ref(
+	typeof window !== "undefined" &&
+		!!(window.SpeechRecognition || window.webkitSpeechRecognition),
+);
+const listening = ref(false);
+let recognition = null;
+
+function toggleVoice() {
+	if (!speechSupported.value || props.busy || !props.canChat) return;
+	if (listening.value) {
+		if (recognition) recognition.stop();
+		return;
+	}
+	const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
+	recognition = new Ctor();
+	recognition.continuous = false;
+	recognition.interimResults = true;
+	recognition.lang = (window.frappe && window.frappe.boot && window.frappe.boot.lang) || "en-US";
+	let finalText = props.modelValue || "";
+	recognition.onresult = (event) => {
+		let interim = "";
+		for (let i = event.resultIndex; i < event.results.length; i++) {
+			const transcript = event.results[i][0].transcript;
+			if (event.results[i].isFinal) {
+				finalText = (finalText ? finalText + " " : "") + transcript;
+			} else {
+				interim += transcript;
+			}
+		}
+		emit("update:modelValue", finalText + (interim ? " " + interim : ""));
+	};
+	recognition.onend = () => {
+		listening.value = false;
+		emit("update:modelValue", finalText.trim());
+	};
+	recognition.onerror = () => {
+		listening.value = false;
+	};
+	listening.value = true;
+	try {
+		recognition.start();
+	} catch (error) {
+		listening.value = false;
+	}
+}
+
 const MAX_HEIGHT = 140;
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
@@ -137,6 +183,23 @@ function openFilePicker() {
 				@keydown="onKeydown"
 				@paste="onPaste"
 			></textarea>
+			<button
+				v-if="speechSupported"
+				type="button"
+				class="albanna-chat__voice"
+				:class="{ 'albanna-chat__voice--listening': listening }"
+				:disabled="!canChat || busy"
+				:aria-label="listening ? __('Stop listening') : __('Voice input')"
+				:title="listening ? __('Stop listening') : __('Voice input')"
+				@click="toggleVoice"
+			>
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+					<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+					<path d="M19 10v2a7 7 0 0 1-14 0v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+					<line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+					<line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+				</svg>
+			</button>
 			<button
 				v-if="imageSupport"
 				type="button"

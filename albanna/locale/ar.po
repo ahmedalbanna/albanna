@@ -1047,3 +1047,10 @@ msgstr "هذا النموذج لا يمكنه رؤية الصور؛ تم تجا�
 
 msgid "Had Image"
 msgstr "احتوت صورة"
+
+
+msgid "Voice input"
+msgstr "إدخال صوتي"
+
+msgid "Stop listening"
+msgstr "إيقاف الاستماع"
