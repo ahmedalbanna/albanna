@@ -109,6 +109,13 @@ const ATTACHABLE_TYPES = ["image/", "application/pdf"];
 function attachFile(file) {
 	if (!file) return;
 	noticeText.value = "";
+	if (!props.imageSupport) {
+		/* The site has images switched off.  Accepting the file and letting
+		 * the server drop it later is how a user ends up believing the
+		 * assistant saw a picture it never received. */
+		noticeText.value = __("Image attachments are not enabled on this site.");
+		return;
+	}
 	if (!ATTACHABLE_TYPES.some((t) => file.type.startsWith(t))) {
 		noticeText.value = __("Only images and PDFs can be attached.");
 		return;

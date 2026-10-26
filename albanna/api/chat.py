@@ -55,7 +55,11 @@ def _prepare_image(image: str, settings: Any) -> tuple[str, str]:
     if not image:
         return "", ""
     if not getattr(settings, "image_support", False):
-        return "", ""
+        # The site has images switched off.  Saying so is the whole point:
+        # dropping the attachment quietly leaves the reader believing the
+        # model saw a picture it never received, and the model — which
+        # really did receive nothing — says exactly that.
+        return "", "Image attachments are not enabled on this site."
     try:
         payload = image.split(",", 1)[-1]
         raw = base64.b64decode(payload, validate=True)

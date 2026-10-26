@@ -40,12 +40,16 @@ def test_empty_image_passes_through():
     assert error == ""
 
 
-def test_off_site_strips_the_image():
-    """When the operator has turned image support off, the attachment is
-    dropped before anything else — the size ceiling never gets a vote."""
+def test_off_site_says_so_instead_of_dropping_it():
+    """When the operator has turned image support off, the reader is told.
+
+    The attachment used to be dropped silently, and the model — which
+    received no image — answered "you have not provided one".  That is a
+    lie the reader could not see through, so the refusal is explicit now.
+    """
     image, error = _prepare_image(_data_url(), _settings(image_support=False))
     assert image == ""
-    assert error == ""
+    assert "not enabled" in error
 
 
 def test_a_good_image_passes():
