@@ -175,8 +175,8 @@ msgid "Try again"
 msgstr "أعد المحاولة"
 
 
-msgid "Copy the answer"
-msgstr "نسخ الإجابة"
+msgid "Copy as Markdown"
+msgstr "نسخ كـ Markdown"
 
 
 msgid "Jump to the latest"

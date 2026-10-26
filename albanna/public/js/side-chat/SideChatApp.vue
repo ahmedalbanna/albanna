@@ -1621,7 +1621,12 @@ function downloadTable(message) {
  * @param {object} message the message
  */
 async function copyAnswer(message) {
-	const text = message.content || "";
+	let text = message.content || "";
+	if (message.documents && message.documents.length) {
+		text += "\n\n**Sources:**\n" + message.documents
+			.map((doc) => `- ${doc.doctype} ${doc.name}`)
+			.join("\n");
+	}
 	if (!text) return;
 	try {
 		await navigator.clipboard.writeText(text);
@@ -2513,8 +2518,8 @@ onBeforeUnmount(() => {
 							v-if="message.role === 'assistant' && message.content"
 							type="button"
 							class="albanna-chat__copy"
-							:aria-label="__('Copy the answer')"
-							:title="__('Copy the answer')"
+							:aria-label="__('Copy as Markdown')"
+							:title="__('Copy as Markdown')"
 							@click="copyAnswer(message)"
 						>
 							<svg
