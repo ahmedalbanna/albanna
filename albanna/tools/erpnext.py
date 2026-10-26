@@ -676,6 +676,10 @@ def create_doc(doctype: str, data: Any, submit: bool = False) -> str:
     try:
         document = frappe.get_doc({"doctype": doctype, **data})
         document.insert()
+        # The attachments are adopted now that the document has a name to
+        # be attached to.
+        if _adopt_attachments(document, dict(data)):
+            document.save()
     except Exception as exc:
         return _create_refusal(exc, doctype, savepoint)
 
@@ -770,6 +774,8 @@ def update_doc(doctype: str, name: str, data: Any, submit: bool = False) -> str:
             name=name,
         )
 
+    _adopt_attachments(document, changes)
+
     # The values the document held before this change, so that the change
     # can be taken back.  Only the fields that actually changed are kept.
     before = {field: document.get(field) for field in changes}
@@ -845,6 +851,75 @@ def _load_for_update(doctype: str, name: str, data: dict[str, Any]):
         return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
 
 
+#: The field types that hold a file, and so need the file to belong to
+#: the document rather than to whoever happened to upload it.
+ATTACH_FIELDTYPES = ("Attach", "Attach Image")
+
+
+def _file_for_url(file_url: str):
+    """The File document behind a ``/files/`` or ``/private/files/`` URL."""
+    if not isinstance(file_url, str) or not file_url.startswith(("/files/", "/private/files/")):
+        return None
+    name = frappe.db.get_value("File", {"file_url": file_url}, "name")
+    if not name:
+        return None
+    try:
+        return frappe.get_doc("File", name)
+    except Exception:
+        return None
+
+
+def _adopt_attachments(document, changes: dict[str, Any]) -> dict[str, Any]:
+    """Make every attached file the document's own, as an upload would.
+
+    A file the chat stored is private and attached to the person who
+    attached it: it renders in their session and nowhere else, so the
+    Desk preview of an image behind a private URL is a broken image for
+    everybody else.  An image set on a document is not that -- it is the
+    document's picture, and it has to render for everyone who may read
+    the document.
+
+    So the document gets its own copy: the same bytes, a public file
+    attached to this document, which is what a person uploading through
+    the form produces.  Frappe's own attach hook then finds that row
+    already attached to this document and leaves it alone -- without
+    this, the hook makes a second copy of its own and the field is left
+    holding the private URL that does not render.
+
+    The chat's own attachment is left as it is: private, and the
+    uploader's.  Only the copy the document owns is public.
+    """
+    for fieldname, value in list(changes.items()):
+        if not isinstance(value, str) or not value.startswith(("/files/", "/private/files/")):
+            continue
+        df = document.meta.get_field(fieldname)
+        if df is None or df.fieldtype not in ATTACH_FIELDTYPES:
+            continue
+        source = _file_for_url(value)
+        if source is None:
+            continue
+        try:
+            content = source.get_content()
+            if isinstance(content, str):
+                content = content.encode()
+            owned = frappe.utils.file_manager.save_file(
+                source.file_name,
+                content,
+                document.doctype,
+                document.name,
+                folder="Home/Attachments",
+                is_private=0,
+                df=fieldname,
+            )
+        except Exception:
+            # A file that cannot be copied still saves as a value: the
+            # reader sees the URL and the image may not render, which is
+            # better than refusing the whole change.
+            continue
+        changes[fieldname] = str(getattr(owned, "file_url", "") or value)
+    return changes
+
+
 def _apply_update(document, changes: dict[str, Any], doctype: str, name: str) -> str | None:
     """Save the change, or say why it could not be saved.
 
@@ -855,6 +930,7 @@ def _apply_update(document, changes: dict[str, Any], doctype: str, name: str) ->
     try:
         # `update` assigns `name` first when it is present, so it is never
         # present: the protected fields were refused above.
+        document.reload()
         document.update(changes)
         document.save()
     except frappe.PermissionError as exc:
@@ -1294,9 +1370,12 @@ def bulk_update_doc(doctype: str, filters: Any, data: Any, limit: int = 50) -> s
                 failed.append(f"{name}: submitted")
                 _rollback_to(savepoint)
                 continue
-            document.update(data)
-            document.save()
-            changed += 1
+            changes = _actual_changes(document, data)
+            if changes:
+                _adopt_attachments(document, changes)
+                document.update(changes)
+                document.save()
+                changed += 1
         except Exception as exc:
             _rollback_to(savepoint)
             failed.append(f"{name}: {exc}")
