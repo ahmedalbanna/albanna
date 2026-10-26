@@ -570,6 +570,23 @@ class ChatService:
 
     # -- the tools --------------------------------------------------------
 
+    def _ensure_albanna_folder(self) -> str:
+        """Ensure the 'Home/Albanna' folder exists and return its name."""
+        folder_name = "Home/Albanna"
+        if frappe.db.exists("File", folder_name):
+            return folder_name
+        try:
+            folder = frappe.new_doc("File")
+            folder.file_name = "Albanna"
+            folder.is_folder = 1
+            folder.folder = "Home"
+            folder.insert(ignore_permissions=True)
+            return folder.name
+        except Exception:
+            if frappe.db.exists("File", "Home/Attachments"):
+                return "Home/Attachments"
+            return "Home"
+
     def _store_image(self, image: str, user: str) -> str:
         """Store an attached image as a Frappe File and return its URL."""
         if not image:
@@ -579,8 +596,14 @@ class ChatService:
 
             payload = image.split(",", 1)[-1]
             raw = base64.b64decode(payload, validate=True)
+            folder = self._ensure_albanna_folder()
             saved = frappe.utils.file_manager.save_file(
-                "albanna-attachment.png", raw, "User", user, is_private=0
+                f"albanna-{frappe.generate_hash(length=8)}.png",
+                raw,
+                "User",
+                user,
+                is_private=0,
+                folder=folder,
             )
             return str(getattr(saved, "file_url", "") or "")
         except Exception:
