@@ -1017,3 +1017,7 @@ msgstr "عرض أقل"
 
 msgid "See more ({0})"
 msgstr "عرض المزيد ({0})"
+
+
+msgid "The answer could not be copied."
+msgstr "تعذّر نسخ الإجابة."

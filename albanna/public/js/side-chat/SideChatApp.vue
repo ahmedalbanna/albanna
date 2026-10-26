@@ -756,6 +756,8 @@ function noticeText(notice) {
 			return __("There is no table to copy.");
 		case "copy-failed":
 			return __("The table could not be copied.");
+		case "copy-answer-failed":
+			return __("The answer could not be copied.");
 		case "deleted":
 			return __("The conversation was deleted.");
 		case "started":
@@ -1629,14 +1631,43 @@ async function copyAnswer(message) {
 	}
 	if (!text) return;
 	try {
-		await navigator.clipboard.writeText(text);
+		if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+			await navigator.clipboard.writeText(text);
+		} else {
+			fallbackCopy(text);
+		}
 		copiedId.value = message.id;
 		window.setTimeout(() => {
 			if (copiedId.value === message.id) copiedId.value = "";
 		}, 1600);
 	} catch (failure) {
-		state.notice = "copy-failed";
+		// Fall back to the legacy path: some Desk contexts (iframes,
+		// older browsers) block the async Clipboard API even inside a
+		// user gesture.
+		try {
+			fallbackCopy(text);
+			copiedId.value = message.id;
+			window.setTimeout(() => {
+				if (copiedId.value === message.id) copiedId.value = "";
+			}, 1600);
+		} catch (error) {
+			state.notice = "copy-answer-failed";
+		}
 	}
+}
+
+function fallbackCopy(text) {
+	const textarea = document.createElement("textarea");
+	textarea.value = text;
+	textarea.setAttribute("readonly", "");
+	textarea.style.position = "fixed";
+	textarea.style.top = "-9999px";
+	textarea.style.opacity = "0";
+	document.body.appendChild(textarea);
+	textarea.select();
+	const ok = document.execCommand("copy");
+	document.body.removeChild(textarea);
+	if (!ok) throw new Error("execCommand failed");
 }
 
 // -- the conversation list ------------------------------------------------
