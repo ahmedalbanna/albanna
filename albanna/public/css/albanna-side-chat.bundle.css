@@ -1580,3 +1580,28 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__confirm-diff-arrow {
 	color: var(--albanna-muted, #6c7680);
 }
+
+/* Proactive nudge. */
+.albanna-chat__nudge {
+	margin: 0 0 8px;
+	padding: 8px 10px;
+	font-size: 12px;
+	line-height: 1.4;
+	color: var(--albanna-text, #1f2328);
+	background: var(--albanna-accent-soft, #f3f3f3);
+	border-radius: 6px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.albanna-chat__nudge-ask {
+	border: 0;
+	background: var(--albanna-accent, #171717);
+	color: var(--albanna-on-accent, #ffffff);
+	font-size: 12px;
+	cursor: pointer;
+	padding: 2px 8px;
+	border-radius: 4px;
+	font-family: inherit;
+}

@@ -53,6 +53,9 @@ class AppSettings:
     #: Whether a write must wait for the reader's approval before it runs.
     #: Off by default; a per-user policy can turn it on for one account.
     confirm_writes: bool = False
+    #: When on, write tools run their validation and report what they would
+    #: do, but nothing is saved.  Useful for testing prompts and training.
+    dry_run: bool = False
     #: How long a write waits for the reader, in seconds.
     #:
     #: The server owns this number and tells the reader's browser it in
@@ -136,6 +139,7 @@ def _build() -> AppSettings:
         # field, read as a bool; a missing column (pre-migration) reads
         # as "off".
         confirm_writes=bool(getattr(doc, "confirm_writes", 0)),
+        dry_run=bool(getattr(doc, "dry_run", 0)),
         # A missing column (pre-migration) or nonsense reads as the
         # default rather than as "no wait at all".
         confirm_timeout=_int(getattr(doc, "confirm_timeout", 0), DEFAULT_CONFIRM_TIMEOUT),

@@ -185,6 +185,9 @@ def turn_payload(outcome: TurnOutcome) -> dict[str, Any]:
         # worse than one that says it was cut.
         "truncated": outcome.truncated,
         "error": outcome.error,
+        "dry_run": any(
+            isinstance(tc, dict) and tc.get("dry_run") for tc in (outcome.tool_calls or [])
+        ),
         # What the turn cost, so the reader can see it without a second
         # request.  Tokens and price both come from the turn; the browser
         # shows the cost in the site's currency.
@@ -648,6 +651,17 @@ class ChatService:
                 # an assignment — a write that was approved after the wait
                 # is recorded as approved.
                 result = replace(result, approved=True)
+
+            if settings.dry_run and spec.mutating and result.ok:
+                # Nothing is saved: the write ran its validation and
+                # reported what it would do, then the transaction was
+                # rolled back.  The reader is told, so a preview is never
+                # mistaken for a change.
+                try:
+                    frappe.db.rollback()
+                except Exception:
+                    pass
+                result = replace(result, dry_run=True, content=result.content + "\n(dry run — not saved)")
         except Exception as exc:  # noqa: BLE001 - a tool must not kill the turn
             logger.exception("Tool '%s' could not be run", call.name)
             message = f"The tool '{call.name}' could not be run: {type(exc).__name__}: {exc}"
@@ -919,6 +933,7 @@ def tool_entry(call: ToolCall, result: ToolResult) -> dict[str, Any]:
     if created:
         entry["created"] = created
         entry["undo"] = {"action": "delete", "doctype": str(call.arguments.get("doctype") or "").strip(), "name": created}
+    entry["dry_run"] = bool(getattr(result, "dry_run", False))
     data = getattr(result, "data", None) or {}
     if isinstance(data, dict) and data.get("before"):
         entry["undo"] = {

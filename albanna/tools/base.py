@@ -47,6 +47,9 @@ class ToolResult:
     #: what the panel shows beside the tool's name, so that the reader can
     #: see what was looked up without reading the answer.
     summary: str = ""
+    #: True when the write ran under dry-run mode and was rolled back, so
+    #: nothing was saved.
+    dry_run: bool = False
 
     @classmethod
     def success(cls, content: str, data: Any = None, summary: str = "") -> ToolResult:

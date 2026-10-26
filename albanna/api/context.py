@@ -15,7 +15,41 @@ from albanna.permissions import require_chat_access
 
 
 @frappe.whitelist()
-def count_doctype(doctype: str) -> dict[str, Any]:
+def nudge_for_page(doctype: str) -> dict[str, Any]:
+    """A non-intrusive nudge for the list page, if any.
+
+    Returns ``{"message": "..."}`` or ``{"message": ""}``.  Only a small
+    number of high-value cases are nudged, so the chat does not become a
+    notification system.
+    """
+    require_chat_access()
+
+    doctype = (doctype or "").strip()
+    if doctype not in ("Sales Invoice", "Purchase Invoice"):
+        return {"message": ""}
+
+    try:
+        from frappe.permissions import has_permission as _has_permission
+
+        if not _has_permission(doctype, "read", print_logs=False):
+            return {"message": ""}
+    except Exception:
+        return {"message": ""}
+
+    try:
+        count = frappe.db.count(doctype, {"status": "Overdue"})
+    except Exception:
+        count = 0
+
+    if not count:
+        return {"message": ""}
+
+    return {
+        "message": frappe._(
+            "{0} overdue {1} — want me to draft reminders?",
+            [count, doctype],
+        )
+    }
     """How many documents of *doctype* the caller may see.
 
     Used by the empty state to decide whether to offer "create one" rather

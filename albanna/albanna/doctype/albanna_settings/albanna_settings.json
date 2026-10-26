@@ -35,6 +35,7 @@
         "turn_timeout",
         "turns_per_minute",
         "column_break_limits",
+        "dry_run",
         "system_prompt",
         "prompt_section"
     ],
@@ -229,6 +230,13 @@
             "fieldtype": "Check",
             "label": "Confirm writes",
             "description": "When on, the assistant asks for your approval before creating or changing a document. On by default."
+        },
+        {
+            "fieldname": "dry_run",
+            "fieldtype": "Check",
+            "label": "Dry Run",
+            "default": "0",
+            "description": "When on, write tools run their validation and report what they would do, but nothing is saved. Use it to test prompts or train users without touching data."
         },
         {
             "fieldname": "confirm_timeout",

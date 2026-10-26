@@ -170,12 +170,16 @@ const currentPage = ref("");
 /** How many documents the current list page holds, when known. */
 const doctypeCount = ref(null);
 
+/** A non-intrusive nudge for the current list page, if any. */
+const nudgeMessage = ref("");
+
 watch(
 	currentPage,
 	async () => {
 		const context = resolveContext();
 		if (!context || !context.doctype || context.name) {
 			doctypeCount.value = null;
+			nudgeMessage.value = "";
 			return;
 		}
 		try {
@@ -186,6 +190,14 @@ watch(
 				result && result.count != null ? result.count : null;
 		} catch (failure) {
 			doctypeCount.value = null;
+		}
+		try {
+			const result = await call("albanna.api.context.nudge_for_page", {
+				doctype: context.doctype,
+			});
+			nudgeMessage.value = (result && result.message) || "";
+		} catch (failure) {
+			nudgeMessage.value = "";
 		}
 	},
 );
@@ -729,6 +741,8 @@ function noticeText(notice) {
 			return __("The question and its answer were removed.");
 		case "truncated":
 			return __("The answer was cut off before it was finished.");
+		case "dry-run":
+			return __("Dry run — nothing was saved.");
 		case "escalated":
 			return __("Escalated to support.");
 		case "undone":
@@ -1201,6 +1215,7 @@ function applyTurnResult(result, asked, answer) {
 		// answer that looks complete and is not is worse than one that
 		// says it was cut.
 		if (result.truncated) state.notice = "truncated";
+		if (result.dry_run) state.notice = "dry-run";
 	} else {
 		// A turn that ended without an answer and without an error is
 		// still over.
@@ -2335,6 +2350,19 @@ onBeforeUnmount(() => {
 					</p>
 					<p v-if="pageContext" class="albanna-chat__empty-context">
 						{{ pageContext }}
+					</p>
+					<p
+						v-if="nudgeMessage"
+						class="albanna-chat__nudge"
+					>
+						{{ nudgeMessage }}
+						<button
+							type="button"
+							class="albanna-chat__nudge-ask"
+							@click="ask(nudgeMessage)"
+						>
+							{{ __("Go") }}
+						</button>
 					</p>
 					<p
 						v-if="showTour"

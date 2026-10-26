@@ -992,3 +992,21 @@ msgstr "نسخ هذا {0} من آخر واحد لـ {1}"
 
 msgid "What fields are required for this {0}?"
 msgstr "ما الحقول المطلوبة لهذا {0}؟"
+
+
+msgid "Go"
+msgstr "انتقال"
+
+
+msgid "Dry Run"
+msgstr "تشغيل تجريبي"
+
+msgid "When on, write tools run their validation and report what they would do, but nothing is saved. Use it to test prompts or train users without touching data."
+msgstr "عند التفعيل، تنفذ أدوات الكتابة التحقق وتُبلّغ بما ستفعله، لكن لا يُحفظ شيء. استخدمها لاختبار المطالبات أو تدريب المستخدمين دون المساس بالبيانات."
+
+msgid "{0} overdue {1} — want me to draft reminders?"
+msgstr "{0} متأخر {1} — هل تريد مني صياغة تذكيرات؟"
+
+
+msgid "Dry run — nothing was saved."
+msgstr "تشغيل تجريبي — لم يُحفظ شيء."
