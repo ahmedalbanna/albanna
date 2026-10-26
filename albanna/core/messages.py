@@ -123,10 +123,21 @@ class Message:
     content: str = ""
     tool_calls: tuple[ToolCall, ...] = ()
     tool_call_id: str = ""
+    #: An optional image, as a base64 data URL.  Carried only on the
+    #: user's question; the assistant's answer is text.  None means "no
+    #: image", which is the common case and keeps the wire shape plain.
+    image: str | None = None
 
     def to_wire(self) -> dict[str, Any]:
         """The OpenAI-shaped wire form."""
-        payload: dict[str, Any] = {"role": self.role, "content": self.content}
+        if self.image:
+            content: Any = []
+            if self.content:
+                content.append({"type": "text", "text": self.content})
+            content.append({"type": "image_url", "image_url": {"url": self.image}})
+        else:
+            content = self.content
+        payload: dict[str, Any] = {"role": self.role, "content": content}
         if self.tool_calls:
             payload["tool_calls"] = [call.to_wire() for call in self.tool_calls]
         if self.role == "tool":
@@ -144,8 +155,26 @@ class Message:
             role = "user"
 
         content = raw.get("content")
+        image: str | None = None
         if content is None:
             content = ""
+        elif isinstance(content, list):
+            # Vision shape: a list of {type: "text"} and
+            # {type: "image_url"} parts.  Reassemble into text + image.
+            text_parts: list[str] = []
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                ptype = part.get("type")
+                if ptype == "text":
+                    text_parts.append(str(part.get("text") or ""))
+                elif ptype == "image_url":
+                    url = part.get("image_url")
+                    if isinstance(url, dict):
+                        url = url.get("url")
+                    if isinstance(url, str) and url:
+                        image = url
+            content = "\n".join(text_parts)
         elif not isinstance(content, str):
             content = json.dumps(content, default=str)
 
@@ -159,6 +188,7 @@ class Message:
             content=content,
             tool_calls=tool_calls,
             tool_call_id=str(raw.get("tool_call_id") or ""),
+            image=image,
         )
 
 
@@ -166,8 +196,8 @@ def system(text: str) -> Message:
     return Message(role="system", content=text)
 
 
-def user(text: str) -> Message:
-    return Message(role="user", content=text)
+def user(text: str, image: str | None = None) -> Message:
+    return Message(role="user", content=text, image=image)
 
 
 def assistant(text: str = "", tool_calls: tuple[ToolCall, ...] = ()) -> Message:
@@ -219,7 +249,11 @@ def sanitize(messages: list[Message]) -> list[Message]:
                 continue
 
         if kept and kept[-1].role == message.role and message.role in ("user", "system"):
-            kept[-1] = Message(role=message.role, content=f"{kept[-1].content}\n\n{message.content}")
+            kept[-1] = Message(
+                role=message.role,
+                content=f"{kept[-1].content}\n\n{message.content}",
+                image=kept[-1].image or message.image,
+            )
             continue
 
         kept.append(message)
@@ -241,7 +275,7 @@ def as_plain_history(messages: list[Message]) -> list[Message]:
     as they are.
     """
     return [
-        Message(role=message.role, content=message.content)
+        Message(role=message.role, content=message.content, image=message.image)
         if message.role == "assistant"
         else message
         for message in messages

@@ -102,3 +102,41 @@ def test_plain_history_drops_tool_calls():
 def test_to_wire_and_from_wire_agree():
     messages = [system("s"), user("u"), assistant("a"), tool_result("call_1", "r")]
     assert len(from_wire(to_wire(messages))) == len(messages)
+
+
+def test_to_wire_emits_vision_shape_when_image_set():
+    image = "data:image/png;base64,AAAA"
+    message = user("describe this", image=image)
+    wire = message.to_wire()
+    assert isinstance(wire["content"], list)
+    assert wire["content"][0] == {"type": "text", "text": "describe this"}
+    assert wire["content"][1] == {"type": "image_url", "image_url": {"url": image}}
+
+
+def test_to_wire_emits_plain_string_when_no_image():
+    message = user("hello")
+    wire = message.to_wire()
+    assert wire["content"] == "hello"
+    assert isinstance(wire["content"], str)
+
+
+def test_from_wire_round_trips_a_vision_message():
+    image = "data:image/png;base64,AAAA"
+    original = user("describe this", image=image)
+    parsed = from_wire([original.to_wire()])[0]
+    assert parsed.content == "describe this"
+    assert parsed.image == image
+
+
+def test_from_wire_handles_text_only_content_in_a_list():
+    wire = {"role": "user", "content": [{"type": "text", "text": "hi"}]}
+    parsed = Message.from_wire(wire)
+    assert parsed.content == "hi"
+    assert parsed.image is None
+
+
+def test_as_plain_history_carries_the_image():
+    image = "data:image/png;base64,AAAA"
+    messages = [user("q", image=image), assistant("a")]
+    plain = as_plain_history(messages)
+    assert plain[0].image == image
