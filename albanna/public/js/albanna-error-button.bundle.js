@@ -12,32 +12,54 @@
 // The dialog is found by watching the document, because Frappe builds it
 // asynchronously and there is no event that announces "an error dialog
 // just appeared".
+//
+// Three things about Frappe's dialogs decide how this is written, and each
+// of them was found by looking at a real one:
+//
+//   1. **The red indicator is the mark of an error, not the title.**  A
+//      title says "Error" on an English desk and says something else on an
+//      Arabic one, and the desk's language is not the app's to assume.  The
+//      indicator is Frappe's own class (`.indicator.red` in v16,
+//      `.indicator-red` before it), and it says the same thing in every
+//      language.
+//   2. **The footer is hidden.**  Frappe hides the footer of a message with
+//      no primary action, so a button in that footer is a button nobody
+//      can press.  The footer is shown when the button is added.
+//   3. **The dialog arrives before its footer does.**  So a dialog that
+//      cannot be given a button yet is not marked as done: it is left
+//      unmarked, and the observer tries again when the footer lands.
 
 (function () {
 	"use strict";
 
 	const BUTTON_CLASS = "albanna-error-ask";
-	const PROCESSED = "data-albanna-error-processed";
+
+	/* The marks of an error dialog, in the versions this runs on.  The
+	 * indicator is the reliable one — it is Frappe's own class and it does
+	 * not depend on the desk's language. */
+	const ERROR_MARKS = ".indicator.red, .indicator-red, .text-danger, [data-indicator='red']";
 
 	function isChatAvailable() {
 		return !!(window.albannaSideChat && typeof window.albannaSideChat.ask === "function");
 	}
 
+	function alreadyHasButton(dialog) {
+		return !!dialog.querySelector("." + BUTTON_CLASS);
+	}
+
 	function isErrorDialog(dialog) {
 		if (!dialog || dialog.nodeType !== 1) return false;
-		if (dialog.getAttribute(PROCESSED)) return false;
-		// Frappe's msgprint dialogs carry the indicator on the title or body.
-		const text = (dialog.textContent || "").toLowerCase();
+		if (alreadyHasButton(dialog)) return false;
+
+		const text = (dialog.textContent || "").trim();
+		if (text.length < 4) return false;
+
+		if (dialog.querySelector(ERROR_MARKS)) return true;
+
+		// The title, for a desk that says so in English.
 		const title = dialog.querySelector(".modal-title, .msgprint-title, h4, h5");
-		const titleText = (title && title.textContent || "").toLowerCase();
-		const looksLikeError =
-			titleText.includes("error") ||
-			dialog.classList.contains("msgprint") ||
-			dialog.querySelector(".indicator-red, .text-danger, [data-indicator='red']");
-		// Avoid acting on empty or non-error dialogs.
-		if (!looksLikeError) return false;
-		if (text.trim().length < 4) return false;
-		return true;
+		const titleText = ((title && title.textContent) || "").toLowerCase();
+		return titleText.includes("error");
 	}
 
 	function errorText(dialog) {
@@ -58,13 +80,15 @@
 
 	function injectButton(dialog) {
 		if (!isChatAvailable()) return;
-		if (dialog.getAttribute(PROCESSED)) return;
-		dialog.setAttribute(PROCESSED, "1");
+		if (alreadyHasButton(dialog)) return;
 
-		const footer =
-			dialog.querySelector(".modal-footer") ||
-			dialog.querySelector(".msgprint-footer");
-		if (!footer) return;
+		const footer = dialog.querySelector(".modal-footer") || dialog.querySelector(".msgprint-footer");
+		if (!footer) {
+			// The dialog has not been finished yet.  It is deliberately not
+			// marked as done: the observer will see the footer when it
+			// arrives, and the button goes in then.
+			return;
+		}
 
 		const button = document.createElement("button");
 		button.type = "button";
@@ -87,20 +111,32 @@
 			window.albannaSideChat.ask(question);
 		});
 
-		footer.appendChild(button);
+		const slot = footer.querySelector(".custom-actions") || footer;
+		slot.appendChild(button);
+
+		// A footer that is hidden hides the button with it.
+		if (footer.classList.contains("hide")) footer.classList.remove("hide");
 	}
 
 	function scan(root) {
 		if (!root || root.nodeType !== 1) return;
+
 		// The dialog itself.
 		if (isErrorDialog(root)) injectButton(root);
+
 		// Descendants.
 		const dialogs = root.querySelectorAll
-			? root.querySelectorAll(".modal, .modal-dialog, .msgprint")
+			? root.querySelectorAll(".modal, .modal-dialog, .msgprint-dialog")
 			: [];
 		for (let i = 0; i < dialogs.length; i++) {
 			if (isErrorDialog(dialogs[i])) injectButton(dialogs[i]);
 		}
+
+		// The dialog that owns what was just added.  A dialog arrives
+		// before its footer does, so the footer landing is the moment the
+		// button can be added — and the footer knows its dialog.
+		const owner = root.closest ? root.closest(".modal, .modal-dialog") : null;
+		if (owner && isErrorDialog(owner)) injectButton(owner);
 	}
 
 	let scheduled = false;

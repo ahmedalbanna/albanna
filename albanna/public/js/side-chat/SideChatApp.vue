@@ -2174,8 +2174,13 @@ onMounted(() => {
 		}
 	};
 	document.addEventListener("albanna:ask", onAsk);
+	// The ref holds the handler so that it can be taken off again when the
+	// panel is unmounted.  It is the ref declared at the top of this file
+	// — shadowing it with a local `const` of the same name puts the
+	// assignment above in the temporal dead zone, and the whole mount
+	// hook throws: the keyboard shortcuts below are never registered, and
+	// the browser logs a ReferenceError that says nothing about why.
 	askHandler.value = onAsk;
-	const askHandler = onAsk;
 
 	// Keyboard: Escape closes the panel, Ctrl/Cmd+K focuses the composer.
 	// Both are the affordances a reader expects of a chat panel, and
