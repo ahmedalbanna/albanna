@@ -975,6 +975,56 @@ audit trail; a chat message has none of those and is read once.  The
 Issue is created as the reader, so Frappe's own permission engine decides
 whether they may create one — the app does not get to decide that.
 
+### 56. The tool decides its own undo, not the transcript
+
+A turn can read a document and change a document.  The two look the same
+from the outside: both name a document.  The undo used to believe the
+transcript, and the transcript said "this turn touched a document", so
+the undo could delete a document the turn had only read.
+
+The undo now believes the *tool*.  `create_doc` may be undone by
+deleting; `update_doc` and `bulk_update_doc` by writing the old values
+back; `submit_doc` by cancelling; and nothing else may be undone at all.
+A stored entry that says "delete" but comes from anything else is
+refused, so the old bad entries — the ones already in a site's log — are
+inert instead of dangerous.
+
+The rule is deliberately narrow: the reversal has to be the same
+operation in the opposite direction.  A cancel is not an undo, an amend
+is not an undo, and a delete cannot be undone by anything this app
+offers — so the reader is not offered a button that cannot be honest.
+
+### 57. A colour that means two things means one thing wrongly
+
+The accent is the fill of the reader's own bubble.  It was also the ink
+of a source link.  In the light theme the two are the same colour, so
+the shortcut was invisible; in the dark theme the accent is a dark grey
+and the links went with it — a dark grey link on a near-black bubble,
+which is a link nobody can see.
+
+The same thing happened to the danger red: it is *light* in the dark
+theme, and white was the ink on it, so the button that removes a turn
+was white on a light red.
+
+So a colour that is a fill gets one variable, and a colour that is ink
+gets another: `--albanna-link` is the Desk's own text colour, and
+`--albanna-on-danger` is white in the light theme and dark in the dark
+one.  A screenshot of the light theme cannot catch this, so a test
+asserts it instead.
+
+### 58. A search that finds nothing must say so, and stay editable
+
+The conversation list is searched on the server, so a term that matches
+nothing comes back as an empty list.  The drawer could not tell that
+apart from a reader who has no conversations at all: it said "no
+conversations yet" — a false statement about the reader's own history —
+and hid the search box, so the wrong word could only be corrected by
+closing the drawer and finding the button again.
+
+The message "no matches" was written and translated all along; it was
+simply unreachable, because the branch that showed it also required the
+list to be non-empty.
+
 ## What is deliberately not here
 
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.

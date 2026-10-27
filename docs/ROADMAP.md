@@ -143,12 +143,13 @@ Each item names the trigger that would make it worth doing.
 
 | # | Item | Why it matters for this persona | Effort | Trigger |
 |---|---|---|---|---|
-| 1 | **Escalation that fits support** — today "Ask a human" creates an Issue; for an agent who is *already* in a ticket, a handover should be a ToDo assigned to a person, or a Communication, not a new ticket | today the button opens a second ticket while the first is still open | S | the first live agent complains that escalating made more work |
+| 1 | **Escalation that fits support** — today "Ask a human" creates an Issue; for an agent who is *already* in a ticket, a handover should be a ToDo assigned to a person, or a Communication, not a new ticket | confirmed live: escalating a ticket opened a *second* ticket while the first was still open | S | the first live agent complains that escalating made more work |
 | 2 | **Ticket-shaped suggestions** — on an Issue the empty state should offer "What is the customer asking for?", "What have we already done?", "What is still open?" instead of the generic list | the generic suggestions are the first thing a new agent reads | S | immediately — it is a prompt + a context change |
 | 3 | **The drafted reply, copyable** — a Communication the assistant writes should be readable in the panel and copyable, because sending is the agent's job | the draft exists; the agent has nowhere to read it | S | immediately |
 | 4 | **"My open tickets"** — one click from the launcher to the agent's queue, filtered by assignee and status | an agent's first question is always "what is on my desk?" | S | with item 2 |
 | 5 | **A ticket summary that fits the ticket** — the system prompt tells the model the shape of a triage answer (want / done / outstanding / next) | the model will summarise a ticket well only if it is told what a good triage summary is | S | immediately — a prompt change, not a feature |
 | 6 | **Per-ticket conversation memory** — the thread is per page today; an agent moving between the Issue and the Customer gets two threads | the agent reads the same customer across records | M | an agent actually asks about a customer in two threads in one sitting |
+| 7 | **The assistant says what it could not read** — when a tool is refused for a missing right, the answer says so, instead of leaving the reader to believe the silence was the whole truth | on a support seat the customer thread was invisible (no Communication read) and the answer paraphrased a date field instead of the customer's words | S | immediately — the refusals are already counted, they are only not said out loud |
 
 ---
 
@@ -267,3 +268,43 @@ What changed because of the decision:
 If the primary persona turns out to be somebody else — an accountant
 doing a month-end close, say — the hero journey is re-cut the same way,
 and the v2 list is re-derived from it.
+
+---
+
+## 8. The live run — what it found (2026-10-27)
+
+The support journey was run end to end on a production site, in Arabic,
+as a support agent with the Support Team and Sales User roles.  It found
+six things that no unit test had found, because a unit test cannot see a
+page.
+
+| What | Why it matters | What was done |
+|---|---|---|
+| "Ask Albanna" and "Explain this error" never loaded — the global includes carried no `.bundle.`, so Frappe served them from the site root and they 404ed on every page of every site | two of the app's entry points did not exist in any browser | fixed; a test asserts the rule |
+| Undo deleted the document the turn had only read — the transcript recorded a document's name from any tool envelope, so a *read* was stored as a *creation* | the trust layer's undo was a data-loss bug | fixed at both ends: the tool decides its own undo, and the server refuses a stored "delete" that came from a read |
+| A failed turn showed the reader a raw Python exception (`JobTimeoutException: …`) | a reader is not a stack-trace reader | now a translated sentence; the detail stays in the log |
+| The sources of an answer were invisible in the dark theme — the accent did double duty, as the fill of the reader's bubble and as the ink of a link | in the light theme the two are the same colour, so only the dark theme could show it | the links have their own ink; a test asserts it |
+| A search that matched nothing took the search box with it, and told the reader they had no conversations | a search that finds nothing has to say so, and stay editable | fixed |
+| On a phone the sheet was 32px short of the screen | the composer sat above the strip where the home indicator is | fixed |
+
+Two findings are *product* findings, not bugs:
+
+1. **The assistant cannot see what the customer actually wrote.**  The
+   hero journey is triage, and triage starts with the customer's own
+   words.  On this site the support role may read an Issue but not a
+   Communication, so the email thread on the ticket is invisible to the
+   tools — and the answer reported that "a first response was logged on
+   2026-10-27", which it inferred from a date field rather than from
+   the message.  A support deployment has to grant the assistant role
+   read access to Communication, and the assistant has to say when it
+   could not read something (v2 item 7).  The app does not grant
+   permissions — Frappe decides — but it must not let the silence pass
+   for the whole truth.
+2. **The model is slow enough to be the experience.**  A turn on this
+   deployment takes five to ten minutes; one hit the ten-minute wall and
+   came back as an error.  No new feature matters as much as the answer
+   arriving.  On a slow provider the reader has to see that something is
+   happening, and the site needs a faster model or a streaming answer.
+
+The escalation finding is already in the list: "Ask a human" on a ticket
+creates a *second* ticket (v2 item 1), confirmed live.
