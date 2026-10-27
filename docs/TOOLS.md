@@ -1,6 +1,6 @@
 # The tools the assistant may use
 
-Albanna's assistant can use exactly ten tools. There is no hidden eleventh:
+Albanna's assistant can use exactly eleven tools. There is no hidden twelfth:
 `run_sql_query` is deliberately absent, because a raw SELECT behind a chat
 that ordinary users can reach is a privilege escalation with a chat interface
 on top. Every tool runs in-process, under the caller's own roles and User
@@ -31,6 +31,7 @@ whether they hold it on the *target* of a particular call is decided per call.
 |---|---|---|
 | `create_doc` | Create a document. | Frappe's `create` permission. |
 | `update_doc` | Change the fields of a document that exists. A submitted document cannot be edited this way. | Frappe's `write` permission. |
+| `bulk_update_doc` | Change the same fields on many documents at once, under one approval card that names every document it would touch. | Frappe's `write` permission on every document it would touch. |
 | `submit_doc` | Submit a draft document, making it permanent. | Frappe's `submit` permission. |
 | `cancel_doc` | Cancel a submitted document. | Frappe's `cancel` permission. |
 | `amend_doc` | Cancel a submitted document and create a new draft from it. | Frappe's `amend` permission. |

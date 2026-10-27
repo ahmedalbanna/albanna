@@ -1,5 +1,17 @@
 # Product & UX Review — Albanna (side chat)
 
+> **Historical snapshot.**  This review was written at `8dca8f5`, before the
+> lifecycle tools, the trust layer and the support-agent re-cut.  It is kept
+> as the record of what the review found and what it asked for — not as a
+> description of the app today.  For the current state, read
+> `docs/ROADMAP.md`, `README.md` and `CONTEXT.md`.
+>
+> Everything it raised has since shipped: the lifecycle tools, the diff
+> preview, the approval residue ("the wait ran out — the change was not
+> made"), the per-turn cost line, undo, dry-run mode, the bulk update,
+> escalation, the sources line, image and voice input, and the "explain this
+> error" button.
+
 **Scope:** the Albanna Frappe app as it stands on `main` (46 commits, last `8dca8f5`), plus the in-progress lifecycle-tools work stashed at `stash@{0}`.
 **Reviewed against:** the app's own `CONTEXT.md` / ADRs, the README's stated design language, and the Frappe Desk UI/UX considerations in `AGENTS.md`.
 

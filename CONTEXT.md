@@ -883,13 +883,107 @@ write proposed while its reader is in another thread is remembered all
 the same, and leaving a thread takes its cards with it and brings them
 back on return.
 
+### 50. An undo that cannot undo is not offered
+
+Every write the app performs is recorded with the operation that would
+reverse it: a created document is undone by deleting it, an updated
+document by writing the previous values back, a submitted document by
+cancelling it.  The button appears on those turns, and on no others.
+
+Cancel, amend and delete are deliberately absent from that list, and that
+is a decision rather than an omission.  A cancelled document is not the
+document that was there — its state, its ledger entries and its children
+have all moved — and an amended document has been superseded by another
+one.  Putting "undo" on those would mean either a promise the app cannot
+keep or a promise it keeps by doing something the reader did not agree to.
+
+A button labelled "undo" that quietly does something else is worse than no
+button at all, because the reader has already decided what they are
+agreeing to.  So the rule is: offer undo exactly where the reversal is
+the same operation in the opposite direction, and say nothing where it is
+not.
+
+### 51. A picture is a file in the site, and bytes on the wire
+
+An image attached to a question arrives twice.  The bytes travel with the
+turn as a data URL, because that is what a vision-capable provider can
+read.  The same picture is stored as a Frappe File under `Home/Albanna`
+with a hashed name, and its URL is put into the page context so the
+assistant can set that picture on a document.
+
+Storing it matters for one reason: a file has an address that outlives
+the request that created it, so the picture is still there after a reload
+or a cleared cache, and the same picture can be attached to two records
+without being uploaded twice.
+
+The upload is narrow on purpose.  Five media types are accepted — PNG,
+JPEG, WebP, GIF and PDF — and anything else is rejected rather than
+stored under a guessed extension, because a broad accept would happily
+file `image/svg+xml` (which executes as HTML) away as a `.bin`.  The file
+is private and belongs to the reader, and the right to put it on a
+document is Frappe's decision, not ours.
+
+A provider that cannot see images is told so, and the reader is told the
+image was dropped rather than the picture travelling silently and
+vanishing.
+
+### 52. The reader sees the change before it happens
+
+The approval card carries the diff: the field, the value it holds now,
+the value it would hold.  A card that said only "update this document"
+asks the reader to approve a change they have not seen, which is a
+rubber stamp with a countdown on it.
+
+The diff is a report of *the change that was asked for*, not of everything
+that moved: a field the caller did not name is never in it, and a field
+whose value did not actually change is never in it.  A diff that carries
+the noise of a save is a diff the reader learns to skim, and a diff that
+is skimmed is the same as no diff.
+
+### 53. The answer names the records behind it
+
+Under the answer is a line of the documents the tools actually read, each
+one a link.  The tool calls were already folded behind a summary line;
+this says what was behind them without exposing the raw JSON.
+
+The list is made of names the tools returned, never of names the model
+wrote.  A link that the model invented is a link to nothing, and a link
+to nothing in a line that exists to be trusted is worse than no line.
+
+### 54. The browser's ear, not the server's
+
+Voice input is the Web Speech API in the reader's own browser.  The
+transcript arrives as text and the rest of the app cannot tell it from a
+typed question.
+
+The alternative — audio on the server, transcribed by a speech service —
+is a second provider, a second bill, a second set of secrets, and a
+second place where a customer's voice is stored.  A site that wants
+server-side transcription can put it behind the proxy the provider
+settings already accept.  What is not acceptable is a feature that only
+exists on the deployments that configured it, and the browser's own API
+is on every browser that runs the Desk.
+
+### 55. A handoff to a human is a document, not a message
+
+"Ask a human" creates a Frappe Issue carrying the transcript, so a person
+can pick the work up with the whole conversation in front of them rather
+than with a summary of it.
+
+A document, because a document has an owner, a status, a queue and an
+audit trail; a chat message has none of those and is read once.  The
+Issue is created as the reader, so Frappe's own permission engine decides
+whether they may create one — the app does not get to decide that.
+
 ## What is deliberately not here
 
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.
   It is a good feature and it is a separate one; v1 has no retrieval.
 * **Guest chat.**  A guest has no identity and no history.  It is a
   different product with different rules, not a flag.
-* **Conversation management.**  The widget's list, rename and delete are
-  in place.  What is not there is a way to search, filter or export them.
+* **Conversation management.**  The widget's list, rename, delete, pin and
+  server-side title search are in place.  What is not there is a way to
+  export a whole conversation, or to filter the list by anything but the
+  page it belongs to.
 * **A second write tool.**  One write, exercised, is worth more than two
   writes, one of them untested.

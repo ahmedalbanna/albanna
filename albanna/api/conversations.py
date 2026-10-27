@@ -266,7 +266,6 @@ def rate_message(conversation: str = "", message: str = "", rating: str = "") ->
 
 
 @frappe.whitelist()
-@frappe.whitelist()
 def escalate_conversation(conversation: str = "") -> dict:
     """Hand a conversation off to a human: create a Frappe Issue carrying
     the transcript, so a person can pick it up with full context.

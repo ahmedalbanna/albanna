@@ -54,10 +54,10 @@ Anthropic.  It has no other runtime dependency.
 
 ## What it does
 
-* **Ten tools.** `list_docs`, `get_doc`, `get_doctype_meta`, `run_report`,
-  `create_doc`, `update_doc`, `submit_doc`, `cancel_doc`, `amend_doc`,
-  `delete_doc`. The model is told about ten tools, and only
-  ten.
+* **Eleven tools.** `list_docs`, `get_doc`, `get_doctype_meta`, `run_report`,
+  `create_doc`, `update_doc`, `bulk_update_doc`, `submit_doc`, `cancel_doc`,
+  `amend_doc`, `delete_doc`. The model is told about eleven tools, and only
+  eleven.
 * **One model provider at a time, with a fallback.** OpenAI-compatible
   (OpenRouter, OpenAI, Groq, vLLM, LM Studio), Ollama, or Anthropic.
 * **A side chat, not a page.** A launcher on every Desk page; the panel
@@ -83,6 +83,29 @@ Anthropic.  It has no other runtime dependency.
 * **A turn you can take back.** The data a person asked about is theirs to
   erase, so a question that was asked wrongly can be removed from the
   thread — the question and the answer that followed it, together.
+* **A write you can read before it happens.** When the site asks the
+  reader to approve a write, the card shows the change: the field, the
+  value it holds now, the value it would hold. Approving is a decision,
+  not a gesture.
+* **The records behind the answer.** Under the answer is a line of the
+  documents the tools actually read, each one a link. The names are the
+  tools' names, not the model's.
+* **The writes you can take back.** A turn that created a document,
+  changed one or submitted one can be undone from the answer — and the
+  button is only there where the reversal is the same operation in the
+  opposite direction. A cancel, an amend and a delete are not cleanly
+  reversible, so they do not pretend to be.
+* **A picture, a voice, a file.** An image can be attached to a question —
+  pasted, dropped or chosen — and is stored as a file in the site, so the
+  assistant can put it on a document. A question can also be spoken, in
+  the browser's own speech API.
+* **A question about an error.** When Frappe shows an error, the dialog
+  carries a button that opens the chat with that error as the question.
+* **Ask a human.** Any conversation can be handed to a person with the
+  whole transcript on a Frappe Issue, and the operator can put the site
+  in dry-run mode, where writes are proposed and nothing is committed.
+* **A way to find an old conversation.** The list is searched by title,
+  server-side, so a conversation is found without being loaded first.
 * **Private history.** A conversation belongs to the page it was started on
   and to the user who started it.
 * **The panel follows the page.** Open it on a page you have used before
@@ -169,7 +192,7 @@ named place to change:
 `tests/test_tool_manifest.py` fails if the manifest and the adapter name
 different tools, so the first two rows of that table cannot drift.
 
-## The ten tools
+## The eleven tools
 
 | Tool | Tier | What it does |
 |---|---|---|
@@ -179,6 +202,7 @@ different tools, so the first two rows of that table cannot drift.
 | `run_report` | read | run an ERPNext report |
 | `create_doc` | write | create a document |
 | `update_doc` | write | change the fields of a document that exists |
+| `bulk_update_doc` | write | change the same fields on many documents, with an approval card that names every one of them |
 | `submit_doc` | write | submit a draft document, making it permanent |
 | `cancel_doc` | write | cancel a submitted document |
 | `amend_doc` | write | cancel a submitted document and create a new draft from it |
@@ -186,7 +210,8 @@ different tools, so the first two rows of that table cannot drift.
 
 The writes are different rights, and the manifest says which:
 `create_doc` is authorised against Frappe's `create` permission,
-`update_doc` against `write`, `submit_doc` against `submit`,
+`update_doc` against `write`, `bulk_update_doc` against `write` on every
+document it would touch, `submit_doc` against `submit`,
 `cancel_doc` against `cancel`, `amend_doc` against `amend`, and
 `delete_doc` against `delete`. A role model that grants one does not
 necessarily grant another.
