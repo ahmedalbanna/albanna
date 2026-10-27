@@ -29,10 +29,12 @@
 (function () {
 	"use strict";
 
-	const LABEL = "Ask Albanna";
-
+	/* The label is written out at the call site, not held in a constant:
+	 * the translation checker reads the literal, and a constant would hide
+	 * it from the checker — which would leave an English button on an
+	 * Arabic desk, with the catalogue claiming the string was unused. */
 	function label() {
-		return typeof window.__ === "function" ? window.__(LABEL) : LABEL;
+		return typeof window.__ === "function" ? window.__("Ask Albanna") : "Ask Albanna";
 	}
 
 	function addButton(frm) {

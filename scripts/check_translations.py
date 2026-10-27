@@ -17,6 +17,11 @@ concatenation is seen as the single string the model will translate.  The
 front-end files are read with a pattern, because their strings are always
 on one line.
 
+Build *output* (``public/dist``) is skipped: it holds the same strings,
+minified, and they are read from their source.  Build *entries* are not
+skipped: a global include is a build entry and holds interface strings of
+its own — the "Ask Albanna" button on a form lives in one.
+
 The tool descriptions in the manifest are deliberately *not* checked: they
 are instructions to the model, not to the person, and they stay in English
 because that is what the model reads best.
@@ -86,7 +91,26 @@ def front_end_strings(path: pathlib.Path) -> set[str]:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
         return set()
-    return {unquote(match.group(1)) for match in CALL.finditer(text)}
+
+    # Comment-only lines are blanked out before the text is read, because
+    # they are not code and they can still contain something that looks
+    # like a translated string — a note about what Vue compiles a template
+    # expression into, say.  A comment that reads as an untranslated
+    # string is a false alarm, and a false alarm trains people to ignore
+    # this tool.
+    #
+    # The lines are blanked rather than removed, so that a call written
+    # across several lines — ``__(\n  "…",\n)`` — is still read whole.
+    kept: list[str] = []
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped.startswith("//") or stripped.startswith("/*") or stripped.startswith("*"):
+            kept.append("\n" if line.endswith("\n") else "")
+        else:
+            kept.append(line)
+
+    code = "".join(kept)
+    return {unquote(match.group(1)) for match in CALL.finditer(code)}
 
 
 def doctype_strings(path: pathlib.Path) -> set[str]:
@@ -179,9 +203,8 @@ def used_strings() -> set[str]:
     for pattern in ("*.vue", "*.mjs", "*.js"):
         for path in APP.rglob(pattern):
             if "public/dist" in str(path):
-                continue
-            if path.name.endswith(".bundle.js"):
-                # A build entry: imports and comments, no interface.
+                # Build output: the same strings, minified, and already
+                # read from their source.
                 continue
             used |= front_end_strings(path)
 
