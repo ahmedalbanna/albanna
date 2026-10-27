@@ -1907,6 +1907,21 @@ class TestWriteApproval(TestToolPath):
             any(t.get("ok") for t in outcome.tool_calls),
             "the approved write must actually have run",
         )
+        # And "ran" means the document exists.  A tool can report that it
+        # wrote something it never wrote — the result is a sentence, and
+        # the sentence is not the document.  This is the assertion that
+        # would have caught it.
+        created = [
+            entry.get("created")
+            for entry in outcome.tool_calls
+            if entry.get("created")
+        ]
+        self.assertTrue(created, "the approved write must name what it created")
+        for name in created:
+            self.assertTrue(
+                frappe.db.exists("Sales Invoice", name),
+                f"the approved write reported creating {name}, and {name} does not exist",
+            )
 
     def test_a_declined_write_does_not_run(self):
         outcome = self._run(self.accounts_user, "reject")
