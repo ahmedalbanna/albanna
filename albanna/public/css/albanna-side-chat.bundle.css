@@ -40,6 +40,16 @@
 	--albanna-bubble: var(--gray-100, #f3f3f3);
 	--albanna-accent: var(--primary, #171717);
 	--albanna-accent-soft: var(--gray-100, #f3f3f3);
+	/* The colour of a *link* — a thing the reader can press.
+	 *
+	 * The accent does double duty: it is the fill of the reader's own
+	 * bubble and the colour of a source link.  In the light theme the two
+	 * agree — a near-black accent on a near-white panel.  In the dark
+	 * theme they cannot: the bubble wants a dark fill and the link wants
+	 * a light ink, and one variable cannot be both.  So the links have
+	 * their own, and it is the Desk's own text colour, so a link in the
+	 * panel looks like a link in the Desk. */
+	--albanna-link: var(--text-color, #1f2328);
 	--albanna-error-bg: var(--red-50, #fff1f0);
 	--albanna-error-text: var(--red-700, #a1231f);
 	/* The halo around the field the reader is typing in. */
@@ -55,6 +65,11 @@
 	 * arrow on a dark circle is an arrow nobody can see. */
 	--albanna-on-accent: #ffffff;
 	--albanna-on-stop: #ffffff;
+	/* The ink on a red fill.  In the light theme the red is dark and the
+	 * ink is white; in the dark theme the red is *light* (the theme's own
+	 * red-300), so the ink on it has to be dark.  White on that red is a
+	 * button nobody can read the word on. */
+	--albanna-on-danger: #ffffff;
 	--albanna-panel-width: 400px;
 	--albanna-panel-height: 70vh;
 	--albanna-shadow: 0 8px 28px rgba(20, 30, 40, 0.14);
@@ -70,6 +85,10 @@
 	--albanna-bubble: var(--gray-800, #232323);
 	--albanna-accent-soft: var(--gray-800, #232323);
 	--albanna-accent: var(--gray-700, #383838);
+	/* A link has to be ink, not a fill: on the dark surfaces of this
+	 * theme the accent is a dark grey, and a dark grey link on a dark
+	 * grey bubble is a link nobody can see. */
+	--albanna-link: var(--text-color, var(--gray-200, #e2e2e2));
 	--albanna-error-bg: var(--red-900, #3a1a19);
 	--albanna-error-text: var(--red-300, #f0a8a5);
 	--albanna-focus-ring: rgba(255, 255, 255, 0.14);
@@ -79,6 +98,7 @@
 	--albanna-danger: var(--red-300, #f0a8a5);
 	--albanna-on-accent: #f8f8f8;
 	--albanna-on-stop: #171717;
+	--albanna-on-danger: #171717;
 	--albanna-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
 }
 
@@ -847,7 +867,7 @@ body.albanna-side-chat-docked-inline-start {
  * rather than a red or a green, so that neither direction is dressed as
  * an error or a success. */
 .albanna-chat__rating--on {
-	color: var(--albanna-accent, var(--primary, #2490ef));
+	color: var(--albanna-link, var(--primary, #2490ef));
 	background: var(--albanna-hover, #f2f4f5);
 }
 
@@ -1031,7 +1051,7 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__confirm-button--danger {
 	background: var(--albanna-danger, var(--red, #e02424));
 	border-color: var(--albanna-danger, var(--red, #e02424));
-	color: var(--albanna-on-accent, #ffffff);
+	color: var(--albanna-on-danger, #ffffff);
 	filter: brightness(0.97);
 }
 
@@ -1388,6 +1408,15 @@ body.albanna-side-chat-docked-inline-start {
 		inset: 0 !important;
 		width: 100% !important;
 		max-width: 100% !important;
+		/* The sheet is the whole screen.  The tablet rule above leaves a
+		   strip of the Desk showing at the bottom (100vh - 32px), and on
+		   a phone that strip is where the home indicator is: the
+		   composer sat above it, not on it.  `inset: 0` cannot fix this
+		   on its own — a declared height wins over the bottom edge. */
+		height: 100vh !important;
+		max-height: 100vh !important;
+		height: 100dvh !important;
+		max-height: 100dvh !important;
 		border-radius: 0 !important;
 	}
 
@@ -1481,7 +1510,7 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__tour-dismiss {
 	border: 0;
 	background: transparent;
-	color: var(--albanna-accent, #2490ef);
+	color: var(--albanna-link, #2490ef);
 	font-size: 12px;
 	cursor: pointer;
 	padding: 0;
@@ -1532,7 +1561,7 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__source {
 	border: 0;
 	background: transparent;
-	color: var(--albanna-accent, #171717);
+	color: var(--albanna-link, #171717);
 	font-size: 11px;
 	cursor: pointer;
 	padding: 0;
@@ -1731,7 +1760,7 @@ body.albanna-side-chat-docked-inline-start {
 }
 
 .albanna-chat__voice--listening {
-	color: #ffffff;
+	color: var(--albanna-on-danger, #ffffff);
 	background: var(--albanna-danger, #d13b34);
 	animation: albanna-pulse 1.2s ease-in-out infinite;
 }
