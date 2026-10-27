@@ -423,16 +423,32 @@ function openSource(doc) {
 		// Navigation is best-effort.
 	}
 }
+/**
+ * Whether a turn can still be undone.
+ *
+ * The server decides.  It knows which of the turn's calls carried an
+ * undo, whether the tool that made the call may be undone at all, and
+ * whether the undo has already been spent — a turn that has been taken
+ * back has nothing left to take back, and a button that stays says
+ * otherwise.
+ *
+ * @param {object} message the turn
+ * @returns {boolean} true when there is something to take back
+ */
 function canUndo(message) {
 	if (!message || !Array.isArray(message.tools)) return false;
-	return message.tools.some((tool) => {
-		return (
-			(tool.name === "create_doc" || tool.name === "update_doc") &&
-			tool.ok !== false
-		);
-	});
+	return message.tools.some((tool) => tool.undoable === true);
 }
 
+/**
+ * Take a turn's writes back.
+ *
+ * The server answers with the transcript as it is now, because an undo
+ * changes what the turn can be asked to do: the reader should not have to
+ * ask twice to find out that there is nothing left to undo.
+ *
+ * @param {object} message the turn
+ */
 async function undoTurn(message) {
 	if (!conversationId.value || !message || !message.name) return;
 	try {
@@ -445,6 +461,14 @@ async function undoTurn(message) {
 			state.notice = "undone";
 		} else {
 			state.error = String((result && result.status) || __("Nothing to undo."));
+		}
+		// The transcript comes back with the undo, because an undo changes
+		// what the turn can be asked to do: the button is taken away with
+		// the change it would have taken back.
+		const rows = (result && result.messages) || [];
+		if (rows.length) {
+			state.messages = rows.map(messageFromServer);
+			hasOlder.value = !!(result && result.has_more);
 		}
 	} catch (failure) {
 		state.error = String(
@@ -1136,7 +1160,7 @@ function handleTurnEvent(answer, event, streamId = "") {
 		return;
 	}
 	if (event.event === "tool_start") {
-		answer.tools.push({ name: event.name, ok: null, summary: "" });
+		answer.tools.push({ name: event.name, ok: null, summary: "", undoable: false });
 		refresh(answer);
 		setActivity(state, describeTool(event.name, event.arguments));
 		scrollToBottom();
@@ -1147,6 +1171,10 @@ function handleTurnEvent(answer, event, streamId = "") {
 		if (pending) {
 			pending.ok = event.ok !== false;
 			pending.summary = event.summary || "";
+			// Whether this turn can be taken back.  The server decides, so
+			// the button that appears now is the button the transcript
+			// will show when the conversation is opened again.
+			pending.undoable = event.undoable === true;
 		}
 		refresh(answer);
 

@@ -2424,3 +2424,76 @@ class TestUndo(FrappeTestCase):
             frappe.db.exists("Customer", name),
             "a stored read entry deleted the document it read",
         )
+
+    def test_the_transcript_does_not_offer_the_undo_of_a_read(self):
+        """The button is offered only for what may be taken back.
+
+        A read is never undoable, even when an older version of the app
+        stored an entry that says otherwise — the entry is a claim, and
+        the tool is the truth.
+        """
+        from albanna.services.conversation_service import transcript_window
+
+        name = self._customer()
+        conversation, message = self._turn(
+            [
+                {
+                    "name": "get_doc",
+                    "ok": True,
+                    "summary": "Read it",
+                    "undo": {"action": "delete", "doctype": "Customer", "name": name},
+                }
+            ]
+        )
+
+        window = transcript_window(conversation, 50)
+
+        self.assertFalse(
+            window["messages"][0]["tools"][0]["undoable"],
+            "the transcript offered the undo of a read",
+        )
+
+    def test_the_transcript_offers_the_undo_only_while_there_is_something_to_take_back(self):
+        """The button disappears once the undo has been carried out.
+
+        A button that stays says "you can take this back" about a change
+        that has already been taken back, and the reader is left clicking
+        a button that does nothing.
+        """
+        from albanna.api.conversations import undo_turn
+        from albanna.services.conversation_service import transcript_window
+
+        name = self._customer()
+        conversation, message = self._turn(
+            [
+                {
+                    "name": "update_doc",
+                    "ok": True,
+                    "summary": "Changed it",
+                    "undo": {
+                        "action": "update",
+                        "doctype": "Customer",
+                        "name": name,
+                        "data": {"customer_name": name},
+                    },
+                }
+            ]
+        )
+
+        before = transcript_window(conversation, 50)
+        self.assertTrue(
+            before["messages"][0]["tools"][0]["undoable"],
+            "a turn with something to take back must offer it",
+        )
+
+        result = undo_turn(conversation=conversation, message=message)
+
+        after = transcript_window(conversation, 50)
+        self.assertFalse(
+            after["messages"][0]["tools"][0]["undoable"],
+            "the undo has been carried out; the turn must not offer it again",
+        )
+        self.assertFalse(
+            result["messages"][0]["tools"][0]["undoable"],
+            "the transcript the endpoint returns must say the same thing",
+        )

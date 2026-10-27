@@ -313,83 +313,36 @@ def escalate_conversation(conversation: str = "") -> dict:
 def undo_turn(conversation: str = "", message: str = "") -> dict:
     """Undo the writes of one turn.
 
-    Reads the tool calls stored on the message, reverts each write in
-    reverse order, and reports what was undone.  Only writes that carried
-    an ``undo`` entry are reverted; reads and refused writes are skipped.
+    The rules live in :mod:`albanna.core.undo`, and the carrying-out of
+    them in :mod:`albanna.services.undo` — so that the endpoint that
+    undoes and the transcript that offers can never disagree about what
+    may be taken back.
+
+    The transcript comes back with it, because an undo changes what the
+    turn can still be asked to do: a turn that has been undone has nothing
+    left to take back, and the reader must not be offered a button for it
+    again.
     """
     require_chat_access()
 
-    from albanna.services.conversation_service import assert_owns
+    from albanna.services.conversation_service import assert_owns, transcript_window
+    from albanna.services.undo import undo_message
 
     user = str(frappe.session.user or "")
     assert_owns(conversation, user)
 
-    row = frappe.db.sql(
-        """
-        select tool_calls from `tabAlbanna Message`
-        where name = %s and parent = %s and parentfield = 'messages'
-        """,
-        (message, conversation),
-        as_dict=True,
-    )
-    if not row or not row[0].get("tool_calls"):
-        return {"undone": [], "status": "nothing to undo"}
-
-    try:
-        calls = frappe.parse_json(row[0]["tool_calls"]) or []
-    except Exception:
-        calls = []
-
-    undone = []
-    for call in reversed(calls):
-        undo = call.get("undo") if isinstance(call, dict) else None
-        if not undo or not isinstance(undo, dict):
-            continue
-        action = undo.get("action")
-        doctype = str(undo.get("doctype") or "").strip()
-        name = str(undo.get("name") or "").strip()
-        if not doctype or not name:
-            continue
-
-        # The tool that made the call decides what its own undo may be.
-        #
-        # The stored entry says what to do, but the tool says what was
-        # done — and only the tool can be trusted about that.  An entry
-        # that says "delete" for a *read* is a bug in the entry, and an
-        # undo that obeyed it would delete a document the turn only
-        # looked at.  The reader pressed undo to take back a change, and
-        # a ticket was gone.
-        tool = str(call.get("name") or "").strip()
-
-        try:
-            if action == "delete":
-                if tool != "create_doc":
-                    continue
-                frappe.delete_doc(doctype, name, ignore_permissions=False)
-                undone.append({"action": "deleted", "doctype": doctype, "name": name})
-            elif action == "update":
-                if tool not in ("update_doc", "bulk_update_doc"):
-                    continue
-                data = undo.get("data") or {}
-                if isinstance(data, dict) and data:
-                    doc = frappe.get_doc(doctype, name)
-                    for field, value in data.items():
-                        doc.set(field, value)
-                    doc.save()
-                    undone.append({"action": "reverted", "doctype": doctype, "name": name})
-            elif action == "cancel":
-                if tool != "submit_doc":
-                    continue
-                doc = frappe.get_doc(doctype, name)
-                if doc.docstatus == 1:
-                    doc.cancel()
-                    undone.append({"action": "cancelled", "doctype": doctype, "name": name})
-        except Exception as exc:
-            frappe.log_error(str(exc), "Albanna undo")
-            break
-
+    result = undo_message(conversation, message)
     frappe.db.commit()
-    return {"undone": undone, "status": "ok" if undone else "nothing to undo"}
+
+    window = transcript_window(conversation, TRANSCRIPT_WINDOW)
+
+    return {
+        "status": result.get("status") or "nothing to undo",
+        "undone": result.get("undone") or [],
+        "messages": window["messages"],
+        "total": window["total"],
+        "has_more": window["has_more"],
+    }
 
 
 def delete_conversation(conversation: str = "") -> dict:

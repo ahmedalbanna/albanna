@@ -67,6 +67,7 @@ from albanna.core.messages import (
 )
 from albanna.core.prompt import PromptContext, build_system_prompt
 from albanna.core.tools import ToolSpec, validate_arguments
+from albanna.core.undo import is_undoable
 from albanna.providers.base import (
     Completion,
     LLMConfig,
@@ -804,6 +805,10 @@ class ChatService:
             # The documents it looked at, so that the answer can link
             # to them.
             documents=touched_documents(call, result),
+            # Whether the turn can be taken back.  The rule is the undo's
+            # own rule, so the panel and the transcript cannot disagree
+            # about a turn that is offered and then does nothing.
+            undoable=_is_undoable_call(call, result),
         )
         return result
 
@@ -994,7 +999,14 @@ class ChatService:
             logger.exception("Could not write the chat log row")
 
 
-def tool_done_event(name: str, ok: bool, error: str = "", summary: str = "", documents=None) -> dict[str, Any]:
+def tool_done_event(
+    name: str,
+    ok: bool,
+    error: str = "",
+    summary: str = "",
+    documents=None,
+    undoable: bool = False,
+) -> dict[str, Any]:
     """The panel's record of one tool call's end.
 
     **One place**, because the shape is read in three kinds of place — a
@@ -1008,6 +1020,7 @@ def tool_done_event(name: str, ok: bool, error: str = "", summary: str = "", doc
         error: what went wrong, empty when nothing did.
         summary: what the call found, in the tool's own words.
         documents: the documents the call touched, when known.
+        undoable: whether this call may be taken back, when it may.
     """
     event: dict[str, Any] = {"event": "tool_done", "name": name, "ok": ok}
     if error:
@@ -1016,6 +1029,8 @@ def tool_done_event(name: str, ok: bool, error: str = "", summary: str = "", doc
         event["summary"] = summary
     if documents is not None:
         event["documents"] = documents
+    if undoable:
+        event["undoable"] = True
     return event
 
 
@@ -1026,9 +1041,71 @@ def emit_tool_done(
     error: str = "",
     summary: str = "",
     documents=None,
+    undoable: bool = False,
 ) -> None:
     """Say a tool call is over, through whatever ``emit`` carries events."""
-    emit(tool_done_event(call.name, ok, error=error, summary=summary, documents=documents))
+    emit(
+        tool_done_event(
+            call.name,
+            ok,
+            error=error,
+            summary=summary,
+            documents=documents,
+            undoable=undoable,
+        )
+    )
+
+
+def undo_entry(call: ToolCall, result: ToolResult) -> dict[str, Any] | None:
+    """The undo this call carries, if it carries one.
+
+    **One place**, because two readers have to agree: the transcript,
+    which stores the entry and later spends it, and the live panel, which
+    has to say whether the turn can be taken back *before* the turn is
+    stored.  Two builders would drift, and the drift would show as a
+    button that is offered and then does nothing.
+
+    The entry says what it wants; :func:`albanna.core.undo.is_undoable`
+    says whether the tool that made the call may have it.
+    """
+    created = _created_name(call, result)
+    if created:
+        return {
+            "action": "delete",
+            "doctype": str(call.arguments.get("doctype") or "").strip(),
+            "name": created,
+        }
+
+    data = getattr(result, "data", None) or {}
+    if isinstance(data, dict) and data.get("before"):
+        return {
+            "action": "update",
+            "doctype": str(data.get("doctype") or call.arguments.get("doctype") or "").strip(),
+            "name": str(data.get("name") or call.arguments.get("name") or "").strip(),
+            "data": data.get("before"),
+        }
+
+    # A submitted document is taken back by cancelling it.
+    if call.name == "submit_doc" and result.ok:
+        doctype = str(call.arguments.get("doctype") or "").strip()
+        docname = str(call.arguments.get("name") or "").strip()
+        if doctype and docname:
+            return {"action": "cancel", "doctype": doctype, "name": docname}
+
+    return None
+
+
+def _is_undoable_call(call: ToolCall, result: ToolResult) -> bool:
+    """Whether this call may be taken back.
+
+    The undo's own rule, asked about the call as it is running — so the
+    live panel and the stored transcript cannot disagree about whether a
+    turn can be undone.
+    """
+    undo = undo_entry(call, result)
+    if not undo:
+        return False
+    return is_undoable({"name": call.name, "undo": undo})
 
 
 def tool_entry(call: ToolCall, result: ToolResult) -> dict[str, Any]:
@@ -1057,22 +1134,10 @@ def tool_entry(call: ToolCall, result: ToolResult) -> dict[str, Any]:
     created = _created_name(call, result)
     if created:
         entry["created"] = created
-        entry["undo"] = {"action": "delete", "doctype": str(call.arguments.get("doctype") or "").strip(), "name": created}
     entry["dry_run"] = bool(getattr(result, "dry_run", False))
-    data = getattr(result, "data", None) or {}
-    if isinstance(data, dict) and data.get("before"):
-        entry["undo"] = {
-            "action": "update",
-            "doctype": str(data.get("doctype") or call.arguments.get("doctype") or "").strip(),
-            "name": str(data.get("name") or call.arguments.get("name") or "").strip(),
-            "data": data.get("before"),
-        }
-    # A submitted document is taken back by cancelling it.
-    if call.name == "submit_doc" and result.ok:
-        doctype = str(call.arguments.get("doctype") or "").strip()
-        docname = str(call.arguments.get("name") or "").strip()
-        if doctype and docname:
-            entry["undo"] = {"action": "cancel", "doctype": doctype, "name": docname}
+    undo = undo_entry(call, result)
+    if undo:
+        entry["undo"] = undo
     return entry
 
 

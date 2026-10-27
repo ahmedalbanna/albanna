@@ -29,6 +29,7 @@ import frappe
 from frappe import _
 
 from albanna.core.messages import Message, ToolCall
+from albanna.core.undo import is_undoable
 
 logger = logging.getLogger(__name__)
 
@@ -339,6 +340,12 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
                         "denied": bool(item.get("denied", False)),
                         "summary": str(item.get("summary") or ""),
                         "documents": _documents(item.get("documents")),
+                        # Whether this call may still be undone.  The rule
+                        # is the undo's own rule, read from the same place
+                        # the undo reads it — so a turn that has already
+                        # been taken back is not offered again, and a turn
+                        # that never could be is not offered at all.
+                        "undoable": is_undoable(item),
                     }
                     for item in (raw if isinstance(raw, list) else [])
                     if isinstance(item, dict) and item.get("name")
