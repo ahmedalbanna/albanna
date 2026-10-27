@@ -1033,7 +1033,7 @@ def tool_entry(call: ToolCall, result: ToolResult) -> dict[str, Any]:
         # reason: a reopened answer links to them too.
         "documents": touched_documents(call, result),
     }
-    created = _created_name(result)
+    created = _created_name(call, result)
     if created:
         entry["created"] = created
         entry["undo"] = {"action": "delete", "doctype": str(call.arguments.get("doctype") or "").strip(), "name": created}
@@ -1087,18 +1087,39 @@ def touched_documents(call, result: ToolResult) -> list[dict[str, str]]:
             if isinstance(row, dict):
                 add(row.get("name"))
     elif call.name == "create_doc":
-        add(_created_name(result))
+        add(_created_name(call, result))
+    elif call.name in ("update_doc", "submit_doc", "cancel_doc", "delete_doc"):
+        # The document a write touched is a document the answer is about,
+        # and the Sources line is where the reader looks for it.
+        add(call.arguments.get("name"))
+    elif call.name == "amend_doc":
+        # An amendment creates a new document and supersedes the old one;
+        # both are worth naming.
+        add((result.data or {}).get("amended") if isinstance(result.data, dict) else "")
+        add(call.arguments.get("name"))
 
     return documents
 
 
-def _created_name(result: ToolResult) -> str:
+def _created_name(call, result: ToolResult) -> str:
     """The name of the document a tool created, if it created one.
 
-    The write tools return the created document's name in their envelope.
-    Recording it is what turns the audit row from "the assistant called a
-    tool" into "the assistant created ACC-SINV-2026-00008".
+    Only ``create_doc`` creates a document.  The other tools name a
+    document as well — the one they read, the one they changed — and
+    taking the name out of the envelope alone would have every tool that
+    mentions a document claiming to have created it.
+
+    That claim is not harmless.  The claim is what the undo reads, and an
+    undo that believed a *read* had created a document would delete it:
+    the turn read the ticket, the turn changed the ticket, the reader
+    pressed undo, and the ticket was gone — because a read had been
+    recorded as a creation.
+
+    So the tool decides, not the envelope.
     """
+    if str(getattr(call, "name", "") or "").strip() != "create_doc":
+        return ""
+
     data = result.data
     if not isinstance(data, dict):
         return ""

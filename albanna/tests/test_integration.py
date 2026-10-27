@@ -38,6 +38,8 @@ this file.
 
 from __future__ import annotations
 
+import json
+
 import frappe
 import pytest
 from frappe.tests.utils import FrappeTestCase
@@ -2159,4 +2161,251 @@ class TestTheSettingsHealAPlainTextKey(FrappeTestCase):
             doc.api_key,
             "*" * 10,
             "validate must mask the value before the document is written",
+        )
+
+
+class TestUndo(FrappeTestCase):
+    """Taking a turn's writes back.
+
+    Undo is the one feature in the app that *removes* something the
+    assistant did, so it has to be the most careful thing in here: it must
+    undo exactly what was done, and nothing else.
+
+    The bug this class exists for: the transcript recorded a document's
+    name out of the tool's envelope, and every tool names the document it
+    touched — so a **read** was recorded as a creation.  The undo of a
+    turn that read a document and changed it reverted the change
+    correctly and then deleted the document, because the read's entry
+    said "delete".  The reader pressed undo to take back a change, and
+    the ticket was gone.
+
+    The rule the app now follows: the *tool* decides what its own undo
+    may be, and the stored entry only says which one it wants.  Only a
+    creation may be undone by deleting it.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.owner = self._make_user("albanna.test.undo@albanna.dev", "Sales User")
+        self.backend = ErpnextBackend()
+
+    # -- helpers -----------------------------------------------------------
+
+    def _make_user(self, email: str, role: str) -> str:
+        if not frappe.db.exists("User", email):
+            user = frappe.new_doc("User")
+            user.email = email
+            user.first_name = "Albanna"
+            user.last_name = "Undo"
+            user.flags.ignore_permissions = True
+            user.insert()
+        user = frappe.get_doc("User", email)
+        user.flags.ignore_permissions = True
+        user.add_roles(role, "Albanna User")
+        frappe.db.commit()
+        return email
+
+    def _as(self, email: str):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _context(self, email: str) -> ToolContext:
+        self._as(email)
+        return ToolContext(principal=current_principal(), site=frappe.local.site)
+
+    def _customer_group(self) -> str:
+        group = frappe.db.get_value("Customer", {"disabled": 0}, "customer_group")
+        self.assertTrue(group, "the site needs a customer group")
+        return group
+
+    def _customer(self) -> str:
+        """A customer of this test's own, to read and then change."""
+        name = f"Albanna Undo Test {self._testMethodName}"
+        if not frappe.db.exists("Customer", name):
+            customer = frappe.new_doc("Customer")
+            customer.customer_name = name
+            customer.customer_type = "Company"
+            customer.customer_group = self._customer_group()
+            customer.flags.ignore_permissions = True
+            customer.insert()
+        return name
+
+    def _call(self, name, arguments):
+        from albanna.core.messages import ToolCall
+
+        return ToolCall(id="call-1", name=name, arguments=arguments)
+
+    def _turn(self, entries: list[dict]) -> tuple[str, str]:
+        """A conversation with one assistant message carrying *entries*."""
+        self._as(self.owner)
+        conversation = ensure_conversation(self.owner, f"test|undo|{self.id()}|")
+        frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
+        written = append_messages(
+            conversation,
+            [
+                {
+                    "role": "assistant",
+                    "content": "I changed it.",
+                    "tool_calls": json.dumps(entries),
+                }
+            ],
+        )
+        return conversation, written[0][0]
+
+    # -- what is recorded --------------------------------------------------
+
+    def test_a_read_is_not_recorded_as_a_creation(self):
+        """The bug, at the place it started.
+
+        The envelope of a read carries the name of the document it read,
+        exactly as the envelope of a creation carries the name of the
+        document it created.  Reading the name out of the envelope alone
+        cannot tell the two apart — so the tool has to.
+        """
+        from albanna.services.chat_service import tool_entry
+        from albanna.tools.base import ToolResult
+
+        call = self._call("get_doc", {"doctype": "Customer", "name": "CUST-0001"})
+        result = ToolResult.success(
+            "Read it",
+            data={"doctype": "Customer", "name": "CUST-0001"},
+        )
+
+        entry = tool_entry(call, result)
+
+        self.assertNotIn("undo", entry, "a read must not carry an undo")
+        self.assertNotIn("created", entry, "a read must not claim to have created")
+
+    def test_a_creation_is_recorded_as_one(self):
+        from albanna.services.chat_service import tool_entry
+        from albanna.tools.base import ToolResult
+
+        call = self._call("create_doc", {"doctype": "Customer", "data": {}})
+        result = ToolResult.success(
+            "Created it",
+            data={"doctype": "Customer", "name": "CUST-0009"},
+        )
+
+        entry = tool_entry(call, result)
+
+        self.assertEqual(entry.get("created"), "CUST-0009")
+        self.assertEqual(entry["undo"]["action"], "delete")
+        self.assertEqual(entry["undo"]["name"], "CUST-0009")
+
+    def test_an_update_is_undone_by_writing_the_old_values_back(self):
+        from albanna.services.chat_service import tool_entry
+        from albanna.tools.base import ToolResult
+
+        call = self._call(
+            "update_doc",
+            {"doctype": "Customer", "name": "CUST-0009", "data": {"customer_name": "new"}},
+        )
+        result = ToolResult.success(
+            "Updated it",
+            data={
+                "doctype": "Customer",
+                "name": "CUST-0009",
+                "before": {"customer_name": "old"},
+                "changed": {"customer_name": "new"},
+            },
+        )
+
+        entry = tool_entry(call, result)
+
+        self.assertEqual(entry["undo"]["action"], "update")
+        self.assertEqual(entry["undo"]["data"], {"customer_name": "old"})
+
+    # -- what the undo does -----------------------------------------------
+
+    def test_the_undo_of_a_turn_that_read_and_changed_keeps_the_document(self):
+        """The whole path, on a real document.
+
+        A read and a change in one turn, exactly as the assistant does it:
+        read the ticket, change the ticket.  The undo must put the field
+        back — and must leave the document where it found it.
+        """
+        from albanna.api.conversations import undo_turn
+        from albanna.services.chat_service import tool_entry
+
+        name = self._customer()
+        context = self._context(self.owner)
+
+        read = self.backend.call(
+            TOOL_MANIFEST.get("get_doc"),
+            {"doctype": "Customer", "name": name},
+            context,
+        )
+        self.assertTrue(read.ok, read.content)
+
+        updated = self.backend.call(
+            TOOL_MANIFEST.get("update_doc"),
+            {
+                "doctype": "Customer",
+                "name": name,
+                "data": {"customer_name": f"{name} changed"},
+            },
+            context,
+        )
+        self.assertTrue(updated.ok, updated.content)
+        self.assertEqual(
+            frappe.db.get_value("Customer", name, "customer_name"),
+            f"{name} changed",
+        )
+
+        entries = [
+            tool_entry(
+                self._call("get_doc", {"doctype": "Customer", "name": name}),
+                read,
+            ),
+            tool_entry(
+                self._call(
+                    "update_doc",
+                    {"doctype": "Customer", "name": name, "data": {"customer_name": "x"}},
+                ),
+                updated,
+            ),
+        ]
+        conversation, message = self._turn(entries)
+
+        result = undo_turn(conversation=conversation, message=message)
+
+        self.assertTrue(
+            frappe.db.exists("Customer", name),
+            "the undo deleted a document the turn had only read",
+        )
+        self.assertEqual(
+            frappe.db.get_value("Customer", name, "customer_name"),
+            name,
+            "the undo did not write the old value back",
+        )
+        self.assertEqual([row["action"] for row in result.get("undone") or []], ["reverted"])
+
+    def test_an_entry_that_claims_a_read_created_a_document_is_refused(self):
+        """The guard on the server, against the stored entry.
+
+        The transcript is written by an older version of the app, and a
+        stored entry may say "delete" for a read.  The undo reads the
+        *tool* as well as the entry, and a read is never a creation.
+        """
+        from albanna.api.conversations import undo_turn
+
+        name = self._customer()
+        conversation, message = self._turn(
+            [
+                {
+                    "name": "get_doc",
+                    "ok": True,
+                    "summary": "Read it",
+                    "undo": {"action": "delete", "doctype": "Customer", "name": name},
+                }
+            ]
+        )
+
+        undo_turn(conversation=conversation, message=message)
+
+        self.assertTrue(
+            frappe.db.exists("Customer", name),
+            "a stored read entry deleted the document it read",
         )

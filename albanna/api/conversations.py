@@ -350,11 +350,26 @@ def undo_turn(conversation: str = "", message: str = "") -> dict:
         name = str(undo.get("name") or "").strip()
         if not doctype or not name:
             continue
+
+        # The tool that made the call decides what its own undo may be.
+        #
+        # The stored entry says what to do, but the tool says what was
+        # done — and only the tool can be trusted about that.  An entry
+        # that says "delete" for a *read* is a bug in the entry, and an
+        # undo that obeyed it would delete a document the turn only
+        # looked at.  The reader pressed undo to take back a change, and
+        # a ticket was gone.
+        tool = str(call.get("name") or "").strip()
+
         try:
             if action == "delete":
+                if tool != "create_doc":
+                    continue
                 frappe.delete_doc(doctype, name, ignore_permissions=False)
                 undone.append({"action": "deleted", "doctype": doctype, "name": name})
             elif action == "update":
+                if tool not in ("update_doc", "bulk_update_doc"):
+                    continue
                 data = undo.get("data") or {}
                 if isinstance(data, dict) and data:
                     doc = frappe.get_doc(doctype, name)
@@ -363,6 +378,8 @@ def undo_turn(conversation: str = "", message: str = "") -> dict:
                     doc.save()
                     undone.append({"action": "reverted", "doctype": doctype, "name": name})
             elif action == "cancel":
+                if tool != "submit_doc":
+                    continue
                 doc = frappe.get_doc(doctype, name)
                 if doc.docstatus == 1:
                     doc.cancel()
