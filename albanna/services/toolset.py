@@ -23,16 +23,21 @@ from albanna.permissions import (
     submittable_doctypes,
     writable_doctypes,
 )
+from albanna.services.settings_service import get_settings
 
 
 def tool_registry(user: str):
     """The tools this account is offered.
 
     Frappe decides: a write tool appears when the caller holds the right
-    it needs somewhere on the site, and not otherwise.  There is no
-    site-wide switch that can disagree with the permission matrix.
+    it needs somewhere on the site, and not otherwise.  The operator may
+    also hide tools by name (the settings' "disabled tools" list) — a
+    tool hidden there is hidden from everyone, regardless of role.
+
+    There is no site-wide switch that can disagree with the permission
+    matrix; the disabled list only ever narrows it.
     """
-    return TOOL_MANIFEST.without_writes_out_of_reach(
+    base = TOOL_MANIFEST.without_writes_out_of_reach(
         creatable_doctypes(user),
         writable_doctypes(user),
         submittable_doctypes(user),
@@ -40,3 +45,7 @@ def tool_registry(user: str):
         amendable_doctypes(user),
         deletable_doctypes(user),
     )
+    disabled = set(get_settings().disabled_tools or ())
+    if not disabled:
+        return base
+    return base.without(disabled)

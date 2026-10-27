@@ -132,7 +132,7 @@ def _render_page_context(raw: Any) -> str:
 
 
 @frappe.whitelist()
-@redacted_request_text("question", "page_context")
+@redacted_request_text("question", "page_context", "image")
 def ask(
     question: str = "",
     conversation_id: str = "",
@@ -169,7 +169,7 @@ def ask(
 
 
 @frappe.whitelist()
-@redacted_request_text("question", "page_context")
+@redacted_request_text("question", "page_context", "image")
 def ask_stream(
     question: str = "",
     conversation_id: str = "",

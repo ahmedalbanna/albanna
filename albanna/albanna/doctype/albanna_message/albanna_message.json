@@ -8,9 +8,11 @@
     "field_order": [
         "role",
         "content",
+        "image_url",
         "tool_name",
         "round_no",
-        "tool_calls"
+        "tool_calls",
+        "rating"
     ],
     "fields": [
         {

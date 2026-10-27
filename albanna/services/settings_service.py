@@ -50,6 +50,8 @@ class AppSettings:
     #: Optional monthly budget, in the site's currency.  Zero means
     #: "no limit set".
     monthly_budget: float = 0.0
+    #: Tools the operator has hidden from the assistant, by name.
+    disabled_tools: tuple[str, ...] = ()
     #: Whether a write must wait for the reader's approval before it runs.
     #: Off by default; a per-user policy can turn it on for one account.
     confirm_writes: bool = False
@@ -141,6 +143,11 @@ def _build() -> AppSettings:
         # "free" is a lie the ledger would tell.
         price_per_million=_float(getattr(doc, "price_per_million", 0), 0.0),
         monthly_budget=_float(getattr(doc, "monthly_budget", 0), 0.0),
+        disabled_tools=tuple(
+            t.strip()
+            for t in str(getattr(doc, "disabled_tools", "") or "").replace(",", "\n").split("\n")
+            if t.strip()
+        ),
         # Whether a write waits for the reader's approval.  A Check
         # field, read as a bool; a missing column (pre-migration) reads
         # as "off".

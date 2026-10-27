@@ -734,8 +734,13 @@ class TestSettings(FrappeTestCase):
     def test_a_provider_with_no_model_is_refused_by_the_test(self):
         from albanna.api.provider import test_provider
 
-        with self.assertRaises(frappe.ValidationError):
-            test_provider(kind="openai", base_url="https://example.invalid", model="")
+        former = frappe.session.user
+        frappe.set_user("Administrator")
+        try:
+            with self.assertRaises(frappe.ValidationError):
+                test_provider(kind="openai", base_url="https://example.invalid", model="")
+        finally:
+            frappe.set_user(former)
 
 
 @pytest.mark.integration

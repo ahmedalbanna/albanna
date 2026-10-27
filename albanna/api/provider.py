@@ -17,6 +17,7 @@ import time
 import frappe
 from frappe import _
 
+from albanna.permissions import require_system_manager
 from albanna.core.messages import user
 from albanna.providers.base import ProviderConfig, build_provider, default_base_url
 
@@ -52,6 +53,8 @@ def test_provider(
     What comes back is the model that answered and how long it took, or
     the reason it did not.
     """
+    require_system_manager()
+
     settings = _saved_settings()
     key = _usable_key(api_key, settings.api_key)
 

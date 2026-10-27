@@ -36,7 +36,7 @@ from albanna.core.secrets import REDACTED
 #:
 #: One list, because the set is the policy: a new endpoint that takes
 #: the user's text adds its field here rather than inventing a rule.
-REQUEST_TEXT_FIELDS = ("message", "messages_json", "question", "page_context")
+REQUEST_TEXT_FIELDS = ("message", "messages_json", "question", "page_context", "image")
 
 
 def redact_request_text(*fields: str) -> None:
@@ -61,12 +61,13 @@ def redact_request_text(*fields: str) -> None:
 def redacted_request_text(*fields: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Redact *fields* of the request before the wrapped endpoint runs.
 
-    Applied **under** ``@frappe.whitelist()``, so the whitelisted
-    function stays the one Frappe registers and calls, and **around** the
-    endpoint, so the redaction happens before the access gate can refuse:
-    a refused turn is exactly the one that ends up in the log with the
-    user's question in it.
+    When no fields are given, the baseline set in :data:`REQUEST_TEXT_FIELDS`
+    is redacted: that is the policy, so a new endpoint that forgets to
+    name its text fields still hides the user's words rather than leaking
+    them.  Naming fields adds to that baseline rather than replacing it.
     """
+
+    fields = fields or REQUEST_TEXT_FIELDS
 
     def decorate(func: Callable[..., Any]) -> Callable[..., Any]:
         """Wrap one endpoint, redacting before its body runs."""

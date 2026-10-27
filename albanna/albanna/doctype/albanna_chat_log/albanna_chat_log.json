@@ -12,6 +12,7 @@
         "provider",
         "model",
         "status",
+        "had_image",
         "rounds_section",
         "rounds",
         "tool_calls",
