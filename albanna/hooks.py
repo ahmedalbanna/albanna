@@ -32,7 +32,19 @@ app_license = "mit"
 # ``.bundle.`` and do not start with ``/assets``.  A raw path is served from a
 # URL that never changes under a one-year ``max-age``, which silently pins
 # every returning user to the stylesheet they loaded first.
-app_include_js = ["albanna-side-chat.bundle.js", "albanna-form-button.js", "albanna-error-button.js"]
+#
+# Every entry here carries ``.bundle.`` for the same reason, and the reason
+# is sharper for a script: an entry without it is passed through untouched
+# and requested from the site root, where it does not exist.  The request
+# 404s, the browser logs it, and nothing on the page says so — the feature
+# is simply absent, on every page, for every user, forever.  The "Ask
+# Albanna" button on a form and the "Ask Albanna" button on an error dialog
+# were both missing for exactly that reason.
+app_include_js = [
+    "albanna-side-chat.bundle.js",
+    "albanna-form-button.bundle.js",
+    "albanna-error-button.bundle.js",
+]
 app_include_css = ["albanna-side-chat.bundle.css"]
 
 # Chat history is private to the user who created it.  The doctype grants

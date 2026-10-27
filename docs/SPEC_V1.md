@@ -29,7 +29,7 @@ but three gaps limit trust and discoverability for a sales rep:
 Three small, independent changes that each make an existing surface more
 trustworthy, without new backend subsystems:
 
-1. A global script (like `albanna-form-button.js`) that hooks Frappe error
+1. A global script (like `albanna-form-button.bundle.js`) that hooks Frappe error
    dialogs and adds an "Ask Albanna" button passing the error text as the
    first question.
 2. A "Sources" line under each assistant answer listing the documents the
@@ -70,7 +70,7 @@ trustworthy, without new backend subsystems:
 
 - **Seam:** three independent seams, each at the highest possible level.
   - Error button: a global script (already the pattern for
-    `albanna-form-button.js`), hooking Frappe's error dialog rendering.
+    `albanna-form-button.bundle.js`), hooking Frappe's error dialog rendering.
   - Sources line: pure frontend, reading `message.documents` which is
     already populated from the stored tool calls. No new backend, no new
     data.
