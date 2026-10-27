@@ -43,13 +43,6 @@ const onSearchInput = (event) => {
 	emit("search", value);
 };
 
-const filtered = computed(() => props.conversations);
-
-const hasMatches = computed(() => {
-	if (!searchInput.value.trim()) return true;
-	return props.conversations.length > 0;
-});
-
 const editing = ref("");
 
 /**
@@ -118,14 +111,17 @@ function commitRename(conversation, event) {
 	<div class="albanna-drawer">
 		<div v-if="loading" class="albanna-drawer__loading">{{ __("Loading…") }}</div>
 
-		<div v-else-if="!conversations.length" class="albanna-drawer__empty">
-			<p class="albanna-drawer__empty-title">{{ __("No conversations yet") }}</p>
-			<p class="albanna-drawer__empty-detail">
-				{{ __("Questions you ask will be listed here.") }}
-			</p>
-		</div>
-
-		<div v-if="!loading && conversations.length" class="albanna-drawer__search">
+		<!--
+			The search box stays while a search is on, even one that matched
+			nothing.  A reader who typed the wrong word has to be able to
+			correct it without closing the drawer and hunting for the button
+			again.  And the search is a server-side one: an empty list means
+			nothing matched, not that the reader has no conversations.
+		-->
+		<div
+			v-if="!loading && (conversations.length || searchInput.trim())"
+			class="albanna-drawer__search"
+		>
 			<input
 				type="search"
 				class="albanna-drawer__search-input"
@@ -137,7 +133,17 @@ function commitRename(conversation, event) {
 		</div>
 
 		<div
-			v-if="!loading && conversations.length && !hasMatches"
+			v-if="!loading && !conversations.length && !searchInput.trim()"
+			class="albanna-drawer__empty"
+		>
+			<p class="albanna-drawer__empty-title">{{ __("No conversations yet") }}</p>
+			<p class="albanna-drawer__empty-detail">
+				{{ __("Questions you ask will be listed here.") }}
+			</p>
+		</div>
+
+		<div
+			v-if="!loading && !conversations.length && searchInput.trim()"
 			class="albanna-drawer__empty"
 		>
 			<p class="albanna-drawer__empty-title">{{ __("No matches") }}</p>
@@ -146,10 +152,7 @@ function commitRename(conversation, event) {
 			</p>
 		</div>
 
-		<div
-			v-if="!loading && conversations.length && filtered.length"
-			class="albanna-drawer__list"
-		>
+		<div v-if="!loading && conversations.length" class="albanna-drawer__list">
 			<section v-for="group in groups" :key="group.key" class="albanna-drawer__group">
 				<h3 class="albanna-drawer__group-title">{{ groupLabel(group.key) }}</h3>
 				<ul class="albanna-drawer__group-list">
