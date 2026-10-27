@@ -981,9 +981,9 @@ whether they may create one — the app does not get to decide that.
   It is a good feature and it is a separate one; v1 has no retrieval.
 * **Guest chat.**  A guest has no identity and no history.  It is a
   different product with different rules, not a flag.
-* **Conversation management.**  The widget's list, rename, delete, pin and
-  server-side title search are in place.  What is not there is a way to
-  export a whole conversation, or to filter the list by anything but the
-  page it belongs to.
+* **Conversation management.**  The widget's list, rename, delete, pin,
+  server-side title search and Markdown export are in place.  What is not
+  there is a way to filter the list by anything but the page it belongs
+  to.
 * **A second write tool.**  One write, exercised, is worth more than two
   writes, one of them untested.

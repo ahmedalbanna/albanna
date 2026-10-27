@@ -50,7 +50,12 @@ from frappe import _
 
 from albanna.core.authority import Authority
 from albanna.core.cost import cost_of_turn
-from albanna.core.errors import AllProvidersFailed, ProviderBudgetExceeded, ProviderError
+from albanna.core.errors import (
+    AllProvidersFailed,
+    ProviderBudgetExceeded,
+    ProviderError,
+    reader_message,
+)
 from albanna.core.messages import (
     Message,
     ToolCall,
@@ -81,6 +86,22 @@ Emit = Callable[[dict[str, Any]], None]
 
 def _noop_emit(event: dict[str, Any]) -> None:
     return None
+
+
+def _reader_error(exc: BaseException) -> str:
+    """The sentence the reader is shown when a turn fails.
+
+    The sentence is chosen by the kind of failure and is then translated
+    into the reader's language — the reader's language is the interface's
+    language, and this is the layer that knows it.
+    """
+    message = reader_message(exc)
+    try:
+        import frappe
+
+        return frappe._(message)
+    except Exception:
+        return message
 
 
 @dataclass
@@ -348,7 +369,7 @@ class ChatService:
                 )
                 return TurnOutcome(
                     ok=False,
-                    error=str(exc),
+                    error=_reader_error(exc),
                     conversation_id=conversation,
                     rounds=rounds,
                     tool_calls=tool_calls_made,

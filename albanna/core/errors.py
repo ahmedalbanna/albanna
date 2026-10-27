@@ -25,6 +25,23 @@ class AlbannaError(Exception):
     """Base class for every error this app raises on purpose."""
 
 
+def _(message: str) -> str:
+    """Mark a string as one the reader may read.
+
+    This module is pure — it cannot import Frappe, and importing Frappe
+    here would put the framework into the domain layer.  So the call does
+    not translate anything: it *marks* the string, and the translation
+    happens in the layer that knows the reader's language.
+
+    The mark is not decoration.  The catalogue checker reads the source
+    for marked strings, so a sentence that is not marked is a sentence
+    with no Arabic translation — an English error on an Arabic desk — and
+    a catalogue entry for it would look like a translation for a string
+    the app no longer uses.
+    """
+    return message
+
+
 class ProviderError(AlbannaError):
     """A model provider failed."""
 
@@ -113,3 +130,57 @@ class ToolInvalidArguments(ToolError):
 
 class TurnLimitReached(AlbannaError):
     """The turn used its whole tool-round budget without an answer."""
+
+
+#: The sentences a reader is shown when a turn fails.  English here; the
+#: reader's language is applied by the caller, which is the layer that
+#: knows it.
+READER_MESSAGES = {
+    ProviderTimeout: _("The model did not answer in time. Try again, or ask a narrower question."),
+    ProviderUnreachable: _(
+        "The model could not be reached. Check the provider's address, then try again."
+    ),
+    ProviderRejected: _(
+        "The model provider refused the request. Check the API key and the model's access."
+    ),
+}
+
+
+def reader_message(exc: BaseException) -> str:
+    """What the reader is told when a turn fails.
+
+    The detail — the exception's class, its message, the traceback — goes
+    to the log, where an operator can act on it.  The reader gets a
+    sentence they can do something with.
+
+    A reader who is told "JobTimeoutException: Task exceeded maximum
+    timeout value (600 seconds)" learns two things: that the app has a
+    problem, and none of what to do about it.  Worse, the exception's
+    class and message are the app's internals, and an error panel is not
+    where a reader should be reading them.
+
+    So the sentence is chosen by what kind of failure it is, and the
+    detail is kept out of the panel.  The one exception is a budget
+    refusal: its message names the number of tokens the request could
+    have asked for, and that number is an instruction rather than a
+    complaint.
+    """
+    if isinstance(exc, ProviderBudgetExceeded):
+        return str(exc)
+
+    if isinstance(exc, AllProvidersFailed):
+        # The composed message repeats the provider's label and names the
+        # exception's class.  The reader needs to know that no model
+        # answered, not how the failures were concatenated.
+        return _(
+            "No model provider answered. Check the provider settings, then try again."
+        )
+
+    for error_class, message in READER_MESSAGES.items():
+        if isinstance(exc, error_class):
+            return message
+
+    if isinstance(exc, ProviderError):
+        return str(exc)
+
+    return _("Something went wrong and the turn did not finish. Try again.")

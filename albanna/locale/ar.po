@@ -1077,3 +1077,23 @@ msgstr "حجم الملف أكبر من {0} كيلوبايت."
 
 msgid "The {0} was stored in plain text and has been encrypted."
 msgstr "كان {0} مخزّنًا كنص صريح، وتم تشفيره الآن."
+
+
+msgid "The model did not answer in time. Try again, or ask a narrower question."
+msgstr "لم يُجب النموذج في الوقت المحدَّد. حاول مرة أخرى، أو اطرح سؤالاً أكثر تحديداً."
+
+
+msgid "The model could not be reached. Check the provider's address, then try again."
+msgstr "تعذّر الوصول إلى النموذج. تحقَّق من عنوان المزوِّد ثم حاول مرة أخرى."
+
+
+msgid "The model provider refused the request. Check the API key and the model's access."
+msgstr "رفض مزوِّد النموذج الطلب. تحقَّق من مفتاح الواجهة وصلاحية النموذج."
+
+
+msgid "No model provider answered. Check the provider settings, then try again."
+msgstr "لم يستجب أي مزوِّد نموذج. تحقَّق من إعدادات المزوِّد ثم حاول مرة أخرى."
+
+
+msgid "Something went wrong and the turn did not finish. Try again."
+msgstr "حدث خطأ ما ولم تكتمل هذه الجولة. حاول مرة أخرى."

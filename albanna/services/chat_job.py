@@ -24,11 +24,21 @@ from typing import Any
 import frappe
 
 from albanna.api.chat import STREAM_EVENT, TURN_CACHE_KEY
+from albanna.core.errors import reader_message
 
 logger = logging.getLogger(__name__)
 
 #: How long a finished turn stays readable for the polling fallback.
 TURN_TTL_SECONDS = 1800
+
+
+def _reader_error(exc: BaseException) -> str:
+    """The sentence the reader is shown when the turn could not finish."""
+    message = reader_message(exc)
+    try:
+        return frappe._(message)
+    except Exception:
+        return message
 
 
 def run_turn_job(
@@ -78,10 +88,15 @@ def run_turn_job(
         payload = turn_payload(outcome)
     except Exception as exc:  # noqa: BLE001 - the job must always answer
         logger.exception("Chat turn failed")
+        # The detail is in the log above.  The reader is told what
+        # happened in words they can act on: an exception's class and
+        # message are the app's internals, and "JobTimeoutException: Task
+        # exceeded maximum timeout value (600 seconds)" is not an
+        # explanation.
         payload = {
             "status": "error",
             "reply": "",
-            "error": f"{type(exc).__name__}: {exc}",
+            "error": _reader_error(exc),
             "conversation_id": conversation_id,
         }
 
