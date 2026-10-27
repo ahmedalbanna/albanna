@@ -1965,6 +1965,71 @@ class TestWriteApproval(TestToolPath):
 
 
 @pytest.mark.integration
+class TestDisabledToolsAreHonoured(FrappeTestCase):
+    """A tool named in the settings is hidden from everyone.
+
+    The setting used to be a column that nobody read.  Now it narrows the
+    registry both the chat service and the widget build from, so a hidden
+    tool is never mentioned to the model at all.
+    """
+
+    def setUp(self):
+        super().setUp()
+        frappe.set_user("Administrator")
+        self._original = frappe.db.get_single_value("Albanna Settings", "disabled_tools")
+        frappe.db.set_single_value("Albanna Settings", "disabled_tools", "create_doc, delete_doc")
+        frappe.db.commit()
+        get_settings(refresh=True)
+
+    def tearDown(self):
+        frappe.db.set_single_value("Albanna Settings", "disabled_tools", self._original or "")
+        frappe.db.commit()
+        get_settings(refresh=True)
+        super().tearDown()
+
+    def test_a_disabled_tool_is_not_offered(self):
+        from albanna.services.toolset import tool_registry
+
+        names = [s.name for s in tool_registry("Administrator").enabled()]
+        self.assertNotIn("create_doc", names, "a disabled tool must not be offered")
+        self.assertNotIn("delete_doc", names, "a disabled tool must not be offered")
+
+    def test_an_enabled_tool_is_still_offered(self):
+        from albanna.services.toolset import tool_registry
+
+        names = [s.name for s in tool_registry("Administrator").enabled()]
+        self.assertIn("get_doc", names, "a tool that is not disabled must remain")
+
+@pytest.mark.integration
+class TestContextEndpoints(FrappeTestCase):
+    """The list-page context endpoints: counts and nudges."""
+
+    def setUp(self):
+        super().setUp()
+        frappe.set_user("Administrator")
+
+    def test_count_doctype_returns_a_number(self):
+        from albanna.api.context import count_doctype
+
+        result = count_doctype("User")
+        self.assertIn("count", result)
+        self.assertGreaterEqual(result["count"], 1)
+
+    def test_nudge_for_page_returns_a_message_or_empty(self):
+        from albanna.api.context import nudge_for_page
+
+        result = nudge_for_page("User")
+        self.assertIn("message", result)
+        # User is not an invoice doctype, so no nudge.
+        self.assertEqual(result["message"], "")
+
+    def test_nudge_for_page_refuses_unknown_doctype(self):
+        from albanna.api.context import nudge_for_page
+
+        result = nudge_for_page("NoSuchDoctype")
+        self.assertIn("message", result)
+
+@pytest.mark.integration
 class TestTheSettingsHealAPlainTextKey(FrappeTestCase):
     """A key that was stored in the clear is repaired, not refused.
 

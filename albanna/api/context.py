@@ -15,6 +15,37 @@ from albanna.permissions import require_chat_access
 
 
 @frappe.whitelist()
+def count_doctype(doctype: str) -> dict[str, Any]:
+    """How many documents of *doctype* the caller may see.
+
+    Used by the empty state to decide whether to offer "create one" rather
+    than "which are still open".  The count goes through Frappe's
+    permission engine, so a user who may not read a DocType gets zero
+    rather than an error.
+    """
+    require_chat_access()
+
+    doctype = (doctype or "").strip()
+    if not doctype:
+        return {"count": 0}
+
+    try:
+        from frappe.permissions import has_permission as _has_permission
+
+        if not _has_permission(doctype, "read", print_logs=False):
+            return {"count": 0}
+    except Exception:
+        return {"count": 0}
+
+    try:
+        count = frappe.db.count(doctype)
+    except Exception:
+        count = 0
+
+    return {"count": int(count or 0)}
+
+
+@frappe.whitelist()
 def nudge_for_page(doctype: str) -> dict[str, Any]:
     """A non-intrusive nudge for the list page, if any.
 
@@ -50,30 +81,3 @@ def nudge_for_page(doctype: str) -> dict[str, Any]:
             [count, doctype],
         )
     }
-    """How many documents of *doctype* the caller may see.
-
-    Used by the empty state to decide whether to offer "create one" rather
-    than "which are still open".  The count goes through Frappe's
-    permission engine, so a user who may not read a DocType gets zero
-    rather than an error.
-    """
-    require_chat_access()
-
-    doctype = (doctype or "").strip()
-    if not doctype:
-        return {"count": 0}
-
-    try:
-        from frappe.permissions import has_permission as _has_permission
-
-        if not _has_permission(doctype, "read", print_logs=False):
-            return {"count": 0}
-    except Exception:
-        return {"count": 0}
-
-    try:
-        count = frappe.db.count(doctype)
-    except Exception:
-        count = 0
-
-    return {"count": int(count or 0)}
