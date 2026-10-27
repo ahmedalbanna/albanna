@@ -1025,6 +1025,62 @@ The message "no matches" was written and translated all along; it was
 simply unreachable, because the branch that showed it also required the
 list to be non-empty.
 
+### 59. An undo is spent when it is carried out
+
+The undo button stayed after the undo.  The ticket had changed back, the
+panel said "the turn has been undone", and the button still said "you can
+take this back" — because nothing had *spent* the undo.  The entry was
+still in the message's stored tool calls, and the panel decided for
+itself what was undoable by looking at the tool's name.
+
+That last part was the deeper problem.  The panel had its own rule and the
+server had its own, so the panel could offer a turn the server would
+refuse — a read, a refused write, a cancel, a delete — and could offer a
+turn that had already been taken back.
+
+So the rules moved into one place (`albanna.core.undo`), and both sides
+read them: the transcript says whether a call may still be taken back, the
+live panel is told the same thing when the call ends, and the undo obeys
+the same rule when it acts.  The rules did not change — they were the
+rules the server already followed but kept to itself.  What changed is
+that there is now only one of them.
+
+And an undo that has been carried out is *spent*: its entry is taken out
+of the stored tool calls.  The turn has nothing left to take back, so it
+is not offered again.  A button that stays after the undo is a promise
+the app cannot keep.
+
+### 60. A turn that dies must still say what happened to the write
+
+The live run found a hole that no test could see, because it needs a
+provider slow enough to kill a turn.  A turn waited for an approval, the
+reader approved, the turn then hit the ten-minute wall — and the
+approved write never ran.  No audit row was written either.
+
+So the reader was left with the only question that matters — *did it
+happen?* — and no answer at all.  The panel said the turn did not
+finish, which is true and useless: the reader had approved a change, and
+the change's fate was silence.
+
+This is not a bug in the timeout; it is a bug in the shape of the trust
+layer.  The approval gate owns the write, so the gate must end in a
+sentence about the write — *it ran*, *it was refused*, *the turn died
+before it could run* — and the audit row has to be written before the
+turn can die.  Otherwise the app's promise ("you approve, and it
+happens") is true only when the model is fast.
+
+### 61. "Ran" has to mean the document exists
+
+The approval test asked the tool whether it had run, and the tool said
+yes.  That is the tool's own word — the same sentence a reader would
+have believed if the write had quietly failed.
+
+A tool's result is a sentence, and a sentence is not a document.  So
+the test now asks the database: the turn says it created
+`SINV-0001`, and `SINV-0001` has to be there.  The same principle as
+entry 60, seen from the test's side: the thing that must not lie about a
+write is the write itself.
+
 ## What is deliberately not here
 
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.

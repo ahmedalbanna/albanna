@@ -150,6 +150,7 @@ Each item names the trigger that would make it worth doing.
 | 5 | **A ticket summary that fits the ticket** — the system prompt tells the model the shape of a triage answer (want / done / outstanding / next) | the model will summarise a ticket well only if it is told what a good triage summary is | S | immediately — a prompt change, not a feature |
 | 6 | **Per-ticket conversation memory** — the thread is per page today; an agent moving between the Issue and the Customer gets two threads | the agent reads the same customer across records | M | an agent actually asks about a customer in two threads in one sitting |
 | 7 | **The assistant says what it could not read** — when a tool is refused for a missing right, the answer says so, instead of leaving the reader to believe the silence was the whole truth | on a support seat the customer thread was invisible (no Communication read) and the answer paraphrased a date field instead of the customer's words | S | immediately — the refusals are already counted, they are only not said out loud |
+| 8 | **An approval always ends in a sentence** — after the reader approves, the panel says what happened to the write: it ran, it was refused, or the turn died before it could run.  The audit row is written before the turn can die | found live: a turn that needed an approval hit the ten-minute wall, and the reader was left with the one question that matters — "did it happen?" — and no answer | S | immediately — this is a trust hole, not a feature |
 
 ---
 
@@ -226,7 +227,7 @@ mobile, RTL, first-run tour, document entry point, cost ledger, global
 search, bulk update, undo, dry-run, nudge, smart defaults, escalation,
 voice, images, copy-as-markdown, sources, "explain this error".
 
-### Next (v2) — the six items in §2, in that order
+### Next (v2) — the eight items in §2, in that order
 
 ### Later (v3) — §3, only with a named customer
 
@@ -275,19 +276,20 @@ and the v2 list is re-derived from it.
 
 The support journey was run end to end on a production site, in Arabic,
 as a support agent with the Support Team and Sales User roles.  It found
-six things that no unit test had found, because a unit test cannot see a
+seven things that no unit test had found, because a unit test cannot see a
 page.
 
 | What | Why it matters | What was done |
 |---|---|---|
 | "Ask Albanna" and "Explain this error" never loaded — the global includes carried no `.bundle.`, so Frappe served them from the site root and they 404ed on every page of every site | two of the app's entry points did not exist in any browser | fixed; a test asserts the rule |
 | Undo deleted the document the turn had only read — the transcript recorded a document's name from any tool envelope, so a *read* was stored as a *creation* | the trust layer's undo was a data-loss bug | fixed at both ends: the tool decides its own undo, and the server refuses a stored "delete" that came from a read |
+| The undo button stayed after the undo — the undo was never *spent*, so the turn was still offered, and a turn that could never be undone could be offered too | a button that says "you can take this back" about a change that has already been taken back | fixed: the rules live in one place, the undo is spent when it is carried out, and the panel follows the server's verdict |
 | A failed turn showed the reader a raw Python exception (`JobTimeoutException: …`) | a reader is not a stack-trace reader | now a translated sentence; the detail stays in the log |
 | The sources of an answer were invisible in the dark theme — the accent did double duty, as the fill of the reader's bubble and as the ink of a link | in the light theme the two are the same colour, so only the dark theme could show it | the links have their own ink; a test asserts it |
 | A search that matched nothing took the search box with it, and told the reader they had no conversations | a search that finds nothing has to say so, and stay editable | fixed |
 | On a phone the sheet was 32px short of the screen | the composer sat above the strip where the home indicator is | fixed |
 
-Two findings are *product* findings, not bugs:
+Three findings are *product* findings, not bugs:
 
 1. **The assistant cannot see what the customer actually wrote.**  The
    hero journey is triage, and triage starts with the customer's own
@@ -305,6 +307,23 @@ Two findings are *product* findings, not bugs:
    came back as an error.  No new feature matters as much as the answer
    arriving.  On a slow provider the reader has to see that something is
    happening, and the site needs a faster model or a streaming answer.
+3. **After an approval, the reader is not told whether the change
+   happened.**  The turn that needed an approval hit the ten-minute wall:
+   the panel said the turn did not finish, the approved write never
+   landed, and no audit row was written either.  So the reader was left
+   with the one question that matters — "did it happen?" — and no answer
+   at all.  This is the sharp end of finding 2: a turn slow enough to
+   die takes the answer *and* the write with it.  The approval gate has
+   to end in a sentence about the write — "approved, and it ran" or
+   "approved, and it did not run" — even when the turn dies around it,
+   and the audit row has to be written before the turn can die.
+
+A fourth thing was found but is not yet a defect: after an undo, the
+answer still reads "Priority changed from Medium to High" — the answer
+is a record of what the assistant said, and the panel says "the turn has
+been undone" underneath it.  The honest end state is an answer that says
+it was undone; that is a change to the transcript, and it is worth doing
+when the transcript is reworked rather than now.
 
 The escalation finding is already in the list: "Ask a human" on a ticket
 creates a *second* ticket (v2 item 1), confirmed live.
