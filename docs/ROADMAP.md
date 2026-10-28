@@ -246,7 +246,18 @@ log were read against the permission question, and every hole was closed.
   and updated in place at the turn's end; writes are committed as they run;
   a turn that dies reads its row back and names what it wrote before it
   stopped; and an undo corrects the stored answer, so a thread no longer
-  claims a change that was taken back.
+  claims a change that was taken back.  The Sources line keeps the document
+  the change was made to, so an answer that was undone still names what it
+  did — and a reader who follows the link finds the document gone, which
+  is the deliberate price (CONTEXT 73).
+
+*Verified on production, 2026-10-29, after the migrate:* one turn answered
+in Arabic; a turn that listed Communications said, in Arabic, that the
+customer threads could not be read and why; a proposed ToDo waited at the
+approval gate, was approved, was written, and its ledger row carried
+`"write": true` with the per-round timings; the undo deleted the ToDo and
+corrected the stored answer in the panel; and the dead-turn sentence named
+a write in Arabic, from the audit row.
 
 Two more things from the live run's findings, both small and both about the
 truth rather than the features: the icon rule is now enforced by a test

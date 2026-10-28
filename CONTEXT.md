@@ -1353,6 +1353,28 @@ problem: a reader who is told that the mailbox is not attached to the site
 can ask somebody to attach it, and a reader who is told only "no
 communications" can do nothing at all.
 
+### 73. The answer keeps the document an undone change was made to
+
+An undo that deletes a created document leaves the answer's Sources line
+pointing at a document that no longer exists.  A reader who follows the
+link finds nothing.
+
+There are two ways to make that go away, and both are worse than the dead
+link.  Dropping the document from the sources leaves an answer that says
+"a ToDo was created" and names nothing at all.  Naming the document in the
+marker — "ToDo X was undone" — is wrong for the other kind of undo, the
+one that changes a document back rather than deleting it: there the
+document is still there, and it was the *change* that was undone.
+
+So the sources keep the document and the marker keeps its wording, and the
+reader is left with the two facts side by side: what was changed, and that
+it was taken back.  The link to a document that is gone is the price of an
+answer that still says what it did.
+
+This was found by the live run, not by a test: a turn on production
+created a ToDo, the ToDo was undone, and the answer kept the link.  The
+dead link is visible in the screenshot and deliberate.
+
 ## What is deliberately not here
 
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.
