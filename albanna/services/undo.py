@@ -18,6 +18,13 @@ cannot honestly take back.
 out of the message's stored tool calls, so the turn is not offered for
 undo again — the change has been taken back, and a button that stays
 would say it can be taken back twice.
+
+**The answer is corrected when the undo is carried out.**  The stored
+answer said what the assistant changed, and after the undo that sentence
+is false.  A transient panel notice is not enough to take it back: the
+notice goes, the thread stays, and the answer is what a reader — or the
+model — finds there.  So the marker is written into the stored answer
+itself.
 """
 
 from __future__ import annotations
@@ -63,8 +70,59 @@ def undo_message(conversation: str, message: str) -> dict[str, Any]:
 
     if undone:
         _spend(calls, undone, message)
+        _mark_undone(message)
 
     return {"undone": undone, "status": "ok" if undone else "nothing to undo"}
+
+
+def _mark_undone(message: str) -> None:
+    """Correct the stored answer, so it stops claiming what was taken back.
+
+    The answer is the assistant's own words, and those words said what it
+    changed: *Priority changed from Medium to High*.  Once the change is
+    taken back, the words are a lie — and the lie is the durable one.  The
+    panel's notice ("The turn was undone.") is transient: it is gone when
+    the reader looks away, and it is gone for good once the thread is
+    reopened tomorrow.  What a reader reopens the thread to find is the
+    answer, and the answer says the change happened.
+
+    So the correction goes where the answer is stored.  That fixes two
+    readers at once: the person who reopens the thread, and the *model*,
+    which is given the stored history on the next turn and would otherwise
+    read the old claim as a fact about the document.
+
+    The marker is written in the language of the reader who asked for the
+    undo, and the check for an existing marker is made against that same
+    sentence — so a second undo in the same session does not stack two
+    markers on one answer.  A reader in another language may add a second
+    marker in their own words; that is a cosmetic repetition, and it is
+    better than a stale claim.
+    """
+    row = frappe.db.sql(
+        """
+        select content from `tabAlbanna Message`
+        where name = %s and parentfield = 'messages'
+        """,
+        (message,),
+        as_dict=True,
+    )
+    if not row:
+        return
+
+    content = str(row[0].get("content") or "")
+    marker = frappe._("This change was undone.")
+    if not marker:
+        return
+
+    trimmed = content.rstrip()
+    if trimmed.endswith(marker):
+        return
+
+    corrected = f"{trimmed}\n\n{marker}" if trimmed else marker
+    frappe.db.sql(
+        "update `tabAlbanna Message` set content = %s where name = %s",
+        (corrected, message),
+    )
 
 
 def _stored_calls(conversation: str, message: str) -> list[Any]:

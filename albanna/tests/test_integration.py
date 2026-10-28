@@ -2683,6 +2683,146 @@ class TestUndo(FrappeTestCase):
         )
         self.assertEqual([row["action"] for row in result.get("undone") or []], ["reverted"])
 
+    def test_the_stored_answer_stops_claiming_a_change_that_was_undone(self):
+        """The answer must not go on claiming what was taken back.
+
+        The answer said *I changed it*.  After the undo the document is
+        back where it was, so the sentence is false — and it is the
+        durable kind of false: the panel's notice goes away, while the
+        stored answer stays and is what the reader finds when the thread
+        is reopened.  The correction belongs in the stored answer.
+        """
+        from albanna.api.conversations import undo_turn
+        from albanna.services.chat_service import tool_entry
+
+        name = self._customer()
+        context = self._context(self.owner)
+
+        updated = self.backend.call(
+            TOOL_MANIFEST.get("update_doc"),
+            {
+                "doctype": "Customer",
+                "name": name,
+                "data": {"customer_name": f"{name} changed"},
+            },
+            context,
+        )
+        self.assertTrue(updated.ok, updated.content)
+
+        conversation, message = self._turn(
+            [
+                tool_entry(
+                    self._call(
+                        "update_doc",
+                        {
+                            "doctype": "Customer",
+                            "name": name,
+                            "data": {"customer_name": "x"},
+                        },
+                    ),
+                    updated,
+                )
+            ]
+        )
+
+        result = undo_turn(conversation=conversation, message=message)
+
+        self.assertTrue(result.get("undone"), "the undo took nothing back")
+
+        stored = frappe.db.get_value("Albanna Message", message, "content") or ""
+        self.assertIn(
+            "This change was undone.",
+            stored,
+            "the stored answer still claims a change that was taken back",
+        )
+        self.assertIn(
+            "I changed it.",
+            stored,
+            "the correction replaced the answer instead of correcting it",
+        )
+
+        # The transcript the endpoint hands back is what the panel
+        # renders, so the correction has to be in it — not only in the
+        # database.
+        shown = [row for row in result.get("messages") or [] if row.get("name") == message]
+        self.assertTrue(shown, "the transcript lost the message")
+        self.assertIn("This change was undone.", shown[0].get("content") or "")
+
+    def test_an_undo_that_took_nothing_back_leaves_the_answer_alone(self):
+        """A turn with nothing to take back gets no marker.
+
+        The marker says a change was undone.  A turn that only read
+        something changed nothing, so a marker on it would be a new lie —
+        a smaller one, but a lie.
+        """
+        from albanna.api.conversations import undo_turn
+
+        name = self._customer()
+        conversation, message = self._turn(
+            [
+                {
+                    "name": "get_doc",
+                    "ok": True,
+                    "summary": "Read it",
+                }
+            ]
+        )
+
+        undo_turn(conversation=conversation, message=message)
+
+        stored = frappe.db.get_value("Albanna Message", message, "content") or ""
+        self.assertNotIn("This change was undone.", stored)
+
+    def test_the_marker_is_not_stacked_when_the_undo_is_asked_for_twice(self):
+        """The second undo has nothing to take back, so it says nothing.
+
+        The marker is written once, by the undo that carried something
+        back.  An undo that takes nothing back must not write it again —
+        two markers on one answer read as a bug.
+        """
+        from albanna.api.conversations import undo_turn
+        from albanna.services.chat_service import tool_entry
+
+        name = self._customer()
+        context = self._context(self.owner)
+
+        updated = self.backend.call(
+            TOOL_MANIFEST.get("update_doc"),
+            {
+                "doctype": "Customer",
+                "name": name,
+                "data": {"customer_name": f"{name} changed"},
+            },
+            context,
+        )
+        self.assertTrue(updated.ok, updated.content)
+
+        conversation, message = self._turn(
+            [
+                tool_entry(
+                    self._call(
+                        "update_doc",
+                        {
+                            "doctype": "Customer",
+                            "name": name,
+                            "data": {"customer_name": "x"},
+                        },
+                    ),
+                    updated,
+                )
+            ]
+        )
+
+        undo_turn(conversation=conversation, message=message)
+        undo_turn(conversation=conversation, message=message)
+
+        stored = frappe.db.get_value("Albanna Message", message, "content") or ""
+        self.assertEqual(
+            stored.count("This change was undone."),
+            1,
+            "the marker was written more than once",
+        )
+
     def test_an_entry_that_claims_a_read_created_a_document_is_refused(self):
         """The guard on the server, against the stored entry.
 

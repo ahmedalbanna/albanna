@@ -978,6 +978,9 @@ msgstr "تراجع عن هذا الدور"
 msgid "The turn was undone."
 msgstr "تم التراجع عن الدور."
 
+msgid "This change was undone."
+msgstr "تم التراجع عن هذا التغيير."
+
 msgid "Nothing to undo."
 msgstr "لا شيء للتراجع عنه."
 
