@@ -245,6 +245,39 @@ class TestPermissionParity(FrappeTestCase):
 
     # -- a read returns what the person may read ---------------------------
 
+    def test_a_count_is_the_count_of_what_the_caller_may_read(self):
+        """A number offered before a question is asked is still a leak.
+
+        The empty state asks the server how many documents there are, and
+        the answer used to be the size of the table — every row, including
+        the ones the reader may not see.  So the first thing the widget
+        showed a restricted reader was a number that told them what they
+        could not see.
+        """
+        from albanna.api.context import count_doctype
+
+        self._as(self.sales_user)
+        readable = len(frappe.get_list("Albanna Conversation", pluck="name"))
+        counted = count_doctype("Albanna Conversation")["count"]
+
+        self.assertEqual(
+            counted,
+            readable,
+            "the count is not the count of what the caller may read",
+        )
+
+        # A conversation belonging to somebody else must not change the
+        # caller's count.
+        self._as(self.other_user)
+        ensure_conversation(self.other_user, "parity|count|theirs|")
+
+        self._as(self.sales_user)
+        self.assertEqual(
+            count_doctype("Albanna Conversation")["count"],
+            counted,
+            "a conversation the caller may not read changed their count",
+        )
+
     def test_a_read_does_not_return_the_fields_the_caller_may_not_read(self):
         """A field at a higher permission level is hidden in the form.
 
