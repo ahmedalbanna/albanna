@@ -278,6 +278,92 @@ class TestPermissionParity(FrappeTestCase):
             "a conversation the caller may not read changed their count",
         )
 
+    def test_the_confirmation_card_does_not_name_what_the_reader_may_not_read(self):
+        """The card is shown to the reader, so it may not describe a document
+        they may not read.
+
+        The card is the one place a write is described *before* it runs,
+        and a description that names a document the reader cannot see is
+        a leak with a confirmation button on it.  The values the model
+        wants to change are on the card too, and the model may have read
+        them from the document.
+        """
+        from albanna.services.approval import write_diff, write_preview
+
+        customer = self._customer(f"Albanna Parity Card {self._testMethodName}")
+        company = self._company()
+        currency = frappe.db.get_value("Company", company, "default_currency")
+
+        invoice = frappe.new_doc("Sales Invoice")
+        invoice.company = company
+        invoice.currency = currency
+        invoice.customer = customer
+        invoice.append("items", {"item_code": self._item(), "qty": 1, "rate": 10})
+        invoice.flags.ignore_permissions = True
+        invoice.insert()
+
+        # A Sales User cannot read a Sales Invoice on this site, which
+        # makes it the honest case.
+        self._as(self.sales_user)
+        arguments = {
+            "doctype": "Sales Invoice",
+            "name": invoice.name,
+            "data": {"remarks": "Albanna parity marker"},
+        }
+
+        preview = write_preview("update_doc", arguments)
+        self.assertNotIn(
+            invoice.name,
+            preview,
+            "the card named a document the reader may not read",
+        )
+        self.assertNotIn(
+            "Albanna parity marker",
+            preview,
+            "the card showed values the reader may not have seen",
+        )
+        self.assertIsNone(
+            write_diff("update_doc", arguments),
+            "the card carried a diff of a document the reader may not read",
+        )
+
+    def test_the_card_counts_only_what_the_reader_may_read(self):
+        """The bulk card says how many documents will change.
+
+        That number is the reader's number: a card that says "Change 42
+        Sales Invoices" to a reader who may see three of them tells them
+        what they cannot see, and asks them to approve it besides.
+        """
+        from albanna.services.approval import write_preview
+
+        self._as(self.sales_user)
+        mine = ensure_conversation(self.sales_user, "parity|card|mine|")
+        self._as(self.other_user)
+        theirs = ensure_conversation(self.other_user, "parity|card|theirs|")
+
+        self._as(self.sales_user)
+        readable = len(frappe.get_list("Albanna Conversation", pluck="name"))
+        preview = write_preview(
+            "bulk_update_doc",
+            {
+                "doctype": "Albanna Conversation",
+                "filters": [["name", "like", "%"]],
+                "data": {"title": "Card title"},
+            },
+        )
+
+        self.assertNotIn(
+            theirs,
+            preview,
+            "the card named a document the reader may not read",
+        )
+        self.assertIn(mine, preview, "the card did not name the caller's own document")
+        self.assertIn(
+            f"Change {readable} ",
+            preview,
+            f"the card counted the whole table: {preview}",
+        )
+
     def test_a_read_does_not_return_the_fields_the_caller_may_not_read(self):
         """A field at a higher permission level is hidden in the form.
 

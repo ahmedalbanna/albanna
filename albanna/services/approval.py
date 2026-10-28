@@ -33,6 +33,8 @@ from typing import Callable
 
 import frappe
 
+from albanna.permissions import may_read
+
 #: The prefix every pending decision is stored under.
 KEY_PREFIX = "albanna:confirm:"
 
@@ -75,6 +77,28 @@ DEFAULT_INTERVAL = 0.1
 TIMEOUT = "timeout"
 
 
+def _readable_document(doctype: str, name: str):
+    """The document, if the reader may read it; otherwise ``None``.
+
+    The confirmation card is shown to the reader, so everything on it is
+    shown to them.  A document they may not read must not be named on
+    the card, and the values the model wants to change must not be on it
+    either — the model may have read them from the document.
+    """
+    if not doctype or not name:
+        return None
+
+    try:
+        document = frappe.get_doc(doctype, name)
+    except Exception:
+        return None
+
+    if not may_read(document):
+        return None
+
+    return document
+
+
 def write_preview(name: str, arguments: dict) -> str:
     """A compact, human-readable summary of a pending write.
 
@@ -85,6 +109,11 @@ def write_preview(name: str, arguments: dict) -> str:
     The words are deliberately the *app's* fixed verbs — Create, Change —
     because this string is composed in the worker, which has no reader's
     language; the card around it carries the sentence around it.
+
+    The card never names a document the reader may not read.  It is the
+    one place a write is described *before* it runs, and a description
+    that names a document the reader cannot see is a leak with a
+    confirmation button on it.
     """
     arguments = arguments or {}
     doctype = str(arguments.get("doctype") or "").strip()
@@ -93,38 +122,62 @@ def write_preview(name: str, arguments: dict) -> str:
         data = {}
 
     if name == "create_doc":
-        title = _preview_title(doctype, data)
-        if title:
-            return f"Create {doctype}: {title}"
-        return f"Create a {doctype}"
-
+        return _preview_create(doctype, data)
     if name == "update_doc":
-        docname = str(arguments.get("name") or "").strip()
-        fields = ", ".join(f"{key} = {value}" for key, value in list(data.items())[:6])
-        if docname and fields:
-            return f"Change {doctype} {docname}: {fields}"
-        if docname:
-            return f"Change {doctype} {docname}"
-        return f"Change a {doctype}"
-
+        return _preview_update(doctype, arguments, data)
     if name == "bulk_update_doc":
-        filters = arguments.get("filters") or []
-        limit = arguments.get("limit") or 50
-        fields = ", ".join(f"{key} = {value}" for key, value in list(data.items())[:6])
-        try:
-            names = frappe.get_all(doctype, filters=filters, pluck="name", limit=int(limit))
-        except Exception:
-            names = []
-        count = len(names)
-        sample = ", ".join(names[:5])
-        if count == 0:
-            return f"Change {doctype}: no documents match the filters"
-        suffix = f" (showing {sample})" if sample else ""
-        if fields:
-            return f"Change {count} {doctype} document(s): {fields}{suffix}"
-        return f"Change {count} {doctype} document(s){suffix}"
+        return _preview_bulk(doctype, arguments, data)
 
     return f"{name}({doctype})"
+
+
+def _preview_create(doctype: str, data: dict) -> str:
+    """The card for a new document."""
+    title = _preview_title(doctype, data)
+    if title:
+        return f"Create {doctype}: {title}"
+    return f"Create a {doctype}"
+
+
+def _preview_update(doctype: str, arguments: dict, data: dict) -> str:
+    """The card for a change to a document that already exists."""
+    docname = str(arguments.get("name") or "").strip()
+    if not _readable_document(doctype, docname):
+        # Not named, and not described: the values may have come from
+        # the document.
+        return f"Change a {doctype}"
+
+    fields = ", ".join(f"{key} = {value}" for key, value in list(data.items())[:6])
+    if docname and fields:
+        return f"Change {doctype} {docname}: {fields}"
+    if docname:
+        return f"Change {doctype} {docname}"
+    return f"Change a {doctype}"
+
+
+def _preview_bulk(doctype: str, arguments: dict, data: dict) -> str:
+    """The card for a change to many documents at once."""
+    filters = arguments.get("filters") or []
+    limit = arguments.get("limit") or 50
+    fields = ", ".join(f"{key} = {value}" for key, value in list(data.items())[:6])
+    try:
+        # ``get_list`` and not ``get_all``: the count on the card is the
+        # reader's count, and the sample names are the names of documents
+        # the reader may read.  A card that says "Change 42 Sales
+        # Invoices" to a reader who may see three of them tells them
+        # what they cannot see, and asks them to approve it besides.
+        names = frappe.get_list(doctype, filters=filters, pluck="name", limit=int(limit))
+    except Exception:
+        names = []
+
+    count = len(names)
+    sample = ", ".join(names[:5])
+    if count == 0:
+        return f"Change {doctype}: no documents match the filters"
+    suffix = f" (showing {sample})" if sample else ""
+    if fields:
+        return f"Change {count} {doctype} document(s): {fields}{suffix}"
+    return f"Change {count} {doctype} document(s){suffix}"
 
 
 def _preview_title(doctype: str, data: dict) -> str:
@@ -150,6 +203,10 @@ def write_diff(name: str, arguments: dict):
     The diff is computed from the document as it is now and the values the
     model proposed.  It is a *preview*: the real validation happens when
     the tool runs, and a refused write carries no diff.
+
+    A document the reader may not read carries no diff either.  The
+    "before" column is the document's own content, and the card is shown
+    to the reader.
     """
     arguments = arguments or {}
     if name != "update_doc":
@@ -161,9 +218,8 @@ def write_diff(name: str, arguments: dict):
     if not doctype or not docname or not isinstance(data, dict):
         return None
 
-    try:
-        document = frappe.get_doc(doctype, docname)
-    except Exception:
+    document = _readable_document(doctype, docname)
+    if document is None:
         return None
 
     before = {field: document.get(field) for field in data}

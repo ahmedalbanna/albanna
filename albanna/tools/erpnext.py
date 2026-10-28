@@ -35,6 +35,8 @@ from typing import Any
 
 import frappe
 
+from albanna.permissions import may_read
+
 logger = logging.getLogger(__name__)
 
 #: The columns every document table has, whatever the DocType's meta says.
@@ -257,29 +259,6 @@ def _roles_for(doctype: str, ptype: str) -> list[str]:
     return roles
 
 
-def _may_read(document) -> bool:
-    """Whether the session user may read this document.
-
-    ``frappe.get_doc`` applies no permission check at all, which is how a
-    Sales User came to read a Sales Invoice in full — customer, totals, every
-    line item — through this tool while ``list_docs`` refused the same one.
-    The listing goes through ``frappe.get_list``, which checks; the single
-    read goes through the ORM, which does not.
-
-    The document is passed rather than only its DocType so that the
-    row-level rules count: a User Permission that limits an account to one
-    customer is a read permission, and it applies here.
-
-    An exception is a "no".  A permission engine that cannot answer has not
-    said yes.
-    """
-    try:
-        return bool(frappe.has_permission(document.doctype, ptype="read", doc=document))
-    except Exception:
-        logger.exception("Could not check read permission for %s", document.doctype)
-        return False
-
-
 def _read_refusal(doctype: str, name: str) -> str:
     """The envelope for a document the caller may not read.
 
@@ -334,7 +313,7 @@ def _load_for_action(doctype: str, name: str):
     except Exception as exc:
         return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
 
-    if not _may_read(document):
+    if not may_read(document):
         return _read_refusal(doctype, name)
 
     return document
@@ -442,7 +421,7 @@ def get_doc(doctype: str, name: str, fields: Any = None) -> str:
     # deliberate: loading is what gives the check something to check.  A
     # check made without the document would answer a question about the
     # *kind* of document, and the one that matters here is about *this* one.
-    if not _may_read(document):
+    if not may_read(document):
         return _read_refusal(doctype, name)
 
     # The fields a person may not read are removed before the document is
@@ -990,7 +969,7 @@ def _load_for_update(doctype: str, name: str, data: dict[str, Any]):
     # checked second, because the check that matters is about *this* row —
     # a User Permission that limits an account to one customer is a read
     # permission, and it applies here.
-    if not _may_read(document):
+    if not may_read(document):
         return _read_refusal(doctype, name)
 
     return document
@@ -1620,7 +1599,7 @@ def _bulk_change_one(doctype: str, name: str, data: dict[str, Any]) -> tuple[boo
     savepoint = _savepoint("bulk_update_doc")
     try:
         document = frappe.get_doc(doctype, name)
-        if not _may_read(document):
+        if not may_read(document):
             _rollback_to(savepoint)
             return False, "may not be read"
         if document.docstatus:

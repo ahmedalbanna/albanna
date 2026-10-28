@@ -216,6 +216,29 @@ def current_principal() -> Principal:
     return Principal(user=user, roles=roles, is_system_manager=is_system_manager())
 
 
+def may_read(document) -> bool:
+    """Whether the session user may read this document.
+
+    ``frappe.get_doc`` applies no permission check at all, which is how a
+    Sales User came to read a Sales Invoice in full — customer, totals,
+    every line item — through a tool while ``list_docs`` refused the same
+    one.  The listing goes through ``frappe.get_list``, which checks; the
+    single read goes through the ORM, which does not.
+
+    The document is passed rather than only its DocType so that the
+    row-level rules count: a User Permission that limits an account to
+    one customer is a read permission, and it applies here.
+
+    An exception is a "no".  A permission engine that cannot answer has
+    not said yes.
+    """
+    try:
+        return bool(frappe.has_permission(document.doctype, ptype="read", doc=document))
+    except Exception:
+        logger.exception("Could not check read permission for %s", document.doctype)
+        return False
+
+
 class FrappePermissionChecker:
     """Answers document-level permission questions through Frappe.
 
