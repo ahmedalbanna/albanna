@@ -1105,3 +1105,21 @@ msgstr "هذا الطلب لا ينتظر قرارًا."
 
 msgid "That request has already been answered."
 msgstr "تمت الإجابة على هذا الطلب بالفعل."
+
+msgid "Show my open tickets"
+msgstr "عرض تذاكري المفتوحة"
+
+msgid "What has already been done?"
+msgstr "ماذا تم إنجازه حتى الآن؟"
+
+msgid "What is still open?"
+msgstr "ماذا لا يزال مفتوحاً؟"
+
+msgid "What is the customer asking for?"
+msgstr "ماذا يطلب العميل؟"
+
+msgid "interrupted"
+msgstr "تم مقاطعته"
+
+msgid "running"
+msgstr "قيد التشغيل"

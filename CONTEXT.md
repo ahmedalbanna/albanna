@@ -111,6 +111,17 @@ a document the assistant has already told the reader it created.  So every
 write takes a savepoint first, and a failure rolls back to it and no
 further.
 
+### 4b. The audit row is written before the turn can die
+
+A turn writes an `Albanna Chat Log` row with status `running` at its start,
+commits it, and updates it in place to its terminal status at the end.  A
+turn that dies leaves the row as `running`; a scheduled task re-labels
+rows older than the turn timeout as `interrupted`.  `usage_summary`
+excludes both, so the ledger counts turns that finished.  The per-round
+timings are carried inside the existing `tools` field as
+`{"calls": [...], "round_ms": [...]}` rather than a new column, so no
+DDL is needed on production.
+
 ### 4a. The two writes are different rights
 
 `create_doc` is authorised against Frappe's `create` permission and

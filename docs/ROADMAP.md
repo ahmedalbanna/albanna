@@ -233,6 +233,20 @@ log were read against the permission question, and every hole was closed.
 
 ### Next (v2) — the eight items in §2, in that order
 
+### Shipped in this pass (v0.2.1, support-shaped)
+
+- Item 2 (ticket-shaped suggestions) — shipped.
+- Item 3 (drafted reply copyable) — shipped as a fenced code block in the answer.
+- Item 4 ("My open tickets") — shipped as an empty-state suggestion.
+- Item 5 (triage-shaped summary) — shipped as a prompt instruction.
+- Item 7 (say what could not be read) — shipped: deterministic note in
+  `list_docs` for Communications, plus a prompt instruction.
+- Item 8 (approval ends in a sentence + audit row before the turn can die)
+  — shipped: a `running` audit row is written and committed at turn start
+  and updated in place at the turn's end; writes are committed as they run.
+
+Items 1 and 6 remain deferred per their triggers.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
