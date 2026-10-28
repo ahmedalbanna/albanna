@@ -306,9 +306,10 @@ export async function runTurn({
  * @param {object} [options]
  * @param {function} [options.onEvent] called with each progress event
  * @param {AbortSignal} [options.signal] aborts the *client's* wait
+ * @param {string} [options.conversation] the thread the turn belongs to
  * @returns {Promise<object>} the final payload
  */
-export function waitForTurn(streamId, { onEvent, signal } = {}) {
+export function waitForTurn(streamId, { onEvent, signal, conversation = "" } = {}) {
 	return new Promise((resolve) => {
 		let settled = false;
 		let pollTimer = null;
@@ -370,7 +371,7 @@ export function waitForTurn(streamId, { onEvent, signal } = {}) {
 		async function poll() {
 			pollInFlight = true;
 			try {
-				const payload = await call(STATUS_ENDPOINT, { stream_id: streamId });
+				const payload = await call(STATUS_ENDPOINT, { stream_id: streamId, conversation });
 				if (payload && (payload.status === "ok" || payload.status === "error")) {
 					finish(payload);
 					return;

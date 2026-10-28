@@ -268,13 +268,17 @@ def ask_stream(
 
 
 @frappe.whitelist()
-def status(stream_id: str = "") -> dict[str, Any]:
+def status(stream_id: str = "", conversation: str = "") -> dict[str, Any]:
     """Read a turn's result, for a client whose socket did not deliver it.
 
     Three answers are possible.  The turn finished and its answer is here.
     The turn is still running.  Or the turn is gone — its worker died, or
     the job never started — and the client is told so instead of polling
     for an answer that will never arrive.
+
+    The *conversation* is the reader's, when the browser knows it: it
+    names the turn whose audit row is the truth about what it wrote
+    before it died.
     """
     require_chat_access()
 
@@ -288,26 +292,59 @@ def status(stream_id: str = "") -> dict[str, Any]:
 
     if not payload:
         # The marker expired, which means the turn outlived its own budget.
-        return _lost_turn()
+        return _lost_turn(conversation)
 
     if payload.get("status") == "running":
         age = time.time() - float(payload.get("started_at") or time.time())
         if age > _turn_deadline():
-            return _lost_turn()
+            return _lost_turn(conversation)
         return {"status": "running"}
 
     return payload
 
 
-def _lost_turn() -> dict[str, Any]:
-    """The answer for a turn that will never finish."""
-    return {
-        "status": "error",
-        "error": _(
+def _lost_turn(conversation: str = "") -> dict[str, Any]:
+    """The answer for a turn that will never finish.
+
+    And, when the turn's audit row says it changed something before it
+    died, **what it changed**.  The reader's question when the panel
+    says the turn did not finish is *did it happen?*, and silence about
+    a write is the worst answer there is: the reader cannot tell
+    "nothing happened" from "everything happened and nobody said".  The
+    audit row is the truth — a write in it is a write that was
+    committed — so the row is read and its writes are named.
+
+    Nothing is named when the row is not certainly the reader's turn:
+    a reader told about the wrong turn's writes goes looking for a
+    change that was never made.
+    """
+    from albanna.services.audit_rows import unfinished_writes
+
+    writes = unfinished_writes(frappe.session.user, conversation)
+    if not writes:
+        return {
+            "status": "error",
+            "error": _(
+                "The assistant did not finish this question — the background worker "
+                "did not complete the turn. It may have been restarted. Please try again."
+            ),
+        }
+
+    names = ", ".join(f"{write['doctype']} {write['name']}" for write in writes)
+    if len(writes) == 1:
+        error = _(
             "The assistant did not finish this question — the background worker "
-            "did not complete the turn. It may have been restarted. Please try again."
-        ),
-    }
+            "did not complete the turn. Before it stopped, it changed {documents}. "
+            "Please check it and try again."
+        ).format(documents=names)
+    else:
+        error = _(
+            "The assistant did not finish this question — the background worker "
+            "did not complete the turn. Before it stopped, it changed {documents}. "
+            "Please check them and try again."
+        ).format(documents=names)
+
+    return {"status": "error", "error": error}
 
 
 def _turn_deadline() -> float:

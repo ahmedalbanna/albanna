@@ -125,6 +125,12 @@ msgstr "المحادثة معطّلة على هذا الموقع."
 msgid "The assistant did not finish this question — the background worker did not complete the turn. It may have been restarted. Please try again."
 msgstr "لم يُكمل المساعد هذا السؤال — لم يُكمل العامل الخلفي الدور. ربما أُعيد تشغيله. يرجى المحاولة مرة أخرى."
 
+msgid "The assistant did not finish this question — the background worker did not complete the turn. Before it stopped, it changed {documents}. Please check it and try again."
+msgstr "لم يُكمل المساعد هذا السؤال — لم يُكمل العامل الخلفي الدور. قبل أن يتوقف، غيّر {documents}. يرجى التحقق منه والمحاولة مرة أخرى."
+
+msgid "The assistant did not finish this question — the background worker did not complete the turn. Before it stopped, it changed {documents}. Please check them and try again."
+msgstr "لم يُكمل المساعد هذا السؤال — لم يُكمل العامل الخلفي الدور. قبل أن يتوقف، غيّر {documents}. يرجى التحقق منها والمحاولة مرة أخرى."
+
 msgid "Too many questions. Wait a minute and try again."
 msgstr "أسئلة كثيرة جداً. انتظر دقيقة ثم حاول مرة أخرى."
 

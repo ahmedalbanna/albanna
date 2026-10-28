@@ -66,7 +66,7 @@ from albanna.core.messages import (
     user,
 )
 from albanna.core.prompt import PromptContext, build_system_prompt
-from albanna.core.tools import ToolSpec, validate_arguments
+from albanna.core.tools import TOOL_MANIFEST, ToolSpec, validate_arguments
 from albanna.core.undo import is_undoable
 from albanna.providers.base import (
     Completion,
@@ -1253,6 +1253,18 @@ def _is_undoable_call(call: ToolCall, result: ToolResult) -> bool:
     return is_undoable({"name": call.name, "undo": undo})
 
 
+def _is_write(call: ToolCall) -> bool:
+    """Whether this call could change the site.
+
+    The manifest is the answer: a tool is a write tool because it is in
+    the WRITE tier, and the tier is what the authority layer enforces
+    the approval on.  So the two cannot disagree about a call that
+    changed something.
+    """
+    spec = TOOL_MANIFEST.get(call.name)
+    return bool(spec and spec.mutating)
+
+
 def tool_entry(call: ToolCall, result: ToolResult) -> dict[str, Any]:
     """What the transcript and the audit row both keep about one call.
 
@@ -1268,6 +1280,13 @@ def tool_entry(call: ToolCall, result: ToolResult) -> dict[str, Any]:
         "denied": result.denied,
         "approved": result.approved,
         "error": result.error,
+        # Whether the call could change the site.  The manifest says so,
+        # and the manifest is the one place that knows: a tool writes
+        # because it is in the WRITE tier.  Asking the name to guess
+        # would be a second answer to the same question, and the two
+        # answers would drift — a tool renamed on one side and not on
+        # the other would be recorded as a read when it was a write.
+        "write": bool(_is_write(call)),
         # What the call found, kept with the call so that a
         # conversation reopened tomorrow still says what was
         # looked up, and not only which function was called.
@@ -1323,6 +1342,14 @@ def touched_documents(call, result: ToolResult) -> list[dict[str, str]]:
         # The document a write touched is a document the answer is about,
         # and the Sources line is where the reader looks for it.
         add(call.arguments.get("name"))
+    elif call.name == "bulk_update_doc":
+        # A bulk change names no document in its arguments — it names a
+        # condition — so the documents it touched are the ones the tool
+        # found.  A write that changed fifty tickets changed fifty
+        # tickets, and the reader is entitled to know which.
+        data = result.data if isinstance(result.data, dict) else {}
+        for name in data.get("names") or []:
+            add(name)
     elif call.name == "amend_doc":
         # An amendment creates a new document and supersedes the old one;
         # both are worth naming.

@@ -924,6 +924,10 @@ function followTurn(entry, asked, answer, approval = null) {
 
 	return waitForTurn(entry.stream_id, {
 		signal: controller.signal,
+		// The thread the turn belongs to.  The server needs it to find
+		// the turn's audit row — the truth about what it wrote — when
+		// the turn dies without finishing.
+		conversation: entry.conversation_id || "",
 		onEvent: (event) => handleTurnEvent(answer, event, entry.stream_id),
 	})
 		.then((result) => {

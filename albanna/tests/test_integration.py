@@ -1003,6 +1003,42 @@ class TestTouchedDocuments(FrappeTestCase):
             [{"doctype": "Sales Order", "name": "SAL-ORD-2026-00001"}],
         )
 
+    def test_a_bulk_change_names_the_documents_it_changed(self):
+        """A bulk change names no document in its arguments.
+
+        It names a condition, and the documents it touched are the ones
+        the tool found.  A write that changed fifty tickets changed
+        fifty tickets, and the reader is entitled to know which — the
+        audit row is what answers *did it happen?* after a turn dies.
+        """
+        from albanna.services.chat_service import touched_documents
+        from albanna.tools.base import ToolResult
+
+        call = self._call(
+            "bulk_update_doc",
+            {
+                "doctype": "Sales Order",
+                "filters": [["status", "=", "Draft"]],
+                "data": {"priority": "High"},
+            },
+        )
+        result = ToolResult.success(
+            "Changed 2",
+            data={
+                "doctype": "Sales Order",
+                "changed": 2,
+                "names": ["SAL-ORD-2026-00001", "SAL-ORD-2026-00002"],
+            },
+        )
+
+        self.assertEqual(
+            touched_documents(call, result),
+            [
+                {"doctype": "Sales Order", "name": "SAL-ORD-2026-00001"},
+                {"doctype": "Sales Order", "name": "SAL-ORD-2026-00002"},
+            ],
+        )
+
 
 @pytest.mark.integration
 class TestConversationOrder(FrappeTestCase):
@@ -3037,3 +3073,169 @@ class TestTurnDurability(FrappeTestCase):
         self.assertTrue(outcome.ok)
         # Only the running row and the terminal row commit: two.
         self.assertEqual(len(committed), 2, "a read-only turn commits only the audit rows")
+
+
+class TestTheAuditRowNamesTheWrites(FrappeTestCase):
+    """What a turn wrote, for the question the panel has to answer.
+
+    A turn that dies leaves its audit row behind, and the row is the
+    truth about what it did before it died.  The reader's question when
+    the panel says the turn did not finish is *did it happen?* — so the
+    row is read, and the writes in it are named.
+
+    The rules are narrow on purpose: only a turn that has not finished,
+    only the reader's own, and only when there is exactly one such turn
+    to mean.  A reader told about the wrong turn's writes goes looking
+    for a change that was never made, and that is worse than being told
+    nothing at all.
+    """
+
+    def setUp(self):
+        super().setUp()
+        frappe.db.sql("delete from `tabAlbanna Chat Log`")
+        frappe.set_user("Administrator")
+
+    def tearDown(self):
+        frappe.db.sql("delete from `tabAlbanna Chat Log`")
+        super().tearDown()
+
+    def _call(self, name, arguments):
+        from albanna.core.messages import ToolCall
+
+        return ToolCall(id="call-1", name=name, arguments=arguments)
+
+    def _row(self, calls, status="running"):
+        """An audit row of a turn that has not finished."""
+        doc = frappe.new_doc("Albanna Chat Log")
+        doc.user = "Administrator"
+        doc.status = status
+        doc.tools = json.dumps({"calls": calls})
+        doc.flags.ignore_permissions = True
+        doc.insert()
+        return doc.name
+
+    def _write_call(self, doctype="Customer", name="CUST-0001"):
+        return {
+            "name": "update_doc",
+            "ok": True,
+            "write": True,
+            "documents": [{"doctype": doctype, "name": name}],
+        }
+
+    def _status(self):
+        from albanna.api.chat import status
+
+        return status(stream_id="a-turn-that-never-finished")
+
+    def test_the_entry_says_which_calls_were_writes(self):
+        """The manifest says which tools write, and the entry says so too.
+
+        A write recorded as a read is a change nobody can name — and a
+        reader who is told that nothing was changed is told a lie.
+        """
+        from albanna.services.chat_service import tool_entry
+        from albanna.tools.base import ToolResult
+
+        write = tool_entry(
+            self._call(
+                "update_doc",
+                {"doctype": "Customer", "name": "CUST-0001", "data": {"customer_name": "x"}},
+            ),
+            ToolResult.success(
+                "Updated it",
+                data={
+                    "doctype": "Customer",
+                    "name": "CUST-0001",
+                    "before": {"customer_name": "old"},
+                    "changed": {"customer_name": "x"},
+                },
+            ),
+        )
+        read = tool_entry(
+            self._call("get_doc", {"doctype": "Customer", "name": "CUST-0001"}),
+            ToolResult.success("Read it", data={"doctype": "Customer", "name": "CUST-0001"}),
+        )
+
+        self.assertTrue(write["write"], "a change was recorded as a read")
+        self.assertFalse(read["write"], "a read was recorded as a change")
+
+    def test_a_dead_turn_names_what_it_wrote(self):
+        """The question the reader is left with is *did it happen?*.
+
+        The row answers it: the write in the row is a write that was
+        committed, and the panel says which document it was.
+        """
+        self._row([self._write_call()])
+
+        result = self._status()
+
+        self.assertEqual(result["status"], "error")
+        self.assertIn(
+            "Customer CUST-0001",
+            result["error"],
+            "the panel did not say what the dead turn had written",
+        )
+
+    def test_a_dead_turn_that_only_read_names_nothing(self):
+        """A turn that changed nothing has nothing to name.
+
+        Naming a document that was only read would send the reader
+        looking for a change that was never made.
+        """
+        self._row(
+            [
+                {
+                    "name": "get_doc",
+                    "ok": True,
+                    "write": False,
+                    "documents": [{"doctype": "Customer", "name": "CUST-0001"}],
+                }
+            ]
+        )
+
+        result = self._status()
+
+        self.assertNotIn("CUST-0001", result["error"])
+        self.assertIn("did not finish this question", result["error"])
+
+    def test_a_refused_write_names_nothing(self):
+        """A write that was refused changed nothing.
+
+        The refusal is in the row, and the row says it was refused — so
+        the document is not named as one that was changed.
+        """
+        call = self._write_call()
+        call["ok"] = False
+        call["denied"] = True
+        self._row([call])
+
+        result = self._status()
+
+        self.assertNotIn("CUST-0001", result["error"])
+
+    def test_two_unfinished_turns_name_nothing(self):
+        """When the row is not certainly the reader's turn, nothing is said.
+
+        Two unfinished turns, and no way to tell which one the reader is
+        asking about.  Naming one of them would be a guess, and a guess
+        about what changed is not a thing to send a reader on.
+        """
+        self._row([self._write_call(name="CUST-0001")])
+        self._row([self._write_call(name="CUST-0002")])
+
+        result = self._status()
+
+        self.assertNotIn("CUST-000", result["error"])
+
+    def test_a_finished_turn_is_not_the_turn_the_reader_is_asking_about(self):
+        """A turn that ended with an answer is not a dead turn.
+
+        Its row is a record of a turn that worked, and naming its
+        writes would be naming a change that the reader was already
+        told about.
+        """
+        self._row([self._write_call()], status="ok")
+
+        result = self._status()
+
+        self.assertNotIn("CUST-0001", result["error"])
