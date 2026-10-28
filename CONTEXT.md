@@ -100,9 +100,11 @@ why" is a usable answer.
 
 ### 4. A write survives the turn, and a failed write takes nothing else with it
 
-The tool functions commit their own transaction.  A document that was
-created is created, even if the model fails afterwards.  The user asked for
-the document; the assistant's ability to describe it is a separate concern.
+A write that ran is committed before the turn can die.  The service commits
+after each successful mutating tool, so a document that was created is
+created — even if the model fails afterwards, and even if the worker is
+killed at the ten-minute wall.  The user asked for the document; the
+assistant's ability to describe it is a separate concern.
 
 The other half of that is the failure.  A rollback is transaction-wide
 unless it is given a savepoint, and a transaction-wide rollback in the
@@ -121,6 +123,34 @@ excludes both, so the ledger counts turns that finished.  The per-round
 timings are carried inside the existing `tools` field as
 `{"calls": [...], "round_ms": [...]}` rather than a new column, so no
 DDL is needed on production.
+
+### 4c. The stored answer is corrected when the undo is carried out
+
+The undo took the change back, and the panel said so — while the stored
+answer went on saying what the assistant had changed.  A transient notice
+is not enough to take a sentence back: the notice goes, the thread stays,
+and the answer is what a reader — or the model, on the next turn — finds
+there.
+
+So the correction goes where the answer is stored: one sentence, in the
+language of the reader who asked for the undo.  A turn with nothing to take
+back gets no marker, because a marker on a turn that only read something
+would be a new lie.
+
+### 4d. A dead turn names what it wrote
+
+The audit row is the truth about a turn, and it outlives the turn.  So when
+a turn dies, the panel reads the row and names the writes in it: the
+reader asked *did it happen?*, and the answer is the list.
+
+The rules are narrow on purpose — only a turn that has not finished, only
+the reader's own, and only when there is exactly one such turn to mean.  A
+reader told about the wrong turn's writes goes looking for a change that
+was never made, which is worse than being told nothing.
+
+A write that survives a dead turn has no undo handle in the panel: the
+transcript is written at the turn's end, and there was no end.  The
+document itself is the way back.
 
 ### 4a. The two writes are different rights
 
@@ -1239,6 +1269,89 @@ So the log is written with the site's own keys taken out of it.  The mask
 is the same one the configuration prints, and an empty key changes nothing:
 there is nothing to take out, and replacing every character of the text
 with the mask would be a different bug.
+
+### 69. The undo's correction belongs in the stored answer
+
+The undo carried the change back and the panel said so.  The stored answer
+went on saying what the assistant had changed: *"Priority changed from
+Medium to High."*  A reader who reopened the thread tomorrow would read the
+old claim as a fact about the document, and so would the model, which is
+given the stored transcript on the next turn.
+
+There were two places to put the correction: in the panel's notice, or in
+the answer.  The notice is transient by design — it is what the reader sees
+while the thread is on screen — and a transient notice cannot correct a
+durable claim.  So the correction goes into the answer, as its own
+paragraph, in the language of the reader who asked for the undo.
+
+The check for "already corrected" is made against that same sentence, so a
+second undo in one session does not stack two markers.  A reader in another
+language may add a second marker in their own words: a cosmetic
+repetition, which is better than a stale claim.
+
+### 70. The audit row is the truth, but only when it is certainly the reader's turn
+
+A turn that dies used to leave the reader with the only question that
+matters — *did it happen?* — and no answer at all.  The panel said the turn
+did not finish, which was true and useless: the reader had approved a
+change and wanted to know its fate.
+
+The audit row already knows.  A turn writes its row at the start, keeps it
+up to date as its tools run, and commits each write as it runs, so a write
+in the row is a write that was committed, and a turn that dies leaves its
+row behind saying what it did.
+
+So the row is read, and the writes in it are named.  The rules are narrow
+on purpose:
+
+- only a turn that **has not finished** — a turn that ended with an answer
+  is not the turn the reader is asking about;
+- only the **reader's own** turn;
+- and only when there is **exactly one** such turn to mean.
+
+That last rule is the one that matters.  A reader told about the wrong
+turn's writes goes looking for a change that was never made, and that is
+worse than being told nothing at all.  So when the row is not certainly
+the reader's turn, the panel says the turn did not finish and stops there.
+
+Which row is the reader's turn is found by the conversation when the
+browser knows it, and by the reader's own unfinished turns when it does not
+— the first question on a page is asked before the conversation exists, and
+the browser only learns its name when the turn ends, which is exactly when
+it did not.
+
+### 71. An icon is drawn, not typed
+
+An emoji is a picture of somebody else's instructions, in a font the
+browser picks.  It does not take the colour of the text beside it, it does
+not sit on the text's baseline, and it cannot be sized.  The paperclip on
+the attachment label was the last one in the app.
+
+So the paperclip is drawn like the panel's other icons: the same grid, the
+same stroke weight, `currentColor` for the ink, and a label beside it in a
+flex row so the icon and the words share a middle line.  The rule is
+checked by a test, because a rule that is only in somebody's head is gone
+with the next contributor.
+
+### 72. The app states the limitation it cannot fix
+
+The assistant cannot list the customer email threads on this site, and the
+reason is not a permission the app forgot to ask for: Frappe scopes
+`Communication` to the reader's own `User Email` accounts, and the site's
+support mailbox has no `User Email` row.  The role already holds read on
+`Communication`; granting it again would change nothing.
+
+The app cannot fix that — it is the framework's rule and the site's setup —
+so it does the next best thing: it *says* so, deterministically, in the
+tool's own answer, rather than hoping the model notices that the listing
+came back empty.  A note that is derived from the site rather than asked
+for is true in every language and in every configuration; a request to the
+model is a hope.
+
+The same reasoning is why the note names the way out rather than only the
+problem: a reader who is told that the mailbox is not attached to the site
+can ask somebody to attach it, and a reader who is told only "no
+communications" can do nothing at all.
 
 ## What is deliberately not here
 

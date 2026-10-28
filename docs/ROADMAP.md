@@ -243,7 +243,17 @@ log were read against the permission question, and every hole was closed.
   `list_docs` for Communications, plus a prompt instruction.
 - Item 8 (approval ends in a sentence + audit row before the turn can die)
   — shipped: a `running` audit row is written and committed at turn start
-  and updated in place at the turn's end; writes are committed as they run.
+  and updated in place at the turn's end; writes are committed as they run;
+  a turn that dies reads its row back and names what it wrote before it
+  stopped; and an undo corrects the stored answer, so a thread no longer
+  claims a change that was taken back.
+
+Two more things from the live run's findings, both small and both about the
+truth rather than the features: the icon rule is now enforced by a test
+(`tests/test_icons.py`) instead of by memory — the attachment label was the
+last emoji in the app — and the per-round timings ride the existing ledger
+column, so the operator can see where a slow turn spent its time without a
+schema change on production.
 
 Items 1 and 6 remain deferred per their triggers.
 
@@ -311,15 +321,26 @@ Three findings are *product* findings, not bugs:
 
 1. **The assistant cannot see what the customer actually wrote.**  The
    hero journey is triage, and triage starts with the customer's own
-   words.  On this site the support role may read an Issue but not a
-   Communication, so the email thread on the ticket is invisible to the
-   tools — and the answer reported that "a first response was logged on
-   2026-10-27", which it inferred from a date field rather than from
-   the message.  A support deployment has to grant the assistant role
-   read access to Communication, and the assistant has to say when it
-   could not read something (v2 item 7).  The app does not grant
-   permissions — Frappe decides — but it must not let the silence pass
-   for the whole truth.
+   words.  On this site the email thread on the ticket is invisible to
+   the tools — and the answer reported that "a first response was logged
+   on 2026-10-27", which it inferred from a date field rather than from
+   the message.
+
+   *The mechanism, checked rather than assumed:* it is **not** a missing
+   permission.  `Communication` is readable by the `All` role, so the
+   support role already has read on it, and granting it again would change
+   nothing.  What hides the thread is Frappe's own permission query
+   condition, which scopes a `Communication` listing to the reader's own
+   `User Email` accounts — and this site has no `User Email` row for the
+   support mailbox, so every non-administrator sees no email threads at
+   all.
+
+   So the fix is site setup, not an app permission: a `User Email` row for
+   the support mailbox makes Frappe's own query return the thread.  The
+   app cannot do that for the operator, so it does the next best thing —
+   it says what it could not read, in the tool's own answer (v2 item 7,
+   shipped).  The app does not grant permissions — Frappe decides — but it
+   must not let the silence pass for the whole truth.
 2. **The model is slow enough to be the experience.**  A turn on this
    deployment takes five to ten minutes; one hit the ten-minute wall and
    came back as an error.  No new feature matters as much as the answer
@@ -336,12 +357,34 @@ Three findings are *product* findings, not bugs:
    "approved, and it did not run" — even when the turn dies around it,
    and the audit row has to be written before the turn can die.
 
+   **Shipped in v0.2.1.**  The audit row is written and committed at the
+   turn's start and updated in place at its end, so a turn that dies
+   leaves its row behind; a write is committed as it runs, so a write in
+   the row is a write that happened; and a dead turn is read out of that
+   row — the panel names the documents it changed before it stopped.
+   Nothing is named unless the row is certainly the reader's own turn: a
+   reader sent after the wrong turn's writes is worse off than one told
+   nothing.
+
+   *What is still open:* the panel cannot name an *approved* write that
+   never ran.  A write that never ran leaves no trace in the row, and the
+   approval record lives only as long as the approval window — two minutes
+   by default — so it cannot answer a question asked ten minutes later.
+   The reader is told the turn did not finish, which is true, and the
+   ledger says what the turn did do.
+
 A fourth thing was found but is not yet a defect: after an undo, the
 answer still reads "Priority changed from Medium to High" — the answer
 is a record of what the assistant said, and the panel says "the turn has
 been undone" underneath it.  The honest end state is an answer that says
 it was undone; that is a change to the transcript, and it is worth doing
 when the transcript is reworked rather than now.
+
+   **Shipped in v0.2.1.**  The correction goes into the stored answer
+   itself, as its own paragraph in the reader's language — so it reaches
+   the reader who reopens the thread tomorrow, and the model that is
+   given the transcript on the next turn.  The panel's notice was never
+   enough: a notice goes, the thread stays.
 
 The escalation finding is already in the list: "Ask a human" on a ticket
 creates a *second* ticket (v2 item 1), confirmed live.

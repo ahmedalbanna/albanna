@@ -5,6 +5,59 @@ All notable changes to Albanna are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — 2026-10-28
+
+The truth release.  Everything here is about one thing the app did not do:
+say what actually happened.  A turn that died, a change that was taken
+back, a thread the assistant could not read — each of them was a place
+where the app was silent, and silence about a write is the worst answer
+there is.
+
+### Added
+
+- **A dead turn names what it wrote.**  The audit row is the truth about a
+  turn and it outlives the turn, so when a turn dies the panel reads the
+  row and names the documents it changed before it stopped: *"Before it
+  stopped, it changed Sales Invoice SIN-0001."*  Nothing is named unless
+  the row is certainly the reader's own unfinished turn — a reader sent
+  after the wrong turn's writes is worse off than one told nothing.
+- **The audit row is written before the turn can die.**  A turn writes an
+  `Albanna Chat Log` row with status `running`, commits it, and updates it
+  in place at the turn's end.  A turn that dies leaves its row behind, a
+  scheduled task re-labels stale rows as `interrupted`, and the ledger
+  counts only the turns that finished.  No new column: the per-round
+  timings ride the existing `tools` field, so production needs no DDL.
+- **The app says what it could not read.**  `list_docs` on Communication
+  states, in the tool's own answer, that Frappe scopes the listing to the
+  reader's own `User Email` accounts — a note derived from the site rather
+  than hoped for from the model.
+- **Ticket-shaped suggestions.**  On an Issue the empty state offers the
+  triage questions — what the customer wants, what has been done, what is
+  still outstanding — and "Show my open tickets".
+- **The drafted reply, copyable.**  A Communication the assistant writes is
+  handed back in a fenced code block, so it can be copied out of the
+  answer.
+- **The triage-shaped prompt.**  The model is told the shape of a good
+  triage answer — want / done / outstanding / next — and is asked to read
+  in batches rather than one document at a time.
+
+### Changed
+
+- The attachment label carries a drawn paperclip instead of an emoji, and
+  the rule is now a test (`tests/test_icons.py`) rather than a habit: an
+  emoji does not take the text colour, cannot be sized, and renders
+  differently on every operating system.
+- The Arabic catalogue carries every new string, and the translation
+  checker stays green.
+
+### Fixed
+
+- An undo that had been carried out left the stored answer claiming the
+  change — the panel said "the turn has been undone" and the thread said
+  otherwise.  The correction is now in the answer itself, in the reader's
+  language, so it reaches the reader who reopens the thread tomorrow and
+  the model that is given the transcript on the next turn.
+
 ## [0.2.0] — 2026-10-28
 
 The trust layer's release.  The moat — *the assistant can never see or do
