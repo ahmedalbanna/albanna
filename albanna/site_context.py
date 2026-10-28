@@ -40,9 +40,14 @@ def default_company() -> str:
 
     Used to tell the model which company it is looking at, so that an
     answer about "the sales" is about *this* company's sales.
+
+    The company is the caller's: the query goes through the permission
+    engine, so an account that may not read a company is not told that
+    the site has one.  A reader who may not read a company cannot write
+    a document that needs one either, so nothing is lost by saying so.
     """
     try:
-        companies = frappe.get_all("Company", pluck="name", limit=1)
+        companies = frappe.get_list("Company", pluck="name", limit=1)
     except Exception:
         return ""
     return companies[0] if companies else ""

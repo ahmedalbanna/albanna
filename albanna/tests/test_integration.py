@@ -511,6 +511,36 @@ class TestConversationOwnership(FrappeTestCase):
         self._as(self.owner)
         self.assertTrue(frappe.db.exists("Albanna Conversation", conversation))
 
+    def test_the_service_itself_refuses_another_users_conversation(self):
+        """The check is in the service, and not only in the endpoint.
+
+        The rows are deleted with direct SQL and the document is deleted
+        with its permissions ignored, so a caller that forgot the check
+        would delete somebody else's history without any complaint from
+        the framework.  The endpoint is not the only thing that may call
+        these.
+        """
+        from albanna.services import conversation_service
+
+        self._as(self.owner)
+        conversation = ensure_conversation(self.owner, "test|service|")
+        append_messages(conversation, [{"role": "user", "content": "a question"}])
+        transcript = load_transcript(conversation)
+
+        self._as(self.other)
+        for call in (
+            lambda: conversation_service.rename_conversation(conversation, "mine now"),
+            lambda: conversation_service.delete_turn(conversation, transcript[0]["name"]),
+            lambda: conversation_service.delete_conversation(conversation),
+        ):
+            with self.assertRaises(frappe.PermissionError):
+                call()
+
+        # And it is all still there.
+        self._as(self.owner)
+        self.assertTrue(frappe.db.exists("Albanna Conversation", conversation))
+        self.assertTrue(load_transcript(conversation))
+
     def test_the_list_shows_only_the_callers_conversations(self):
         self._as(self.owner)
         mine = ensure_conversation(self.owner, "test|mine|")
@@ -1180,6 +1210,55 @@ class TestRequestPrivacy(FrappeTestCase):
             ask(question="a secret question")
 
         self.assertEqual(frappe.local.form_dict["question"], "[redacted]")
+
+
+@pytest.mark.integration
+class TestTheChatLogHoldsNoSecret(FrappeTestCase):
+    """The log is read by operators, exported, and copied off the host.
+
+    A provider's refusal often quotes the key it refused — "Incorrect API
+    key provided: sk-…" — and that message is the turn's error message.
+    So the key has to be taken out of the row before it is written.
+    """
+
+    def setUp(self):
+        super().setUp()
+        frappe.db.sql("delete from `tabAlbanna Chat Log`")
+        frappe.set_user("Administrator")
+
+    def tearDown(self):
+        frappe.db.sql("delete from `tabAlbanna Chat Log`")
+        super().tearDown()
+
+    def test_a_key_quoted_by_the_provider_does_not_reach_the_log(self):
+        import time
+
+        from albanna.services.chat_service import ChatService, TurnAudit
+        from albanna.services.settings_service import get_settings
+
+        settings = get_settings(refresh=True)
+        key = settings.provider.api_key
+        if not key:
+            self.skipTest("this site has no provider key to leak")
+
+        ChatService()._log(
+            TurnAudit(
+                conversation="",
+                user="Administrator",
+                provider="a-provider",
+                model="a-model",
+                status="error",
+                error_class="provider_error",
+                error_message=f"Incorrect API key provided: {key}",
+                started=time.monotonic(),
+            )
+        )
+
+        rows = frappe.db.sql_list("select error_message from `tabAlbanna Chat Log`")
+        self.assertTrue(rows, "the turn must have been logged")
+        for message in rows:
+            self.assertNotIn(key, message, "the provider's key reached the chat log")
+            self.assertIn("[redacted]", message, "the key must be masked, not dropped")
 
 
 @pytest.mark.integration

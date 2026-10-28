@@ -37,3 +37,26 @@ def mask_secret(value: str | None) -> str:
     if not text:
         return ""
     return REDACTED
+
+
+def redact_secret(text: str | None, secret: str | None) -> str:
+    """The text, with *secret* taken out of it.
+
+    A provider's refusal often quotes the key it refused — "Incorrect API
+    key provided: sk-…" — and the chat log is read by operators,
+    exported, and copied off the host.  So a key that reached the log
+    would be a key on a hundred laptops.
+
+    An empty secret changes nothing: there is nothing to take out, and
+    replacing every character of the text with the mask would be a
+    different bug.
+
+    @param text: the text to redact
+    @param secret: the secret to take out of it
+    @returns: the text, without the secret
+    """
+    body = str(text or "")
+    value = str(secret or "").strip()
+    if not value:
+        return body
+    return body.replace(value, REDACTED)

@@ -599,8 +599,15 @@ def delete_turn(conversation: str, message: str) -> int:
     question that led to it, because a turn is removed whole — an answer
     with no question is not a conversation.
 
+    The ownership check is here and not only in the endpoint that calls
+    this: the rows are deleted with direct SQL, which consults no
+    permission at all, so a caller that forgot the check would delete
+    somebody else's history without any complaint from the framework.
+
     Returns the number of rows removed.
     """
+    assert_owns(conversation, frappe.session.user or "")
+
     row = frappe.db.sql(
         """
         select name, role from `tabAlbanna Message`
@@ -682,7 +689,14 @@ def toggle_pin(conversation: str, pinned: bool) -> None:
 
 
 def rename_conversation(conversation: str, title: str) -> None:
-    """Give a conversation a title of the user's choosing."""
+    """Give a conversation a title of the user's choosing.
+
+    The ownership check is here and not only in the endpoint: the row is
+    written with direct SQL, which consults no permission at all, so a
+    caller that forgot the check would rename somebody else's
+    conversation without any complaint from the framework.
+    """
+    assert_owns(conversation, frappe.session.user or "")
     frappe.db.set_value(
         "Albanna Conversation",
         conversation,
@@ -692,9 +706,16 @@ def rename_conversation(conversation: str, title: str) -> None:
 
 
 def delete_conversation(conversation: str) -> None:
-    """Delete a conversation and its messages."""
+    """Delete a conversation and its messages.
+
+    The ownership check is here and not only in the endpoint: the rows
+    are deleted with direct SQL and the document is deleted with its
+    permissions ignored, so a caller that forgot the check would delete
+    somebody else's history without any complaint from the framework.
+    """
+    assert_owns(conversation, frappe.session.user or "")
     frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
-    frappe.delete_doc("Albanna Conversation", conversation, ignore_permissions=True, force=True)
+    frappe.delete_doc("Albanna Conversation", conversation, ignore_permissions=True)
 
 
 def trim_conversation(conversation: str, keep: int = MAX_STORED_MESSAGES) -> None:

@@ -131,7 +131,7 @@ def require_chat_access() -> None:
     )
 
 
-def _doctypes_for_permission(user: str, ptype: str) -> list[str]:
+def _doctypes_for_permission(user: str, ptype: str, exclude: tuple[str, ...] = ("Guest", "All")) -> list[str]:
     """The DocTypes this account holds *ptype* on.
 
     One query over the permission table, and it takes milliseconds.
@@ -141,7 +141,7 @@ def _doctypes_for_permission(user: str, ptype: str) -> list[str]:
     in would be wrong.
     """
     try:
-        roles = tuple(set(frappe.get_roles(user)) - {"Guest", "All"})
+        roles = tuple(set(frappe.get_roles(user)) - set(exclude))
     except Exception:
         return []
     if not roles:
@@ -158,6 +158,18 @@ def _doctypes_for_permission(user: str, ptype: str) -> list[str]:
         return []
 
     return sorted({str(name) for name in names if name})
+
+
+def readable_doctypes(user: str) -> list[str]:
+    """The DocTypes this account may read.
+
+    The ``All`` role counts here, unlike in the write lists: it is the
+    role every account holds, and it grants read on a handful of DocTypes
+    — a Communication, an Address — that would otherwise be missing from
+    the list, and missing from it would be a lie about what the reader
+    can see.
+    """
+    return _doctypes_for_permission(user, "read", exclude=("Guest",))
 
 
 def creatable_doctypes(user: str) -> list[str]:

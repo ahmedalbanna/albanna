@@ -29,7 +29,12 @@ question, not by using the app:
     document the person may not read, because a write permission is not a
     read permission;
 *   a **private file** belonging to somebody else could be copied into a
-    document and published with it.
+    document and published with it;
+*   a **count** in the empty state was the size of the table, and the
+    **catalogue** of DocTypes was the whole site's;
+*   the **confirmation card** named documents the reader may not read,
+    and counted rows they may not see;
+*   the **page context** named whatever document the browser asked it to.
 
 Each test names the hole it covers, because a test without a name is a
 test nobody reads when it fails.
@@ -498,3 +503,93 @@ class TestPermissionParity(FrappeTestCase):
             ),
             "the private file was copied into a public file",
         )
+
+    # -- the catalogue and the page are the reader's too --------------------
+
+    def test_the_doctype_catalogue_lists_only_what_the_caller_may_read(self):
+        """The model may not learn the site's structure from the catalogue.
+
+        The lookup behind "that DocType does not exist" listed every
+        DocType on the site.  So a reader who may not read a Salary Slip
+        was told, by the assistant's own catalogue, that the site has
+        Salary Slips.
+        """
+        import json
+
+        from albanna.tools.erpnext import list_doctypes
+
+        self._as(self.sales_user)
+        payload = json.loads(list_doctypes())
+        names = [row["name"] for row in payload.get("doctypes") or []]
+
+        self.assertTrue(names, "the catalogue must not be empty for a reader")
+
+        # A DocType the Sales User has no business reading: the payroll
+        # ones are read by the Accounts User and the HR Manager only.
+        for hidden in ("Salary Slip", "Salary Component", "Employee Checkin"):
+            if frappe.db.exists("DocType", hidden):
+                self.assertNotIn(
+                    hidden,
+                    names,
+                    f"the catalogue listed a DocType the reader may not read: {hidden}",
+                )
+
+        # And the DocTypes the reader *can* read are in it — an empty
+        # catalogue would be a different bug.
+        self.assertIn("Customer", names)
+
+    def test_the_page_context_does_not_name_a_document_the_caller_may_not_read(self):
+        """The browser is not trusted to name only what the reader can see.
+
+        The page context says "the reader is looking at this document",
+        and the browser is free to say so about anything.  So the name is
+        dropped when the reader may not read the document: the model is
+        told what kind of page it is on, and not which row of it.
+        """
+        from albanna.api.chat import _render_page_context
+
+        customer = self._customer(f"Albanna Parity Page {self._testMethodName}")
+
+        company = self._company()
+        currency = frappe.db.get_value("Company", company, "default_currency")
+        invoice = frappe.new_doc("Sales Invoice")
+        invoice.company = company
+        invoice.currency = currency
+        invoice.customer = customer
+        invoice.append("items", {"item_code": self._item(), "qty": 1, "rate": 10})
+        invoice.flags.ignore_permissions = True
+        invoice.insert()
+
+        # A Sales User cannot read a Sales Invoice on this site, so the
+        # invoice is the document the page must not name.
+        self._as(self.sales_user)
+        rendered = _render_page_context(
+            {
+                "doctype": "Sales Invoice",
+                "name": invoice.name,
+                "title": "An invoice the reader may not read",
+                "view": "/app/sales-invoice",
+            }
+        )
+        self.assertNotIn(
+            invoice.name,
+            rendered,
+            "the page context named a document the reader may not read",
+        )
+        self.assertNotIn(
+            "An invoice the reader may not read",
+            rendered,
+            "the page context carried the title of a document the reader may not read",
+        )
+
+        # A document the reader *may* read is still named — otherwise the
+        # context would be useless.
+        rendered = _render_page_context(
+            {
+                "doctype": "Customer",
+                "name": customer,
+                "title": "A customer the reader may read",
+                "view": "/app/customer",
+            }
+        )
+        self.assertIn(customer, rendered, "the page context dropped a document the reader may read")

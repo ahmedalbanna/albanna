@@ -94,6 +94,22 @@ def _as_int(value: Any) -> int:
         return 0
 
 
+def _may_read_page_document(doctype: str, name: str) -> bool:
+    """Whether the caller may read the document the page names.
+
+    A document that does not exist, or a DocType that does not exist, is
+    "may not read" — there is nothing to describe, and the name is
+    dropped either way.
+    """
+    from albanna.permissions import may_read
+
+    try:
+        document = frappe.get_doc(doctype, name)
+    except Exception:
+        return False
+    return may_read(document)
+
+
 def _render_page_context(raw: Any) -> str:
     """Turn the client's page description into the untrusted block.
 
@@ -101,6 +117,11 @@ def _render_page_context(raw: Any) -> str:
     attacker-controlled — it is whatever the browser says it is — so it is
     rendered here, truncated, and framed as data.  Nothing from the browser
     reaches the model as an instruction.
+
+    The name of the document on the page is dropped when the reader may
+    not read it.  The browser is not trusted to name only what the reader
+    can see, and the model is told "the reader is looking at this
+    document" — a claim about the reader's own page that has to be true.
     """
     if not raw:
         return ""
@@ -116,11 +137,21 @@ def _render_page_context(raw: Any) -> str:
     if not isinstance(raw, dict):
         return ""
 
+    doctype = str(raw.get("doctype") or "")[:120]
+    name = str(raw.get("name") or "")[:140]
+    title = str(raw.get("title") or "")[:200]
+
+    if doctype and name and not _may_read_page_document(doctype, name):
+        # The kind of page is still true; the row on it is not the
+        # reader's to name.
+        name = ""
+        title = ""
+
     return build_page_context(
         view=str(raw.get("route") or raw.get("view") or "")[:120],
-        doctype=str(raw.get("doctype") or "")[:120],
-        name=str(raw.get("name") or "")[:140],
-        title=str(raw.get("title") or "")[:200],
+        doctype=doctype,
+        name=name,
+        title=title,
         filters=str(raw.get("filters") or "")[:300],
         selection=str(raw.get("selection") or "")[:500],
         recent_questions=str(raw.get("recent_questions") or "")[:300],

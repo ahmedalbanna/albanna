@@ -1623,13 +1623,24 @@ def list_doctypes(
     custom_only: bool = False,
     limit: int = 100,
 ) -> str:
-    """The DocTypes installed on this site.
+    """The DocTypes this caller may read.
 
     Not one of the assistant's tools: it is the lookup behind the answer to
     "that DocType does not exist", which is otherwise a dead end — the model
     has no way to learn the right name and guesses again.
+
+    The list is the caller's.  The Desk's own search hides the DocTypes
+    a reader may not read, and a model that knew the site had a "Salary
+    Slip" could tell the reader something the reader could not find out
+    for themselves.
     """
-    filters: list[list[Any]] = []
+    from albanna.permissions import readable_doctypes
+
+    readable = readable_doctypes(str(frappe.session.user or ""))
+    if not readable:
+        return ok("Found 0 DocType(s)", data=None, count=0, doctypes=[])
+
+    filters: list[list[Any]] = [["name", "in", readable]]
     if module:
         filters.append(["module", "=", module])
     if search:

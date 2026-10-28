@@ -1,11 +1,14 @@
 """``Albanna Conversation`` — one chat thread.
 
-The owner is forced from the session on insert.  The doctype grants ``All``
-read/write — without that grant a user who is allowed to chat could not
-reach the conversation endpoints at all — and the permission hooks in
-``hooks.py`` are what narrow ``All`` back down to "the owner, and a System
-Manager".  The two are edited together; changing one without the other
-widens or breaks the other.
+The owner is forced from the session on insert.
+
+The doctype grants read and write to two roles, and no more: ``System
+Manager`` outright, and ``Albanna User`` for the rows the account owns
+(``if_owner``).  The hooks in ``hooks.py`` are the other half of that:
+``permission_query_conditions`` narrows the *list views* to the owner's
+rows, and ``has_permission`` answers the *document* question the same
+way.  The permission rows and the hooks are edited together; changing
+one without the other widens or breaks the other.
 """
 
 import frappe

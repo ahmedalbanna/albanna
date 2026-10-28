@@ -105,6 +105,33 @@ def _reader_error(exc: BaseException) -> str:
         return message
 
 
+def _without_secrets(text: str) -> str:
+    """The text with the site's own keys taken out of it.
+
+    A provider's refusal often quotes the key it refused — "Incorrect API
+    key provided: sk-…" — and the chat log is read by operators,
+    exported, and copied off the host.  So the log is written with the
+    keys in it only if nobody thought of this, and the operator who
+    reads the log is the last person who should have to.
+    """
+    from albanna.core.secrets import redact_secret
+
+    body = str(text or "")
+    try:
+        from albanna.services.settings_service import get_settings
+
+        settings = get_settings()
+    except Exception:
+        return body
+
+    for config in (settings.provider, settings.fallback):
+        if config is None:
+            continue
+        body = redact_secret(body, config.api_key)
+
+    return body
+
+
 @dataclass
 class TurnRequest:
     """What the user asked for."""
@@ -1050,7 +1077,7 @@ class ChatService:
             if audit.error_class:
                 doc.error_class = audit.error_class
             if audit.error_message:
-                doc.error_message = audit.error_message[:500]
+                doc.error_message = _without_secrets(audit.error_message)[:500]
             doc.had_image = 1 if audit.had_image else 0
             doc.insert(ignore_permissions=True)
         except Exception:
