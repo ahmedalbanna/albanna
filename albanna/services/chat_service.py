@@ -213,6 +213,10 @@ class TurnAudit:
     error_message: str = ""
     price_per_million: float = 0.0
     had_image: bool = False
+    #: Per-round durations in milliseconds, one per model call in the turn.
+    #: Carried inside the audit row's ``tools`` field, not a column, so
+    #: production avoids a DDL on ``tabAlbanna Chat Log``.
+    round_ms: list[int] = field(default_factory=list)
 
 def turn_payload(outcome: TurnOutcome) -> dict[str, Any]:
     """The wire shape of a turn.
@@ -260,6 +264,10 @@ class ChatService:
 
     def __init__(self, backend=None) -> None:
         self._backend = backend or ErpnextBackend()
+        # The audit row written at turn start, if any.  Read with getattr
+        # everywhere, so a _log call that arrives without a run (the tests
+        # call it directly) still works.
+        self._audit_name: str | None = None
 
     # -- the turn ---------------------------------------------------------
 
@@ -334,6 +342,26 @@ class ChatService:
             )
 
         history = load_messages(conversation, settings.history_limit)
+
+        # The audit row is written *before* the turn can die, so that a
+        # turn that never finishes still leaves a record.  It starts as
+        # 'running' and is updated in place at the turn's end.  If the
+        # worker dies between, it stays 'running' and the reaper marks it
+        # 'interrupted' later — a ghost row is truth, not a leak.
+        try:
+            running = frappe.new_doc("Albanna Chat Log")
+            running.user = principal.user
+            running.conversation = conversation
+            running.status = "running"
+            running.rounds = 0
+            running.tool_calls = 0
+            running.had_image = 1 if bool(request.image) else 0
+            running.insert(ignore_permissions=True)
+            self._audit_name = running.name
+            frappe.db.commit()
+        except Exception:
+            logger.exception("Could not write the running audit row")
+
         company = default_company()
         from albanna.user_policy import confirm_writes_for
 
@@ -356,6 +384,8 @@ class ChatService:
 
         tool_calls_made: list[dict[str, Any]] = []
         rounds = 0
+        # Per-round durations, one per model call, for the audit row.
+        round_durations: list[int] = []
         usage: Usage | None = None
         provider_name = ""
         model_name = ""
@@ -368,6 +398,7 @@ class ChatService:
 
         for round_no in range(settings.max_tool_rounds):
             rounds = round_no + 1
+            round_start = time.monotonic()
             # A code, not a sentence.  The turn runs in a worker, and a
             # worker has no user's language to render a label in — the
             # interface's language is the *reader's*, and only the reader
@@ -378,6 +409,7 @@ class ChatService:
             try:
                 completion = self._complete(llm_config, messages, visible, emit, request.stream)
             except AllProvidersFailed as exc:
+                round_durations.append(int((time.monotonic() - round_start) * 1000))
                 self._log(
                     TurnAudit(
                         conversation=conversation,
@@ -393,6 +425,7 @@ class ChatService:
                         error_message=str(exc),
                         price_per_million=settings.price_per_million,
                         had_image=bool(request.image),
+                        round_ms=round_durations,
                     )
                 )
                 return TurnOutcome(
@@ -403,6 +436,8 @@ class ChatService:
                     tool_calls=tool_calls_made,
                     image_dropped=image_dropped,
                 )
+
+            round_durations.append(int((time.monotonic() - round_start) * 1000))
 
             provider_name = completion.provider
             model_name = completion.model
@@ -451,6 +486,7 @@ class ChatService:
                         status="truncated" if completion.truncated else "ok",
                         price_per_million=settings.price_per_million,
                         had_image=bool(request.image),
+                        round_ms=round_durations,
                     )
                 )
                 return TurnOutcome(
@@ -520,6 +556,7 @@ class ChatService:
                 error_class="round_limit",
                 error_message=f"reached {settings.max_tool_rounds} rounds",
                 price_per_million=settings.price_per_million,
+                round_ms=round_durations,
             )
         )
         return TurnOutcome(
@@ -788,6 +825,16 @@ class ChatService:
                 except Exception:
                     pass
                 result = replace(result, dry_run=True, content=result.content + "\n(dry run — not saved)")
+            elif spec.mutating and result.ok:
+                # A write that ran is committed now, not at the end of the
+                # turn: the turn's own writes survive a turn that dies
+                # afterwards, and the audit row is not the only thing that
+                # does.  The user asked for the document; the assistant's
+                # ability to describe it is a separate concern.
+                try:
+                    frappe.db.commit()
+                except Exception:
+                    logger.exception("Could not commit a successful write")
         except Exception as exc:  # noqa: BLE001 - a tool must not kill the turn
             logger.exception("Tool '%s' could not be run", call.name)
             message = f"The tool '{call.name}' could not be run: {type(exc).__name__}: {exc}"
@@ -1032,22 +1079,27 @@ class ChatService:
     # -- the audit row ----------------------------------------------------
 
     def _log(self, audit: TurnAudit) -> None:
-        """Write the turn's audit row.
+        """Write or update the turn's audit row.
 
-        It records what was *done* — which tools ran, whether they worked,
-        and what a write created — and the counts, timings and error classes.
+        The row may already exist as a 'running' row written at turn start;
+        in that case it is updated in place rather than duplicated.  A
+        direct caller (the tests call this method on its own) finds no
+        stored name and gets a fresh row, so the behaviour they relied on
+        is unchanged.
 
-        It does not record the question or the answer.  The audit trail
-        answers "what did the assistant do and what did it cost"; the
-        conversation answers "what was said".  Keeping the two apart is what
-        makes it safe to show the log to a manager.
-
-        The one exception is the *name* of a document a write created, which
-        is an identifier rather than a statement, and is what a manager
-        needs in order to find out what the assistant did.
+        The per-round timings travel inside the existing ``tools`` field,
+        as ``{"calls": [...], "round_ms": [...]}``, so no new column is
+        needed and production avoids a DDL on ``tabAlbanna Chat Log``.
         """
         try:
-            doc = frappe.new_doc("Albanna Chat Log")
+            name = getattr(self, "_audit_name", None)
+            if name and frappe.db.exists("Albanna Chat Log", name):
+                doc = frappe.get_doc("Albanna Chat Log", name)
+                is_update = True
+            else:
+                doc = frappe.new_doc("Albanna Chat Log")
+                is_update = False
+
             doc.user = audit.user
             doc.conversation = audit.conversation
             doc.provider = audit.provider
@@ -1055,18 +1107,16 @@ class ChatService:
             doc.status = audit.status
             doc.rounds = audit.rounds
             doc.tool_calls = len(audit.tool_calls)
-            if audit.tool_calls:
-                doc.tools = json.dumps(audit.tool_calls, default=str)
-            doc.duration_ms = int((time.monotonic() - audit.started) * 1000)
+            payload: dict[str, Any] = {"calls": audit.tool_calls or []}
+            if getattr(audit, "round_ms", None):
+                payload["round_ms"] = list(audit.round_ms)
+            if audit.tool_calls or getattr(audit, "round_ms", None):
+                doc.tools = json.dumps(payload, default=str)
+            doc.duration_ms = int((time.monotonic() - audit.started) * 1000) if audit.started else 0
             if audit.usage is not None:
                 usage = audit.usage
                 doc.input_tokens = usage.input_tokens
                 doc.output_tokens = usage.output_tokens
-                # The cost in the *site's* currency: the tokens the turn
-                # used, priced with the price the operator set.  The
-                # provider's own number is in the provider's own currency
-                # — a dollar in a riyals ledger — so it is recorded
-                # beside it, in its own column, and never mixed with it.
                 doc.cost = cost_of_turn(
                     usage.input_tokens,
                     usage.output_tokens,
@@ -1079,7 +1129,17 @@ class ChatService:
             if audit.error_message:
                 doc.error_message = _without_secrets(audit.error_message)[:500]
             doc.had_image = 1 if audit.had_image else 0
-            doc.insert(ignore_permissions=True)
+
+            if is_update:
+                doc.save(ignore_permissions=True)
+            else:
+                doc.insert(ignore_permissions=True)
+                self._audit_name = doc.name
+
+            try:
+                frappe.db.commit()
+            except Exception:
+                logger.exception("Could not commit the chat log row")
         except Exception:
             logger.exception("Could not write the chat log row")
 

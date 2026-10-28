@@ -2783,3 +2783,117 @@ class TestUndo(FrappeTestCase):
             result["messages"][0]["tools"][0]["undoable"],
             "the transcript the endpoint returns must say the same thing",
         )
+
+
+@pytest.mark.integration
+class TestTurnDurability(FrappeTestCase):
+    """A write that ran is committed before the turn can die.
+
+    The worker's transaction is the reader's safety net: a document the
+    assistant created must exist even if the model fails afterwards.  The
+    test spies on ``frappe.db.commit`` rather than reading the row back,
+    because the test harness shares one transaction and an uncommitted
+    insert is visible to the assertion either way.
+    """
+
+    def setUp(self):
+        super().setUp()
+        frappe.db.sql("delete from `tabAlbanna Chat Log`")
+        frappe.set_user("Administrator")
+
+    def tearDown(self):
+        frappe.db.sql("delete from `tabAlbanna Chat Log`")
+        super().tearDown()
+
+    def test_a_write_is_committed_before_the_turn_can_die(self):
+        from albanna.core.messages import Message
+        from albanna.core.tools import ToolSpec
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.chat_service import ChatService, TurnRequest
+        from albanna.tools.base import ToolResult
+
+        service = ChatService()
+
+        # Two model calls: one that asks for a write, one that answers.
+        calls = {"n": 0}
+
+        def fake_complete(config, messages, tools, emit, stream):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                from albanna.core.messages import ToolCall
+
+                return Completion(
+                    message=Message(
+                        role="assistant",
+                        content="",
+                        tool_calls=[ToolCall(id="c1", name="create_doc", arguments={"doctype": "ToDo", "data": {"description": "x"}})],
+                    ),
+                    provider="openai",
+                    model="a-model",
+                    usage=Usage(input_tokens=1, output_tokens=1),
+                )
+            return Completion(
+                message=Message(role="assistant", content="done"),
+                provider="openai",
+                model="a-model",
+                usage=Usage(input_tokens=1, output_tokens=1),
+            )
+
+        service._complete = fake_complete
+
+        # The backend reports success without touching the database, so the
+        # spy observes only the durability commit and not a real write.
+        service._backend.call = lambda spec, arguments, context: ToolResult(
+            ok=True, content="Created ToDo 'X'", data={"doctype": "ToDo", "name": "X"}
+        )
+
+        import albanna.user_policy as up
+
+        _orig = up.confirm_writes_for
+        up.confirm_writes_for = lambda user=None: False
+
+        committed = []
+        original = frappe.db.commit
+        frappe.db.commit = lambda *a, **k: committed.append(1) or original(*a, **k)
+
+        try:
+            outcome = service.run(TurnRequest(question="create a todo", page="test|durability|"))
+        finally:
+            frappe.db.commit = original
+            up.confirm_writes_for = _orig
+
+        self.assertTrue(outcome.ok)
+        # At least one commit beyond the audit row's own commits: the
+        # write's.  The running row and the terminal row each commit, so a
+        # turn with a write commits strictly more than a turn without one.
+        self.assertGreaterEqual(len(committed), 3, "the write must have been committed")
+
+    def test_a_read_only_turn_commits_no_write(self):
+        from albanna.core.messages import Message
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.chat_service import ChatService, TurnRequest
+
+        service = ChatService()
+
+        def fake_complete(config, messages, tools, emit, stream):
+            return Completion(
+                message=Message(role="assistant", content="nothing to do"),
+                provider="openai",
+                model="a-model",
+                usage=Usage(input_tokens=1, output_tokens=1),
+            )
+
+        service._complete = fake_complete
+
+        committed = []
+        original = frappe.db.commit
+        frappe.db.commit = lambda *a, **k: committed.append(1) or original(*a, **k)
+
+        try:
+            outcome = service.run(TurnRequest(question="hello", page="test|durability2|"))
+        finally:
+            frappe.db.commit = original
+
+        self.assertTrue(outcome.ok)
+        # Only the running row and the terminal row commit: two.
+        self.assertEqual(len(committed), 2, "a read-only turn commits only the audit rows")

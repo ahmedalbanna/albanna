@@ -47,6 +47,7 @@ def usage_summary() -> dict[str, Any]:
                estimated, duration_ms
         from `tab{LOG_DOCTYPE}`
         where creation >= %s
+          and status not in ('running', 'interrupted')
         """,
         (start,),
         as_dict=True,
