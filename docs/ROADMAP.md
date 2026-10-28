@@ -1,6 +1,6 @@
 # Albanna — Product Roadmap
 
-**Status:** current as of 2026-10-27.  This document was re-cut around the
+**Status:** current as of 2026-10-28.  This document was re-cut around the
 primary persona — **the support agent** — and every item marked *shipped*
 is in the code, not in a plan.
 
@@ -227,6 +227,10 @@ mobile, RTL, first-run tour, document entry point, cost ledger, global
 search, bulk update, undo, dry-run, nudge, smart defaults, escalation,
 voice, images, copy-as-markdown, sources, "explain this error".
 
+And the moat audit (§9): every tool, the counts, the confirmation card,
+the DocType catalogue, the page context, the approval binding and the chat
+log were read against the permission question, and every hole was closed.
+
 ### Next (v2) — the eight items in §2, in that order
 
 ### Later (v3) — §3, only with a named customer
@@ -327,3 +331,33 @@ when the transcript is reworked rather than now.
 
 The escalation finding is already in the list: "Ask a human" on a ticket
 creates a *second* ticket (v2 item 1), confirmed live.
+
+---
+
+## 9. The moat audit — what it found (2026-10-28)
+
+The moat is *governed autonomy with permission parity*: the assistant can
+never see or do more than the person asking.  That is a claim about a seam,
+and a claim about a seam is only worth what the tests on both sides of it
+are worth.  So the whole app was read against one question — **can the
+assistant reach past the person it is answering?** — and every hole found
+was closed, with a test that names it.
+
+| What | Why it matters | What was done |
+|---|---|---|
+| A creation could arrive **submitted** — `docstatus` in the data — so a document was permanent without the submit permission and without the hooks a submission runs | the assistant could write history the reader could not | the framework's own fields are refused, on creation and on change |
+| A **bulk** change reached past the permission engine to find its targets and skipped the field checks a single change gets, so `owner` and `docstatus` were writable there and nowhere else | two paths to the same write, one of them unguarded | the bulk path enumerates its targets through the permission engine and makes the same checks |
+| A **read** handed the model every field, including the ones hidden from the person at a higher permission level — and left the hidden field in the payload with its default value | a field that is not there is a false statement about the document | a hidden field is removed from the payload entirely, and the read is refused for a document the caller may not read |
+| A **lifecycle action** could act on — and report the state of — a document the person may not read, because a write permission is not a read permission | the answer leaked the existence and the state of a document the Desk would not show | every lifecycle action reads first, and refuses as a read would |
+| A **private file** belonging to somebody else could be copied into a document and published with it | private bytes leaving the private folder | the file is adopted only if the caller may read it |
+| The **number** in the empty state was the size of the table | a number offered before a question is asked is still a leak | the count is the list view's count: the caller's rows |
+| The **confirmation card** named documents the reader may not read, showed the values the model wanted to change, carried a diff of a document the reader may not read, and counted the whole table in a bulk change | the card is the one place a write is described *before* it runs | the card says only what the reader may read |
+| The **approval** was a string in a cache key: it was not bound to a write, a second decision overwrote the first, and a document that changed while the reader was deciding was changed anyway | "you approve, and it happens" — of *what*? | the pending write is recorded before the reader is asked; a decision naming no write is refused, a second decision is refused, and the document's timestamp is checked again before the write runs |
+| The **DocType catalogue** was the whole site's, the **company** was the first row of the table, the **page context** named whatever document the browser asked it to | the model was told the site's structure, and a browser could name a row the reader may not see | the catalogue is the caller's, the company is the caller's, and the page context drops a name the reader may not read |
+| The **conversation services** trusted the endpoint to have checked ownership, and the chat log could hold the site's own API key | a caller that forgot the check would delete somebody else's history; a provider's refusal often quotes the key it refused | the ownership check is in the service as well, and the log is written with the keys taken out of it |
+
+One deliberate difference from Frappe's own API: a field the caller may not
+read is **removed** from the payload, not returned with its default.  Frappe
+leaves `ignore_pricing_rule: 0` on a Sales Order, and `0` is a statement
+about a document that is not true.  The assistant is held to a stricter
+standard than the Desk on this one point, on purpose.

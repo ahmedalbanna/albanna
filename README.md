@@ -202,7 +202,7 @@ different tools, so the first two rows of that table cannot drift.
 | `run_report` | read | run an ERPNext report |
 | `create_doc` | write | create a document |
 | `update_doc` | write | change the fields of a document that exists |
-| `bulk_update_doc` | write | change the same fields on many documents, with an approval card that names every one of them |
+| `bulk_update_doc` | write | change the same fields on many documents, with an approval card that counts and names the caller's own documents |
 | `submit_doc` | write | submit a draft document, making it permanent |
 | `cancel_doc` | write | cancel a submitted document |
 | `amend_doc` | write | cancel a submitted document and create a new draft from it |

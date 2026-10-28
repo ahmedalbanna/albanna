@@ -1,7 +1,7 @@
 # Context: Albanna
 
 Status: **Accepted**
-Last reviewed: 2026-10-21
+Last reviewed: 2026-10-28
 
 > This file is the vocabulary and the invariants.  A word that appears here
 > means one thing, everywhere in the app.  A word that does not appear here
@@ -34,9 +34,9 @@ Albanna runs neither as a service, and depends on neither.  See
 | **side chat** | The docked panel in the Desk, and the launcher that opens it. Not a page, not a modal, not a route. |
 | **turn** | One question and the work it causes, from the question to the final answer. |
 | **round** | One model call inside a turn. A round may contain several tool calls. |
-| **tool** | One named operation the model may ask for. Six exist. |
+| **tool** | One named operation the model may ask for. Eleven exist. |
 | **tool spec** | The manifest entry for a tool: name, description, JSON schema, tier, required roles. The contract the model sees. |
-| **manifest** | The six tool specs, in `core/tools.py`. Plain data, no code. |
+| **manifest** | The eleven tool specs, in `core/tools.py`. Plain data, no code. |
 | **adapter** | The code that actually runs a tool, or calls a model. One per backend, one per vendor. |
 | **principal** | The person a call is made for: their user name, their roles, whether they are a System Manager. |
 | **reachability** | Whether a principal may reach a tool at all. Static: does not depend on the arguments. |
@@ -79,7 +79,7 @@ expensive to get wrong.
 
 ### 1. The tool set is fixed, and the model only sees what it may use
 
-There are six tools.  The manifest is filtered by the authority layer
+There are eleven tools.  The manifest is filtered by the authority layer
 *before* the schemas are sent to the model, so a tool the user may not
 reach is never mentioned — not mentioned and then refused, **never
 mentioned**.  A model that can see a tool it cannot use spends a turn
@@ -129,13 +129,19 @@ a tool that fell back to it would read and write the wrong database.  See
 
 ### 6. The acting identity is the session user, never Administrator
 
-The tool functions default to bypassing Frappe's permission engine, because
-the backend used to be the authority and the backend ran as a mapped user.
-In-process there is no mapped user, so the adapter sets the backend's own
-per-call-user marker before each call.  The tool then applies the
-requesting user's roles.  The authority layer refuses the call first; the
-permission engine refuses it second.  Defence in depth, and both layers are
-tested.
+The tool adapter sets the session to the requesting user before every call,
+so the tool runs under that user's roles and User Permissions.  The
+authority layer refuses the call first; the permission engine refuses it
+second.  Defence in depth, and both layers are tested.
+
+The tools do not stop there.  Frappe's ORM applies no permission check
+when a document is *read* — `frappe.get_doc` hands a document to whoever
+asks — so every read asks the permission engine itself, and a document the
+caller may not read is refused as a read would have refused it.  The
+listing and the count go through `frappe.get_list`, which checks.  The one
+answer to "may this account read this document" lives in
+`albanna.permissions`, so the tools and the confirmation card cannot
+disagree about it.
 
 ### 7. Page context is data, never instructions
 
@@ -168,6 +174,11 @@ The one thing the log *does* carry is the **name of a document a write
 created**.  That is an identifier, not a statement, and it is what turns
 "the assistant called a tool" into "the assistant created
 ACC-SINV-2026-00008".
+
+It carries no secret either.  A provider's refusal often quotes the key it
+refused, and that message is the turn's error message — so the site's own
+keys are taken out of the row before it is written.  The log is read by
+operators, exported, and copied off the host.
 
 ### 11. The chat and the writes are granted by Frappe, not by the app
 
@@ -205,6 +216,11 @@ continues an existing conversation.  A System Manager is *not* exempt
 there: an administrator reading somebody else's chat is a different act
 from an administrator running the site, and the audit trail should not
 contain a conversation nobody asked for.
+
+The services check it as well, because the rows are deleted with direct
+SQL and the conversation document is deleted with its permissions ignored.
+A check that only the caller remembers is a check that is one refactor away
+from gone.
 
 ### 14. The interface follows the reading direction
 
@@ -1080,6 +1096,138 @@ the test now asks the database: the turn says it created
 `SINV-0001`, and `SINV-0001` has to be there.  The same principle as
 entry 60, seen from the test's side: the thing that must not lie about a
 write is the write itself.
+
+### 62. The assistant may not reach past the person it is answering
+
+The app's moat is *governed autonomy with permission parity*.  That is a
+claim about a seam, and a claim about a seam is only worth what the tests on
+both sides of it are worth.  So the whole app was read against one question
+— **can the assistant reach past the person it is answering?** — and six
+ways through were found.
+
+*   A creation could arrive **submitted**: `docstatus` in the data.  The
+    document was permanent without the submit permission and without the
+    hooks a submission runs.
+*   A **bulk** change reached past the permission engine to find its
+    targets, and skipped the field checks a single change gets — so `owner`
+    and `docstatus` were writable there and nowhere else.  Two paths to the
+    same write, one of them unguarded, is the shape of every permission bug
+    that has ever been found.
+*   A **read** handed the model the document in full, including the fields
+    hidden from the person at a higher permission level.
+*   A **lifecycle action** could act on — and report the state of — a
+    document the person may not read, because a write permission is not a
+    read permission, and the roles that hold one do not always hold the
+    other.
+*   A **change** could be made to a document the caller may not read, for
+    the same reason.
+*   A **private file** belonging to somebody else could be copied into a
+    document and published with it, which takes the bytes out of the
+    private folder.
+
+The fix is not a list of special cases; it is that each tool has one place
+that answers "what does this refuse?", and the single change and the bulk
+change get the same answer.  The framework's own fields are refused
+everywhere.  A document the caller may not read is refused, as a read would
+have refused it, so the refusal does not say whether the document exists or
+what state it is in.  And the read check itself moved out of the tools
+module into `albanna.permissions`, so there is one answer to "may this
+account read this document" rather than two that could disagree.
+
+### 63. A hidden field is removed, not defaulted
+
+Frappe's own API, asked for a document a reader may not read in full,
+returns the hidden fields with their *defaults*: a Sales Order read by a
+Sales User comes back with `ignore_pricing_rule: 0`.  The framework is
+not wrong there — the Desk's form simply never renders the field — but
+`0` is a statement about the document, and it is a false one.  A model
+that reads `0` will say "pricing rules are not ignored", and the reader
+will believe it.
+
+So the app is stricter than the framework on this one point, on purpose: a
+field the caller may not read is **removed** from the payload entirely.  A
+missing field says "there is no answer here"; a defaulted field says "the
+answer is no", and only one of those is true.
+
+### 64. A number offered before a question is asked is still a leak
+
+The empty state asks the server how many documents there are, to decide
+whether to offer "create one" rather than "which are still open".  The
+answer was `frappe.db.count` — the size of the table, every row, including
+the ones the reader may not see.  The docstring said the count went through
+Frappe's permission engine.  It did not.
+
+This is the leak in the one place the reader is least suspicious of one: a
+number in an empty state, offered before they have asked anything.  The
+difference between "you have three invoices" and "there are forty invoices
+and three are yours" is the difference between a count and a disclosure.
+
+The count is now the one the list view shows — the same query, so the
+permission query conditions, the row-level rules and the ownership
+constraint all apply.
+
+### 65. The card is shown to the reader, so it may not describe what the reader may not read
+
+The confirmation card is the one place a write is described *before* it
+runs, and it is shown to the reader.  Three things on it were described
+without asking whether the reader may read them: the **name** of the
+document a change was about, the **values** the model wanted to change (the
+model may have read them from the document), and the **before** column of
+the diff (the document's own content, read through the ORM, which applies
+no permission check at all).  And the bulk card counted the whole table:
+"Change 42 Sales Invoices", asked of a reader who may see three of them.
+
+A description that names a document the reader cannot see is a leak with a
+confirmation button on it.  So the card says only what the reader may read,
+and the read check is the same one the tools use.
+
+### 66. A decision is bound to the write it answers
+
+The approval was a string in a cache key.  Three things followed from that,
+and none of them is what an approval is supposed to be.
+
+It was not **bound to a write**.  The endpoint took any request id and any
+decision and reported success — "yes" to a question nobody had asked — and
+the worker never checked that the write it was about to run was the one the
+reader had been shown.  It was not **one-shot**: the docstring said a
+second decision left the first in place, and the code overwrote it, so a
+reader who changed their mind, or a double click, could turn an approval
+into a refusal.  And it did not notice that the **document had moved**: the
+reader approved a change to a document as it was when they were asked, and
+if it changed while they were deciding, the change landed on top of
+somebody else's edit and the approval was an approval of something else.
+
+So the worker now records the pending write before it asks — under the
+reader's own namespace, with a fingerprint of the arguments — and the
+decision is recorded *against that record*.  A decision naming no pending
+write is refused, a second decision on the same write is refused, another
+account's decision is not found.  And when the reader approves, the
+document's timestamp is checked against the one taken when they were asked:
+a document that has moved is not changed.
+
+### 67. The check belongs in the service, not only in the endpoint
+
+The conversation rows are read and deleted with direct SQL, and the
+conversation document is deleted with its permissions ignored.  So the
+ownership check lived in the endpoint that calls the service, and a caller
+that forgot it would delete somebody else's history without any complaint
+from the framework.
+
+A check that only the caller remembers is a check that is one refactor away
+from gone.  So the ownership check is in the service as well, and the
+`force=True` that skipped the framework's own rules is gone.
+
+### 68. A secret in the log is a secret on a hundred laptops
+
+A provider's refusal often quotes the key it refused — "Incorrect API key
+provided: sk-…" — and that message is the turn's error message, and the
+error message was written into the chat log.  The log is read by
+operators, exported, and copied off the host.
+
+So the log is written with the site's own keys taken out of it.  The mask
+is the same one the configuration prints, and an empty key changes nothing:
+there is nothing to take out, and replacing every character of the text
+with the mask would be a different bug.
 
 ## What is deliberately not here
 
