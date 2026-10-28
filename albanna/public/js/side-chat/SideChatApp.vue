@@ -349,6 +349,13 @@ const examples = computed(() => {
 
 	if (set === "form") {
 		const document = openDocumentFrom(context);
+		if (document && document.doctype === "Issue") {
+			return [
+				__("What is the customer asking for?"),
+				__("What has already been done?"),
+				__("What is still open?"),
+			];
+		}
 		if (document) {
 			return [
 				__("Summarise this {0}", [document.doctype]),
@@ -378,6 +385,14 @@ const examples = computed(() => {
 	}
 
 	if (set === "list" && context.doctype) {
+		if (context.doctype === "Issue") {
+			return [
+				__("What is the customer asking for?"),
+				__("What has already been done?"),
+				__("What is still open?"),
+				__("Show my open tickets"),
+			];
+		}
 		if (doctypeCount.value === 0) {
 			return [__("Create a {0}", [context.doctype])];
 		}
