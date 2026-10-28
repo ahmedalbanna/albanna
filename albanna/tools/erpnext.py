@@ -376,7 +376,39 @@ def list_docs(
     except Exception as exc:
         return error(f"Failed to list {doctype}: {exc}", doctype=doctype)
 
-    return ok(f"Found {len(documents)} {doctype}", data=documents, doctype=doctype)
+    # A listing of Communications is silently filtered by Frappe's
+    # permission engine: a user with no User Email account sees only
+    # non-email Communications, and the result is a successful list with
+    # no error.  The model cannot tell "there are no email threads" from
+    # "the thread exists and I cannot see it", so the limitation is
+    # stated in the envelope rather than left for the model to guess.
+    note = ""
+    if doctype == "Communication":
+        try:
+            has_email = bool(
+                frappe.get_all(
+                    "User Email",
+                    filters={"parent": frappe.session.user},
+                    limit=1,
+                )
+            )
+        except Exception:
+            has_email = True
+        if not has_email:
+            note = (
+                "This account has no email account configured, so email "
+                "Communications are not included in this list: only "
+                "non-email Communications are shown. Say in the answer that "
+                "the email thread could not be read and why, rather than "
+                "treating the silence as the whole truth."
+            )
+
+    return ok(
+        f"Found {len(documents)} {doctype}",
+        data=documents,
+        doctype=doctype,
+        **({"note": note} if note else {}),
+    )
 
 
 def _hidden_fields(document) -> set[str]:
