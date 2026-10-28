@@ -1,0 +1,381 @@
+"""The moat: the assistant may never see or do more than the person asking.
+
+These tests need a site, and they are excluded from the default ``pytest``
+run by the ``integration`` marker.  They run with:
+
+    bench --site test.localhost run-tests --app albanna
+
+What is under test
+------------------
+The app's stated moat is **governed autonomy with permission parity**.
+That is a claim about a seam — between the reader and the assistant — and
+a claim about a seam is only worth what the tests on both sides of it
+are worth.  So these tests do not ask "does the app work?"  They ask the
+one question that matters: *can the assistant reach past the person it is
+answering?*
+
+The holes they cover were found by reading the code against that
+question, not by using the app:
+
+*   a creation could arrive **submitted** — ``docstatus`` in the data —
+    which is a document that is permanent without the submit permission
+    and without the hooks a submission runs;
+*   a **bulk** change reached past the permission engine to find its
+    targets, and skipped the field checks a single change gets, so
+    ``owner`` and ``docstatus`` were writable there and nowhere else;
+*   a **read** handed the model every field of the document, including
+    the ones hidden from the person at a higher permission level;
+*   a **lifecycle action** could act on — and report the state of — a
+    document the person may not read, because a write permission is not a
+    read permission;
+*   a **private file** belonging to somebody else could be copied into a
+    document and published with it.
+
+Each test names the hole it covers, because a test without a name is a
+test nobody reads when it fails.
+"""
+
+from __future__ import annotations
+
+import frappe
+import pytest
+from frappe.tests.utils import FrappeTestCase
+
+from albanna.core.tools import TOOL_MANIFEST
+from albanna.permissions import current_principal
+from albanna.services.conversation_service import ensure_conversation
+from albanna.tools.backend import ErpnextBackend
+from albanna.tools.base import ToolContext
+
+SALES_USER = "albanna.test.parity.sales@albanna.dev"
+ACCOUNTS_USER = "albanna.test.parity.accounts@albanna.dev"
+OTHER_USER = "albanna.test.parity.other@albanna.dev"
+
+
+@pytest.mark.integration
+class TestPermissionParity(FrappeTestCase):
+    """The assistant may not reach past the person it is answering."""
+
+    def setUp(self):
+        super().setUp()
+        self.sales_user = self._make_user(SALES_USER, "Sales User")
+        self.accounts_user = self._make_user(ACCOUNTS_USER, "Accounts User")
+        self.other_user = self._make_user(OTHER_USER, "Sales User")
+        self.backend = ErpnextBackend()
+
+    # -- helpers -----------------------------------------------------------
+
+    def _make_user(self, email: str, role: str) -> str:
+        if not frappe.db.exists("User", email):
+            # The user is created as the administrator: the session may
+            # still be somebody else — a user another test made, and one
+            # this transaction has already rolled back — and the
+            # framework makes the session's own settings for a new user.
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Albanna"
+                user.last_name = "Parity"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        user = frappe.get_doc("User", email)
+        user.flags.ignore_permissions = True
+        user.add_roles(role, "Albanna User")
+        return email
+
+    def _as(self, email: str):
+        """Act as *email*, the way a request for that user would."""
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        # The role permissions are cached per request; a fresh identity needs
+        # a fresh cache or it reads the previous one's.
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _context(self, email: str) -> ToolContext:
+        self._as(email)
+        return ToolContext(principal=current_principal(), site=frappe.local.site)
+
+    def _call(self, name: str, arguments: dict, email: str):
+        context = self._context(email)
+        return self.backend.call(TOOL_MANIFEST.get(name), arguments, context)
+
+    def _customer(self, name: str) -> str:
+        """A customer of this test's own."""
+        if not frappe.db.exists("Customer", name):
+            group = frappe.db.get_value("Customer", {"disabled": 0}, "customer_group")
+            customer = frappe.new_doc("Customer")
+            customer.customer_name = name
+            customer.customer_type = "Company"
+            customer.customer_group = group
+            customer.flags.ignore_permissions = True
+            customer.insert()
+        return name
+
+    def _customer_group(self) -> str:
+        group = frappe.db.get_value("Customer", {"disabled": 0}, "customer_group")
+        self.assertTrue(group, "the site needs a customer group")
+        return group
+
+    def _company(self) -> str:
+        company = frappe.db.get_value("Company", {}, "name")
+        self.assertTrue(company, "the site needs a company")
+        return company
+
+    def _item(self) -> str:
+        item = frappe.db.get_value("Item", {"disabled": 0}, "name")
+        self.assertTrue(item, "the site needs an item")
+        return item
+
+    # -- a creation cannot arrive submitted ---------------------------------
+
+    def test_a_creation_cannot_arrive_submitted(self):
+        """``docstatus`` is not the assistant's to set.
+
+        A document created with ``docstatus: 1`` is permanent from the
+        start: it skips the submit permission and the hooks a submission
+        runs, and the reader approved "create this", not "create this,
+        already permanent".
+        """
+        name = f"Albanna Parity {self._testMethodName}"
+
+        result = self._call(
+            "create_doc",
+            {
+                "doctype": "Customer",
+                "data": {
+                    "customer_name": name,
+                    "customer_type": "Company",
+                    "customer_group": self._customer_group(),
+                    "docstatus": 1,
+                },
+            },
+            self.accounts_user,
+        )
+
+        self.assertFalse(result.ok, result.content)
+        self.assertIn("docstatus", result.error or "")
+        self.assertFalse(
+            frappe.db.exists("Customer", name),
+            "the document was created anyway",
+        )
+
+    def test_a_creation_cannot_claim_an_owner(self):
+        """``owner`` is the framework's field, not the assistant's."""
+        name = f"Albanna Parity {self._testMethodName}"
+
+        result = self._call(
+            "create_doc",
+            {
+                "doctype": "Customer",
+                "data": {
+                    "customer_name": name,
+                    "customer_type": "Company",
+                    "customer_group": self._customer_group(),
+                    "owner": "Administrator",
+                },
+            },
+            self.accounts_user,
+        )
+
+        self.assertFalse(result.ok, result.content)
+        self.assertFalse(frappe.db.exists("Customer", name))
+
+    # -- a bulk change is a change like any other --------------------------
+
+    def test_a_bulk_change_cannot_set_the_fields_the_framework_owns(self):
+        """The bulk path used to skip the checks the single path makes."""
+        customer = self._customer(f"Albanna Parity Bulk {self._testMethodName}")
+
+        result = self._call(
+            "bulk_update_doc",
+            {
+                "doctype": "Customer",
+                "filters": [["name", "=", customer]],
+                "data": {"docstatus": 1},
+            },
+            self.accounts_user,
+        )
+
+        self.assertFalse(result.ok, result.content)
+        self.assertIn("docstatus", result.error or "")
+        self.assertEqual(frappe.db.get_value("Customer", customer, "docstatus"), 0)
+
+    def test_a_bulk_change_reaches_only_the_documents_the_caller_may_read(self):
+        """The targets of a bulk change are documents the caller may read.
+
+        The rows of this app's own conversations are the cleanest case
+        there is: the permission hooks already restrict them to their
+        owner, so a bulk change that reached past the permission engine
+        would change somebody else's conversation.
+        """
+        # The conversations are created *by* their owners: a row owned by
+        # somebody else is exactly the row the permission engine hides,
+        # and a test that hid it by accident would prove nothing.
+        self._as(self.sales_user)
+        mine = ensure_conversation(self.sales_user, "parity|bulk|mine|")
+        self._as(self.other_user)
+        theirs = ensure_conversation(self.other_user, "parity|bulk|theirs|")
+
+        result = self._call(
+            "bulk_update_doc",
+            {
+                "doctype": "Albanna Conversation",
+                "filters": [["name", "like", "%"]],
+                "data": {"title": "Bulk title"},
+            },
+            self.sales_user,
+        )
+
+        self.assertTrue(result.ok, result.content)
+        self.assertEqual(
+            frappe.db.get_value("Albanna Conversation", mine, "title"),
+            "Bulk title",
+            f"the caller's own conversation was not changed: {result.content}",
+        )
+        self.assertNotEqual(
+            frappe.db.get_value("Albanna Conversation", theirs, "title"),
+            "Bulk title",
+            "a conversation belonging to somebody else was changed",
+        )
+
+    # -- a read returns what the person may read ---------------------------
+
+    def test_a_read_does_not_return_the_fields_the_caller_may_not_read(self):
+        """A field at a higher permission level is hidden in the form.
+
+        It must be hidden from the model too: the Desk shows the reader
+        the document *as they may see it*, and the assistant answers for
+        that person, not for the administrator.  ``ignore_pricing_rule``
+        is such a field — a Sales Manager may read it, a Sales User may
+        not.
+        """
+        customer = self._customer(f"Albanna Parity Read {self._testMethodName}")
+
+        order = frappe.new_doc("Sales Order")
+        order.company = self._company()
+        order.customer = customer
+        order.delivery_date = frappe.utils.add_days(frappe.utils.nowdate(), 7)
+        order.append("items", {"item_code": self._item(), "qty": 1, "rate": 10})
+        order.flags.ignore_permissions = True
+        order.insert()
+
+        result = self._call(
+            "get_doc",
+            {"doctype": "Sales Order", "name": order.name},
+            self.sales_user,
+        )
+
+        self.assertTrue(result.ok, result.content)
+        data = result.data or {}
+        self.assertIn("customer", data)
+        self.assertNotIn(
+            "ignore_pricing_rule",
+            data,
+            "a field the reader may not read reached the model",
+        )
+
+    # -- a lifecycle action needs a read ------------------------------------
+
+    def test_a_lifecycle_action_refuses_a_document_the_caller_may_not_read(self):
+        """A write permission is not a read permission.
+
+        The roles that hold one do not always hold the other, and a User
+        Permission that limits an account to one customer is a read
+        permission.  So the document is loaded, the read is checked, and
+        the refusal is the one a read would have produced — the reader is
+        not told whether the document is a draft or a submitted one.
+        """
+        mine = self._customer(f"Albanna Parity Mine {self._testMethodName}")
+        theirs = self._customer(f"Albanna Parity Theirs {self._testMethodName}")
+
+        company = self._company()
+        currency = frappe.db.get_value("Company", company, "default_currency")
+
+        invoice = frappe.new_doc("Sales Invoice")
+        invoice.company = company
+        invoice.currency = currency
+        invoice.customer = theirs
+        invoice.append("items", {"item_code": self._item(), "qty": 1, "rate": 10})
+        invoice.flags.ignore_permissions = True
+        invoice.insert()
+
+        # The account may read one customer, and this invoice belongs to
+        # another.
+        permission = frappe.get_doc(
+            {
+                "doctype": "User Permission",
+                "user": self.accounts_user,
+                "allow": "Customer",
+                "for_value": mine,
+                "apply_to_all_doctypes": 1,
+            }
+        )
+        permission.flags.ignore_permissions = True
+        permission.insert()
+
+        result = self._call(
+            "submit_doc",
+            {"doctype": "Sales Invoice", "name": invoice.name},
+            self.accounts_user,
+        )
+
+        self.assertFalse(result.ok, result.content)
+        self.assertIn("could not be read", result.error or "")
+        self.assertEqual(
+            frappe.db.get_value("Sales Invoice", invoice.name, "docstatus"),
+            0,
+            "the invoice was submitted anyway",
+        )
+
+    # -- a private file stays private ---------------------------------------
+
+    def test_a_private_file_of_somebody_else_is_not_attached(self):
+        """Adoption copies the file — and the copy is public.
+
+        So a private file belonging to somebody else must not be copied
+        into a document the caller can write: the bytes would leave the
+        private folder and become the document's own picture, visible to
+        everybody who may read it.
+        """
+        self._as(self.other_user)
+        from frappe.utils.file_manager import save_file
+
+        saved = save_file(
+            "albanna-parity-private.png",
+            b"not really a png",
+            "User",
+            self.other_user,
+            is_private=1,
+        )
+        url = str(getattr(saved, "file_url", "") or "")
+        self.assertTrue(url.startswith("/private/files/"))
+
+        contact = frappe.new_doc("Contact")
+        contact.first_name = "Albanna Parity"
+        contact.flags.ignore_permissions = True
+        contact.insert()
+
+        result = self._call(
+            "update_doc",
+            {"doctype": "Contact", "name": contact.name, "data": {"image": url}},
+            self.sales_user,
+        )
+
+        self.assertFalse(result.ok, result.content)
+        self.assertIn("may not be read", result.error or "")
+        self.assertFalse(
+            frappe.db.get_value(
+                "File",
+                {
+                    "attached_to_doctype": "Contact",
+                    "attached_to_name": contact.name,
+                    "is_private": 0,
+                },
+            ),
+            "the private file was copied into a public file",
+        )

@@ -315,6 +315,31 @@ def _read_refusal(doctype: str, name: str) -> str:
     )
 
 
+def _load_for_action(doctype: str, name: str):
+    """The document a lifecycle action is about, or an error envelope.
+
+    A write permission is not a read permission, and the two are held by
+    different roles on most sites.  So a user who may *submit* a document
+    but may not *read* it could have it submitted by this chat, and could
+    learn from the answer that it exists and what state it is in.
+
+    The Desk would not show that document to them.  So the chat does not
+    act on it either: the document is loaded, the read is checked, and the
+    refusal is the same one a read would have produced.
+    """
+    try:
+        document = frappe.get_doc(doctype, name)
+    except frappe.DoesNotExistError:
+        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
+    except Exception as exc:
+        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+
+    if not _may_read(document):
+        return _read_refusal(doctype, name)
+
+    return document
+
+
 # --------------------------------------------------------------------------
 # The tools
 # --------------------------------------------------------------------------
@@ -375,6 +400,26 @@ def list_docs(
     return ok(f"Found {len(documents)} {doctype}", data=documents, doctype=doctype)
 
 
+def _hidden_fields(document) -> set[str]:
+    """The fields of this document the caller may not read.
+
+    A field at a higher permission level is hidden in the form, and the
+    person asking does not know whether it is set.  The model must not
+    know either — not even by seeing a field that is not there.
+    """
+    try:
+        access = document.get_permlevel_access("read")
+    except Exception:
+        logger.exception("Could not work out the readable fields of %s", document.doctype)
+        return set()
+
+    return {
+        df.fieldname
+        for df in document.meta.fields
+        if df.permlevel and df.permlevel not in access
+    }
+
+
 def get_doc(doctype: str, name: str, fields: Any = None) -> str:
     """Read one document.
 
@@ -400,16 +445,31 @@ def get_doc(doctype: str, name: str, fields: Any = None) -> str:
     if not _may_read(document):
         return _read_refusal(doctype, name)
 
+    # The fields a person may not read are removed before the document is
+    # handed over — the same thing Frappe's own API does, and the reason
+    # it does it: a field at a higher permission level is hidden in the
+    # form, and a value the reader cannot see must not reach the model
+    # either.  It is done before the fields are chosen, so that naming a
+    # hidden field explicitly does not bring it back.
+    hidden = _hidden_fields(document)
+    document.apply_fieldlevel_read_permissions()
+
     field_list = [str(field).strip() for field in (fields or []) if str(field).strip()]
     if field_list:
         invalid = _validate_fields(frappe.get_meta(doctype), doctype, field_list)
         if invalid:
             return invalid
-        data = {field: document.get(field) for field in field_list}
+        data = {field: document.get(field) for field in field_list if field not in hidden}
         data["name"] = document.name
         return ok(f"Read {doctype} '{name}'", data=data, doctype=doctype, name=name)
 
     data = document.as_dict()
+    # Frappe's own API leaves a hidden field in the payload with its
+    # default value, which is a false statement about the document: the
+    # model would report that a flag is off when it may well be on.  A
+    # field the reader may not see is not in the answer at all.
+    for field in hidden:
+        data.pop(field, None)
     return ok(f"Read {doctype} '{name}'", data=data, doctype=doctype, name=name)
 
 
@@ -658,19 +718,9 @@ def create_doc(doctype: str, data: Any, submit: bool = False) -> str:
         data: The document's field values, as an object.
         submit: Submit it immediately, for a submittable DocType.
     """
-    if not doctype:
-        return error("A doctype is required.")
-    if not isinstance(data, dict) or not data:
-        return error("The document's data is required, as an object of field values.")
-    if "doctype" in data:
-        # The DocType is the first argument, and the authority layer
-        # authorised *that* one.  A DocType inside the data would be a
-        # second, unchecked answer to the same question.
-        return error(
-            "The document's data must not name a doctype: the doctype is the "
-            "first argument.",
-            doctype=doctype,
-        )
+    refusal = _create_refusal_for(doctype, data)
+    if refusal:
+        return refusal
 
     savepoint = _savepoint("create_doc")
     try:
@@ -685,16 +735,9 @@ def create_doc(doctype: str, data: Any, submit: bool = False) -> str:
 
     submitted = False
     if submit:
-        # A savepoint of its own, taken after the insert: rolling back to
-        # the insert's savepoint would undo the creation as well, and the
-        # message below says the document was created.
-        submit_savepoint = _savepoint("create_submit")
-        try:
-            document.submit()
-            submitted = True
-        except Exception as exc:
-            _rollback_to(submit_savepoint)
-            return error(f"Created {doctype} '{document.name}' but could not submit it: {exc}", doctype=doctype)
+        submitted, message = _submit_created(document, doctype)
+        if not submitted:
+            return error(message, doctype=doctype)
 
     message = f"Created {doctype} '{document.name}'"
     if submitted:
@@ -705,6 +748,57 @@ def create_doc(doctype: str, data: Any, submit: bool = False) -> str:
         doctype=doctype,
         name=document.name,
     )
+
+
+def _submit_created(document, doctype: str) -> tuple[bool, str]:
+    """Submit a document that has just been created, or say why it could not be.
+
+    The savepoint is of its own, taken after the insert: rolling back to
+    the insert's savepoint would undo the creation as well, and the
+    message says the document was created.
+    """
+    savepoint = _savepoint("create_submit")
+    try:
+        document.submit()
+        return True, ""
+    except Exception as exc:
+        _rollback_to(savepoint)
+        return False, f"Created {doctype} '{document.name}' but could not submit it: {exc}"
+
+
+def _create_refusal_for(doctype: str, data: Any) -> str | None:
+    """The refusal for a creation that may not be made, or ``None``.
+
+    Four rules, and all of them are about the *shape* of the creation
+    rather than about the document: the DocType has to be named, the data
+    has to be an object of field values, the data must not name a
+    DocType of its own, and the fields the framework owns are not the
+    assistant's to set.
+    """
+    if not doctype:
+        return error("A doctype is required.")
+    if not isinstance(data, dict) or not data:
+        return error("The document's data is required, as an object of field values.")
+    if "doctype" in data:
+        # The DocType is the first argument, and the authority layer
+        # authorised *that* one.  A DocType inside the data would be a
+        # second, unchecked answer to the same question.
+        return error(
+            "The document's data must not name a doctype: the doctype is the "
+            "first argument.",
+            doctype=doctype,
+        )
+
+    protected = _protected_refusal(doctype, data)
+    if protected:
+        return protected
+
+    # A file the caller may not read is not attached to the new document:
+    # the copy the document owns is a public one.
+    meta = _meta(doctype)
+    if isinstance(meta, str):
+        return meta
+    return _attachment_refusal(meta, doctype, data)
 
 
 def _create_refusal(exc: Exception, doctype: str, savepoint: str) -> str:
@@ -807,6 +901,61 @@ def update_doc(doctype: str, name: str, data: Any, submit: bool = False) -> str:
     )
 
 
+def _protected_refusal(doctype: str, data: dict, name: str = "") -> str | None:
+    """The refusal for a change that names a field the framework owns.
+
+    ``docstatus`` is the one that matters: a document created with
+    ``docstatus: 1`` arrives submitted, without the submit permission and
+    without the hooks that a submission runs.  The reader approved
+    "create this"; they did not approve "create this, already permanent".
+    """
+    protected = sorted(set(data) & PROTECTED_FIELDS)
+    if not protected:
+        return None
+    return error(
+        f"These field(s) belong to the framework and cannot be set: "
+        f"{', '.join(protected)}.",
+        doctype=doctype,
+        name=name,
+        actionable="Give only the fields the user asked to change.",
+    )
+
+
+def _field_refusal(meta, doctype: str, data: dict, name: str = "") -> str | None:
+    """The refusal for a change that names a field it may not set.
+
+    Three rules, in the order a model most often breaks them: the field
+    has to exist, it must not be one the framework owns, and the form
+    must not have made it read-only.  The refusals that do not need the
+    document come first — they are cheaper, and they are the ones a model
+    gets wrong most often.
+
+    **One place**, because a bulk change that skipped these checks would
+    be the one path where ``owner`` and ``docstatus`` could be written:
+    it is the one write that does not go through the single change's
+    loader.
+    """
+    invalid = _validate_fields(meta, doctype, list(data))
+    if invalid:
+        return invalid
+
+    protected = _protected_refusal(doctype, data, name)
+    if protected:
+        return protected
+
+    readonly = _read_only_fields(meta, data)
+    if readonly:
+        return error(
+            f"These field(s) are read-only and cannot be changed: "
+            f"{', '.join(readonly)}.",
+            doctype=doctype,
+            name=name,
+            actionable="Give only the fields the user asked to change.",
+        )
+
+    return None
+
+
 def _load_for_update(doctype: str, name: str, data: dict[str, Any]):
     """The document to change, or an error envelope saying why there is not one.
 
@@ -819,36 +968,32 @@ def _load_for_update(doctype: str, name: str, data: dict[str, Any]):
     if isinstance(meta, str):
         return meta
 
-    invalid = _validate_fields(meta, doctype, list(data))
-    if invalid:
-        return invalid
+    refusal = _field_refusal(meta, doctype, data, name)
+    if refusal:
+        return refusal
 
-    protected = sorted(set(data) & PROTECTED_FIELDS)
-    if protected:
-        return error(
-            f"These field(s) belong to the framework and cannot be set: "
-            f"{', '.join(protected)}.",
-            doctype=doctype,
-            name=name,
-            actionable="Give only the fields the user asked to change.",
-        )
-
-    readonly = _read_only_fields(meta, data)
-    if readonly:
-        return error(
-            f"These field(s) are read-only and cannot be changed: "
-            f"{', '.join(readonly)}.",
-            doctype=doctype,
-            name=name,
-            actionable="Give only the fields the user asked to change.",
-        )
+    # A file the caller may not read is not attached: the copy the
+    # document owns is a public one.
+    refusal = _attachment_refusal(meta, doctype, data)
+    if refusal:
+        return refusal
 
     try:
-        return frappe.get_doc(doctype, name)
+        document = frappe.get_doc(doctype, name)
     except frappe.DoesNotExistError:
         return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
     except Exception as exc:
         return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+
+    # A change is a write, and a write is not a read: the roles that hold
+    # one do not always hold the other.  The document is loaded first and
+    # checked second, because the check that matters is about *this* row —
+    # a User Permission that limits an account to one customer is a read
+    # permission, and it applies here.
+    if not _may_read(document):
+        return _read_refusal(doctype, name)
+
+    return document
 
 
 #: The field types that hold a file, and so need the file to belong to
@@ -867,6 +1012,55 @@ def _file_for_url(file_url: str):
         return frappe.get_doc("File", name)
     except Exception:
         return None
+
+
+def _may_read_file(source) -> bool:
+    """Whether the session user may read this file.
+
+    A private file is its owner's, and the public ones are everybody's —
+    the file's own permission rules decide, and a rule that cannot answer
+    has not said yes.
+    """
+    try:
+        return bool(frappe.has_permission("File", "read", doc=source))
+    except Exception:
+        logger.exception("Could not check read permission for File %s", source.name)
+        return False
+
+
+def _attachment_refusal(meta, doctype: str, changes: dict[str, Any]) -> str | None:
+    """The refusal for a change that attaches a file the caller may not read.
+
+    Adopting a file copies it into the document as a **public** file, so a
+    private file belonging to somebody else would leave its private folder
+    and become the document's own picture — visible to everybody who may
+    read the document.
+
+    So the write is refused rather than half-applied: a document whose
+    image points at a file its readers cannot see is a broken document, and
+    a broken document is a quieter lie than a refused change.
+    """
+    for fieldname, value in changes.items():
+        if not isinstance(value, str) or not value.startswith(("/files/", "/private/files/")):
+            continue
+        df = meta.get_field(fieldname) if meta else None
+        if df is None or df.fieldtype not in ATTACH_FIELDTYPES:
+            continue
+        source = _file_for_url(value)
+        if source is None:
+            # No such file: there is nothing to copy, and the value is the
+            # reader's own business.
+            continue
+        if not _may_read_file(source):
+            return error(
+                f"{doctype}: the file in '{fieldname}' may not be read by this account.",
+                doctype=doctype,
+                actionable=(
+                    "Only a file this account may read can be attached to a "
+                    "document. Do not try again with this file."
+                ),
+            )
+    return None
 
 
 def _adopt_attachments(document, changes: dict[str, Any]) -> dict[str, Any]:
@@ -896,7 +1090,7 @@ def _adopt_attachments(document, changes: dict[str, Any]) -> dict[str, Any]:
         if df is None or df.fieldtype not in ATTACH_FIELDTYPES:
             continue
         source = _file_for_url(value)
-        if source is None:
+        if source is None or not _may_read_file(source):
             continue
         try:
             content = source.get_content()
@@ -1104,12 +1298,9 @@ def submit_doc(doctype: str, name: str) -> str:
     if not name:
         return error("A document name is required.")
 
-    try:
-        document = frappe.get_doc(doctype, name)
-    except frappe.DoesNotExistError:
-        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
-    except Exception as exc:
-        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+    document = _load_for_action(doctype, name)
+    if isinstance(document, str):
+        return document
 
     if document.docstatus != 0:
         return error(
@@ -1165,12 +1356,9 @@ def cancel_doc(doctype: str, name: str) -> str:
     if not name:
         return error("A document name is required.")
 
-    try:
-        document = frappe.get_doc(doctype, name)
-    except frappe.DoesNotExistError:
-        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
-    except Exception as exc:
-        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+    document = _load_for_action(doctype, name)
+    if isinstance(document, str):
+        return document
 
     if document.docstatus != 1:
         return error(
@@ -1223,12 +1411,9 @@ def amend_doc(doctype: str, name: str) -> str:
     if not name:
         return error("A document name is required.")
 
-    try:
-        document = frappe.get_doc(doctype, name)
-    except frappe.DoesNotExistError:
-        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
-    except Exception as exc:
-        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+    document = _load_for_action(doctype, name)
+    if isinstance(document, str):
+        return document
 
     if document.docstatus != 1:
         return error(
@@ -1290,12 +1475,9 @@ def delete_doc(doctype: str, name: str) -> str:
     if not name:
         return error("A document name is required.")
 
-    try:
-        document = frappe.get_doc(doctype, name)
-    except frappe.DoesNotExistError:
-        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
-    except Exception as exc:
-        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+    document = _load_for_action(doctype, name)
+    if isinstance(document, str):
+        return document
 
     if document.docstatus not in (0, 2):
         return error(
@@ -1352,6 +1534,17 @@ def bulk_update_doc(doctype: str, filters: Any, data: Any, limit: int = 50) -> s
     if not isinstance(data, dict) or not data:
         return error("The changes are required, as an object of field values.")
 
+    # The same field checks a single change gets — a bulk change that
+    # skipped them would be the one place where the framework's own
+    # fields could be written.
+    meta = _meta(doctype)
+    if isinstance(meta, str):
+        return meta
+
+    refusal = _field_refusal(meta, doctype, data)
+    if refusal:
+        return refusal
+
     try:
         limit = int(limit or 50)
     except (TypeError, ValueError):
@@ -1359,14 +1552,16 @@ def bulk_update_doc(doctype: str, filters: Any, data: Any, limit: int = 50) -> s
     limit = max(1, min(limit, 200))
 
     # Build the filter list in the shape Frappe expects.
-    frappe_filters = []
-    for entry in filters:
-        if not isinstance(entry, (list, tuple)) or len(entry) != 3:
-            return error("Each filter must be a [field, operator, value] triple.")
-        frappe_filters.append([str(entry[0]), str(entry[1]), entry[2]])
+    frappe_filters = _bulk_filters(filters)
+    if isinstance(frappe_filters, str):
+        return frappe_filters
 
     try:
-        names = frappe.get_all(doctype, filters=frappe_filters, pluck="name", limit=limit)
+        # ``get_list`` and not ``get_all``: the targets of a bulk change
+        # are documents the caller may read.  ``get_all`` ignores the
+        # permission engine, and a bulk change that reached past it would
+        # name — and change — rows the reader cannot see.
+        names = frappe.get_list(doctype, filters=frappe_filters, pluck="name", limit=limit)
     except Exception as exc:
         return error(f"Could not look up {doctype}: {exc}", doctype=doctype)
 
@@ -1380,22 +1575,11 @@ def bulk_update_doc(doctype: str, filters: Any, data: Any, limit: int = 50) -> s
     changed = 0
     failed: list[str] = []
     for name in names:
-        savepoint = _savepoint("bulk_update_doc")
-        try:
-            document = frappe.get_doc(doctype, name)
-            if document.docstatus:
-                failed.append(f"{name}: submitted")
-                _rollback_to(savepoint)
-                continue
-            changes = _actual_changes(document, data)
-            if changes:
-                _adopt_attachments(document, changes)
-                document.update(changes)
-                document.save()
-                changed += 1
-        except Exception as exc:
-            _rollback_to(savepoint)
-            failed.append(f"{name}: {exc}")
+        was_changed, reason = _bulk_change_one(doctype, name, data)
+        if was_changed:
+            changed += 1
+        elif reason:
+            failed.append(f"{name}: {reason}")
 
     message = f"Changed {changed} of {len(names)} {doctype} document(s)."
     if failed:
@@ -1408,6 +1592,50 @@ def bulk_update_doc(doctype: str, filters: Any, data: Any, limit: int = 50) -> s
         data={"doctype": doctype, "changed": changed, "total": len(names), "failed": failed},
         doctype=doctype,
     )
+
+
+def _bulk_filters(filters: Any) -> list | str:
+    """The filters as the framework wants them, or an error envelope.
+
+    A bulk change is filtered by triples — field, operator, value — and a
+    filter that is not one is refused rather than guessed at: a guess
+    would change the wrong rows.
+    """
+    triples: list[list[Any]] = []
+    for entry in filters:
+        if not isinstance(entry, (list, tuple)) or len(entry) != 3:
+            return error("Each filter must be a [field, operator, value] triple.")
+        triples.append([str(entry[0]), str(entry[1]), entry[2]])
+    return triples
+
+
+def _bulk_change_one(doctype: str, name: str, data: dict[str, Any]) -> tuple[bool, str]:
+    """Change one document of a bulk change.
+
+    Returns ``(changed, reason)``: the reason is empty when the document
+    was changed or needed no change, and says why when it was left
+    alone.  Each document gets its own savepoint, so one that cannot be
+    changed does not undo the ones that were.
+    """
+    savepoint = _savepoint("bulk_update_doc")
+    try:
+        document = frappe.get_doc(doctype, name)
+        if not _may_read(document):
+            _rollback_to(savepoint)
+            return False, "may not be read"
+        if document.docstatus:
+            _rollback_to(savepoint)
+            return False, "submitted"
+        changes = _actual_changes(document, data)
+        if not changes:
+            return False, ""
+        _adopt_attachments(document, changes)
+        document.update(changes)
+        document.save()
+        return True, ""
+    except Exception as exc:
+        _rollback_to(savepoint)
+        return False, str(exc)
 
 
 def list_doctypes(

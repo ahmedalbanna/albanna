@@ -1490,16 +1490,27 @@ class TestTheUpdatePath(FrappeTestCase):
     def setUp(self):
         super().setUp()
         self.sales_user = self._make_user("albanna.test.update@albanna.dev", "Sales User")
+        self.accounts_user = self._make_user("albanna.test.update.accounts@albanna.dev", "Accounts User")
         self.backend = ErpnextBackend()
 
     def _make_user(self, email: str, role: str) -> str:
         if not frappe.db.exists("User", email):
-            user = frappe.new_doc("User")
-            user.email = email
-            user.first_name = "Albanna"
-            user.last_name = "Update"
-            user.flags.ignore_permissions = True
-            user.insert()
+            # The user is created as the administrator.  The session may
+            # still be somebody else — a user another test made, and one
+            # this transaction has already rolled back — and the
+            # framework makes the session's own settings for a new user,
+            # which then points at a user that is not there.
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Albanna"
+                user.last_name = "Update"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
         user = frappe.get_doc("User", email)
         user.flags.ignore_permissions = True
         user.add_roles(role, "Albanna User")
@@ -1621,6 +1632,31 @@ class TestTheUpdatePath(FrappeTestCase):
         document — the guard is in the form, not in ``db_update`` — so the
         guard is in the tool, and the refusal names the way a person does
         it.
+
+        The account asking is one that may read the document: a Sales
+        User cannot read a Sales Invoice at all, and what that account
+        gets is the other refusal (below).
+        """
+        name = self._submitted_invoice()
+        context = self._context(self.accounts_user)
+
+        result = self.backend.call(
+            TOOL_MANIFEST.get("update_doc"),
+            {"doctype": "Sales Invoice", "name": name, "data": {"remarks": "changed"}},
+            context,
+        )
+
+        self.assertFalse(result.ok)
+        self.assertIn("submitted", result.error.lower())
+        self.assertNotEqual(frappe.db.get_value("Sales Invoice", name, "remarks"), "changed")
+
+    def test_a_document_the_caller_may_not_read_is_refused_as_a_read(self):
+        """A document the account cannot see is not even a submitted one.
+
+        The refusal a read would have produced is the one that is given,
+        so the answer does not tell the account that the document exists
+        or what state it is in.  A Sales User cannot read a Sales Invoice
+        on this site, which makes it the honest case.
         """
         name = self._submitted_invoice()
         context = self._context(self.sales_user)
@@ -1632,7 +1668,8 @@ class TestTheUpdatePath(FrappeTestCase):
         )
 
         self.assertFalse(result.ok)
-        self.assertIn("submitted", result.error.lower())
+        self.assertIn("could not be read", result.error.lower())
+        self.assertNotIn("submitted", result.error.lower())
         self.assertNotEqual(frappe.db.get_value("Sales Invoice", name, "remarks"), "changed")
 
     def test_a_framework_field_is_refused(self):
