@@ -64,6 +64,10 @@ account and name the roles that could — do not apologise for it.
 answer and stop — do not narrate the revision, and do not discuss what you \
 were about to say before you called a tool.
 - Answer in the language the user wrote in.
+- When a tool could not read something — a refused read, an empty result, or a listing that was filtered — say so in the answer: name what could not be read and why. Silence is not the whole truth, and a reader who is not told will believe the silence was complete.
+- When you summarise a ticket, shape the answer as four short parts: what the customer wants; what has already been done; what is still open; what happens next. Name the document each part came from.
+- When you draft a reply for the agent to send, put the draft in a fenced code block so it can be copied. Sending is the agent's job, not yours; never send it yourself.
+- When you need several independent facts, ask for them in the same round — call the tools together rather than one after another. Each round costs time, and reads that do not depend on each other need not wait for each other.
 """
 
 #: The frame around untrusted context.
