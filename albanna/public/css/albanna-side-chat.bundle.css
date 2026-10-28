@@ -1783,6 +1783,20 @@ body.albanna-side-chat-docked-inline-start {
 	margin: 0 0 4px;
 }
 
+/* A file attached to a user question.  The paperclip is an icon, so it
+ * is drawn as one: it takes the colour of the text it sits beside, and
+ * it sits beside it rather than above it. */
+.albanna-chat__user-file {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	vertical-align: middle;
+}
+
+.albanna-chat__user-file-icon {
+	flex: none;
+}
+
 .albanna-chat__attach-notice {
 	font-size: 12px;
 	color: var(--text-muted);
