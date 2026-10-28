@@ -735,35 +735,9 @@ class ChatService:
         gated = spec.mutating and confirm_writes_for(principal.user)
 
         if gated:
-            import uuid
-
-            from albanna.services.approval import await_decision, denial_message, wait_seconds, write_diff, write_preview
-
-            request_id = uuid.uuid4().hex
-            # One deadline, told to both sides.  The worker waits this
-            # long; the browser counts down from the same number, sent
-            # with the event.  A countdown computed on the browser's own
-            # clock against a different constant is a countdown that
-            # lies — and the reader decides how long to take by it.
-            seconds = wait_seconds(settings.confirm_timeout)
-            emit(
-                {
-                    "event": "confirm",
-                    "request_id": request_id,
-                    "name": call.name,
-                    "arguments": call.arguments,
-                    "preview": write_preview(call.name, call.arguments),
-                    "diff": write_diff(call.name, call.arguments),
-                    "window_seconds": seconds,
-                }
-            )
-
-            decision = await_decision(request_id, principal.user, timeout=seconds)
-
-            if decision != "approve":
-                message = denial_message(decision)
-                emit_tool_done(emit, call, ok=False, error=message, summary=message)
-                return ToolResult(ok=False, content=message, error=message, denied=True, approved=False)
+            refusal = self._ask_for_approval(call, principal, emit, settings)
+            if refusal is not None:
+                return refusal
 
         emit({"event": "tool_start", "name": call.name, "arguments": call.arguments})
 
@@ -811,6 +785,90 @@ class ChatService:
             undoable=_is_undoable_call(call, result),
         )
         return result
+
+    def _ask_for_approval(
+        self,
+        call: ToolCall,
+        principal,
+        emit: Emit,
+        settings,
+    ) -> ToolResult | None:
+        """Ask the reader to approve a write, and say whether it may run.
+
+        Returns ``None`` when the write may run, and the refusal to
+        report when it may not.
+        """
+        import uuid
+
+        from albanna.services.approval import (
+            CHANGED_MESSAGE,
+            await_decision,
+            denial_message,
+            record_pending,
+            still_unchanged,
+            wait_seconds,
+            write_diff,
+            write_preview,
+            write_target,
+        )
+
+        request_id = uuid.uuid4().hex
+        # One deadline, told to both sides.  The worker waits this long;
+        # the browser counts down from the same number, sent with the
+        # event.  A countdown computed on the browser's own clock against
+        # a different constant is a countdown that lies — and the reader
+        # decides how long to take by it.
+        seconds = wait_seconds(settings.confirm_timeout)
+
+        # The pending write is recorded before the reader is asked,
+        # because it is what the answer is recorded against: the endpoint
+        # that takes the decision refuses one that names no write, and
+        # the second decision on the same write is refused.  The record
+        # outlives the wait it answers.
+        record_pending(
+            request_id,
+            principal.user,
+            call.name,
+            call.arguments,
+            ttl=seconds + 60,
+        )
+
+        # The document the write is about, and the stamp it had when the
+        # reader was asked.  It is checked again once they have answered:
+        # a document that has moved in the meantime is not the document
+        # they were asked about.
+        target = write_target(call.name, call.arguments)
+
+        emit(
+            {
+                "event": "confirm",
+                "request_id": request_id,
+                "name": call.name,
+                "arguments": call.arguments,
+                "preview": write_preview(call.name, call.arguments),
+                "diff": write_diff(call.name, call.arguments),
+                "window_seconds": seconds,
+            }
+        )
+
+        decision = await_decision(request_id, principal.user, timeout=seconds)
+
+        if decision != "approve":
+            message = denial_message(decision)
+            emit_tool_done(emit, call, ok=False, error=message, summary=message)
+            return ToolResult(ok=False, content=message, error=message, denied=True, approved=False)
+
+        if not still_unchanged(target):
+            emit_tool_done(emit, call, ok=False, error=CHANGED_MESSAGE, summary=CHANGED_MESSAGE)
+            return ToolResult(
+                ok=False,
+                content=CHANGED_MESSAGE,
+                error=CHANGED_MESSAGE,
+                denied=True,
+                approved=False,
+            )
+
+        return None
 
     def _explain_failure(
         self,

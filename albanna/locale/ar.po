@@ -1097,3 +1097,11 @@ msgstr "لم يستجب أي مزوِّد نموذج. تحقَّق من إعدا
 
 msgid "Something went wrong and the turn did not finish. Try again."
 msgstr "حدث خطأ ما ولم تكتمل هذه الجولة. حاول مرة أخرى."
+
+
+msgid "That request is not waiting for a decision."
+msgstr "هذا الطلب لا ينتظر قرارًا."
+
+
+msgid "That request has already been answered."
+msgstr "تمت الإجابة على هذا الطلب بالفعل."

@@ -1901,15 +1901,22 @@ class TestWriteApproval(TestToolPath):
 
             # The reader's decision is fed back through the emit callback,
             # so the worker's poll exits at once with the chosen answer.
+            # It is recorded the way the endpoint records it, against the
+            # pending write the worker left behind.
+            from albanna.services.approval import record_decision
+
             def make_emit(decision):
                 def emit(event):
                     if event.get("event") == "confirm":
-                        frappe.cache().set_value(
-                            "albanna:confirm:" + event["request_id"],
-                            decision,
-                            user=email,
-                            expires_in_sec=60,
-                        )
+                        try:
+                            record_decision(
+                                event["request_id"],
+                                email,
+                                decision,
+                                ttl=60,
+                            )
+                        except Exception:
+                            pass
                 return emit
 
             from albanna.services.chat_service import ChatService, TurnRequest
@@ -1977,13 +1984,17 @@ class TestWriteApproval(TestToolPath):
         and the reader's approval is never seen.  The write then times out
         whatever the reader did.
         """
-        from albanna.services.approval import await_decision, decision_key
+        from albanna.services.approval import (
+            await_decision,
+            record_decision,
+            record_pending,
+        )
 
         email = self.accounts_user
         request_id = "late-decision-test"
 
         # A clean slate: the decision is written after the first poll.
-        frappe.cache().delete_value(decision_key(request_id), user=email)
+        record_pending(request_id, email, "create_doc", {"doctype": "Customer"}, ttl=60)
 
         polls = {"n": 0}
 
@@ -1991,9 +2002,7 @@ class TestWriteApproval(TestToolPath):
             polls["n"] += 1
             if polls["n"] == 2:
                 # The reader answers after the first miss.
-                frappe.cache().set_value(
-                    decision_key(request_id), "approve", user=email, expires_in_sec=60
-                )
+                record_decision(request_id, email, "approve", ttl=60)
 
         decision = await_decision(
             request_id,
@@ -2015,6 +2024,167 @@ class TestWriteApproval(TestToolPath):
         self.assertTrue(
             any(t.get("approved") is False for t in outcome.tool_calls),
             "a timed-out write must be recorded as not approved",
+        )
+
+    # -- the decision is bound to the write --------------------------------
+
+    def test_a_decision_for_a_request_nobody_is_waiting_on_is_refused(self):
+        """A decision is an answer to a question somebody asked.
+
+        The endpoint used to write the answer into a cache key and report
+        success, whether or not any write was waiting for it.  So the
+        answer it gave was "yes" to a question that had not been asked —
+        and a caller could not tell the difference between a decision
+        that was recorded and one that was not.
+        """
+        from albanna.api.chat import confirm_write
+        from albanna.services.approval import pending_key
+
+        self._as(self.accounts_user)
+        frappe.cache().delete_value(pending_key("no-such-request"), user=self.accounts_user)
+
+        with self.assertRaises(frappe.ValidationError):
+            confirm_write(request_id="no-such-request", decision="approve")
+
+    def test_the_second_decision_on_a_write_is_refused(self):
+        """The first decision is the decision.
+
+        The docstring said a second decision left the first in place; the
+        code overwrote it.  So a reader who changed their mind, or a
+        double click, could turn an approval into a refusal — or an
+        approval into a second approval of a write that had already run.
+        """
+        from albanna.api.chat import confirm_write
+        from albanna.services.approval import record_pending
+
+        self._as(self.accounts_user)
+        request_id = "one-shot-test"
+        record_pending(request_id, self.accounts_user, "create_doc", {"doctype": "Customer"}, ttl=60)
+
+        first = confirm_write(request_id=request_id, decision="approve")
+        self.assertEqual(first["decision"], "approve")
+
+        with self.assertRaises(frappe.ValidationError):
+            confirm_write(request_id=request_id, decision="reject")
+
+    def test_a_decision_by_another_account_does_not_answer_the_write(self):
+        """A decision is the reader's own.
+
+        The pending write is kept under the reader's own namespace, so
+        another account's answer is not found by the worker — and the
+        other account is told there is nothing to answer.
+        """
+        from albanna.services.approval import (
+            NoPendingWrite,
+            read_pending,
+            record_decision,
+            record_pending,
+        )
+
+        other = self._make_user("albanna.test.approval.other@example.com", "Sales User")
+
+        self._as(self.accounts_user)
+        request_id = "other-account-test"
+        record_pending(request_id, self.accounts_user, "create_doc", {"doctype": "Customer"}, ttl=60)
+
+        self._as(other)
+        with self.assertRaises(NoPendingWrite):
+            record_decision(request_id, other, "approve", ttl=60)
+
+        self.assertEqual(
+            read_pending(request_id, self.accounts_user).get("decision"),
+            "",
+            "another account's decision answered the write",
+        )
+
+    def test_a_document_that_changed_while_the_reader_decided_is_not_changed(self):
+        """The reader approved a change to a document as it was.
+
+        If the document has moved since they were asked, the change would
+        land on top of somebody else's edit, and the approval would be an
+        approval of something else.  So the write is refused, and the
+        model is told why.
+        """
+        from albanna.core.messages import Message, ToolCall
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.approval import record_decision
+        from albanna.services.chat_service import ChatService, TurnRequest
+
+        email = self.sales_user
+
+        customer = f"Albanna Approval Test {self._testMethodName}"
+        if not frappe.db.exists("Customer", customer):
+            group = frappe.db.get_value("Customer", {"disabled": 0}, "customer_group")
+            doc = frappe.new_doc("Customer")
+            doc.customer_name = customer
+            doc.customer_type = "Company"
+            doc.customer_group = group
+            doc.flags.ignore_permissions = True
+            doc.insert()
+
+        marker = "Albanna approval marker"
+
+        completion = Completion(
+            message=Message(
+                role="assistant",
+                content="I will change the customer.",
+                tool_calls=(
+                    ToolCall(
+                        id="call_1",
+                        name="update_doc",
+                        arguments={
+                            "doctype": "Customer",
+                            "name": customer,
+                            "data": {"customer_details": marker},
+                        },
+                    ),
+                ),
+            ),
+            provider="openai",
+            model="a-model",
+            usage=Usage(input_tokens=10, output_tokens=5),
+        )
+
+        self._make_policy(email, "always")
+        try:
+            self._as(email)
+
+            def emit(event):
+                if event.get("event") == "confirm":
+                    record_decision(event["request_id"], email, "approve", ttl=60)
+                    # Somebody else changes the document while the reader
+                    # is looking at the card.
+                    frappe.db.set_value(
+                        "Customer",
+                        customer,
+                        "customer_details",
+                        "changed by somebody else",
+                    )
+
+            service = ChatService()
+            service._complete = lambda config, messages, tools, emit, stream: completion
+
+            outcome = service.run(
+                TurnRequest(question="change the customer", page="test|approval|moved|"),
+                emit=emit,
+            )
+        finally:
+            self._restore_policy(email)
+
+        self.assertNotEqual(
+            frappe.db.get_value("Customer", customer, "customer_details"),
+            marker,
+            "the change landed on a document that had moved",
+        )
+        self.assertTrue(
+            any(t.get("approved") is False for t in outcome.tool_calls),
+            "a write on a document that moved must not be recorded as approved",
+        )
+        errors = " ".join(str(entry.get("error") or "") for entry in outcome.tool_calls)
+        self.assertIn(
+            "changed while the reader was deciding",
+            errors,
+            "the refusal must say why the write did not run",
         )
 
 

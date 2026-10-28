@@ -290,11 +290,14 @@ def _turn_deadline() -> float:
 def confirm_write(request_id: str = "", decision: str = "") -> dict[str, Any]:
     """Record the reader's decision on a write that is waiting for review.
 
-    The worker that proposed the write polls a cache key under the
-    reader's own namespace; this endpoint sets it.  The worker is the
-    authority on whether the key still means anything: a decision
-    recorded after it has stopped polling is inert, and a decision
-    recorded twice leaves the first one in place.
+    The worker that proposed the write records it as pending before the
+    reader is asked, and polls the record for an answer; this endpoint
+    writes the answer into it.
+
+    The record is what makes the answer mean something.  A decision that
+    names no pending write is refused — there is nobody waiting for it —
+    and the first decision is the decision: a second one on the same
+    write is refused rather than applied.
 
     The decision must be ``approve`` or ``reject``; anything else is a
     refusal, because a write that is neither approved nor declined is
@@ -312,21 +315,27 @@ def confirm_write(request_id: str = "", decision: str = "") -> dict[str, Any]:
         frappe.throw(_("That is not a decision."), frappe.ValidationError)
 
     user = str(frappe.session.user or "")
-    key = f"albanna:confirm:{request_id}"
 
-    # The key is written under the caller's own namespace, exactly as the
-    # worker reads it — the two sides agree on the spelling, or neither
-    # side finds the other.
-    #
     # The TTL outlives the wait it answers: a decision recorded near the
     # end of a long window must still be there when the worker's next
     # poll comes, and a worker polling every tenth of a second reads it
     # long before it could expire.  The grace is for the poll, not for
     # the reader.
-    from albanna.services.approval import wait_seconds
+    from albanna.services.approval import (
+        AlreadyAnswered,
+        NoPendingWrite,
+        record_decision,
+        wait_seconds,
+    )
     from albanna.services.settings_service import get_settings
 
     ttl = int(wait_seconds(get_settings().confirm_timeout)) + 60
-    frappe.cache().set_value(key, decision, user=user, expires_in_sec=ttl)
+
+    try:
+        record_decision(request_id, user, decision, ttl=ttl)
+    except NoPendingWrite:
+        frappe.throw(_("That request is not waiting for a decision."), frappe.ValidationError)
+    except AlreadyAnswered:
+        frappe.throw(_("That request has already been answered."), frappe.ValidationError)
 
     return {"status": "ok", "decision": decision}

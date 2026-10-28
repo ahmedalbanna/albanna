@@ -28,6 +28,9 @@ time, and never kept.
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import time
 from typing import Callable
 
@@ -35,8 +38,17 @@ import frappe
 
 from albanna.permissions import may_read
 
-#: The prefix every pending decision is stored under.
-KEY_PREFIX = "albanna:confirm:"
+logger = logging.getLogger(__name__)
+
+#: The prefix every pending write is stored under.
+PENDING_PREFIX = "albanna:pending:"
+
+#: The message the model is told when the document moved under the
+#: reader's feet.
+CHANGED_MESSAGE = (
+    "The document changed while the reader was deciding, so the change was "
+    "not made. Read the document again and propose the change afresh."
+)
 
 #: How long the reader is given, in seconds, when the operator has not
 #: said.  The same default the settings field carries.
@@ -239,9 +251,91 @@ def denial_message(decision: str) -> str:
     return "The reader did not respond in time, so the change was not made."
 
 
-def decision_key(request_id: str) -> str:
-    """The cache key one pending decision is stored under."""
-    return f"{KEY_PREFIX}{request_id}"
+class NoPendingWrite(Exception):
+    """No write is waiting for a decision under this request."""
+
+
+class AlreadyAnswered(Exception):
+    """This write has already been answered."""
+
+
+def pending_key(request_id: str) -> str:
+    """The cache key one pending write is stored under."""
+    return f"{PENDING_PREFIX}{request_id}"
+
+
+def arguments_digest(arguments: dict) -> str:
+    """A fingerprint of a write's arguments.
+
+    The decision is bound to the write by this: the reader approves
+    *these* arguments and the worker runs *these* arguments.  A digest
+    rather than the arguments themselves, because the record has to stay
+    small and the arguments are whatever the model wrote.
+    """
+    try:
+        payload = json.dumps(arguments or {}, sort_keys=True, default=str)
+    except Exception:
+        payload = repr(arguments)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def record_pending(
+    request_id: str,
+    user: str,
+    name: str,
+    arguments: dict,
+    ttl: float = DEFAULT_TIMEOUT,
+) -> None:
+    """Remember that a write is waiting for the reader's decision.
+
+    The record is what makes the decision mean something.  It is written
+    by the worker, before the reader is asked, and it is the only place a
+    decision may be recorded: an endpoint that named a request nobody is
+    waiting on would be answering a question that was not asked.
+    """
+    frappe.cache().set_value(
+        pending_key(request_id),
+        {
+            "name": name,
+            "digest": arguments_digest(arguments),
+            "decision": "",
+        },
+        user=user,
+        expires_in_sec=int(ttl),
+    )
+
+
+def read_pending(request_id: str, user: str) -> dict:
+    """The pending write, or an empty dict when there is not one."""
+    try:
+        value = frappe.cache().get_value(pending_key(request_id), user=user, expires=True)
+    except Exception:
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def record_decision(request_id: str, user: str, decision: str, ttl: float = DEFAULT_TIMEOUT) -> dict:
+    """Record the reader's decision on a pending write — once.
+
+    The first decision is the decision.  A second one is refused rather
+    than applied: the reader's answer to "shall this change happen?" is
+    one answer, and a page that can send two is a page whose second click
+    may land after the first has already been acted on.
+    """
+    pending = read_pending(request_id, user)
+    if not pending:
+        raise NoPendingWrite()
+    if pending.get("decision"):
+        raise AlreadyAnswered()
+
+    pending["decision"] = decision
+    frappe.cache().set_value(
+        pending_key(request_id),
+        pending,
+        user=user,
+        expires_in_sec=int(ttl),
+    )
+    return pending
 
 
 def await_decision(
@@ -257,19 +351,68 @@ def await_decision(
     Returns ``"approve"``, ``"reject"``, or ``"timeout"`` when the reader
     did not answer in time.
     """
-    key = decision_key(request_id)
     deadline = clock() + timeout
 
     while clock() < deadline:
         # ``expires=True`` is the whole trick: without it the cache keeps
         # the miss and every later poll reads that miss back.
-        value = frappe.cache().get_value(key, user=user, expires=True)
-        if value is not None:
-            try:
-                frappe.cache().delete_value(key, user=user)
-            except Exception:
-                pass
-            return str(value)
+        pending = read_pending(request_id, user)
+        decision = str(pending.get("decision") or "")
+        if decision:
+            return decision
         sleep(interval)
 
     return TIMEOUT
+
+
+def write_target(name: str, arguments: dict) -> dict:
+    """The document a write is about, and the stamp it had when asked.
+
+    ``modified`` is the document's own timestamp: the reader approves a
+    change to *that* document, and a document that has moved since they
+    were asked is not the one they were asked about.  An empty result
+    means the write is not about an existing document — a creation has
+    nothing to compare, and the lifecycle tools carry their own state
+    check.
+    """
+    arguments = arguments or {}
+    if name != "update_doc":
+        return {}
+
+    doctype = str(arguments.get("doctype") or "").strip()
+    docname = str(arguments.get("name") or "").strip()
+    document = _readable_document(doctype, docname)
+    if document is None:
+        return {}
+
+    return {
+        "doctype": doctype,
+        "name": docname,
+        "modified": str(document.modified or ""),
+    }
+
+
+def still_unchanged(target: dict) -> bool:
+    """Whether the document a write was about is still the one it was about.
+
+    The reader approved a change to a document as it was when they were
+    asked.  If it has changed since, the change would land on top of
+    somebody else's edit, and the approval would be an approval of
+    something else.
+    """
+    if not target:
+        return True
+
+    doctype = str(target.get("doctype") or "")
+    name = str(target.get("name") or "")
+    modified = str(target.get("modified") or "")
+    if not doctype or not name or not modified:
+        return True
+
+    try:
+        current = frappe.db.get_value(doctype, name, "modified")
+    except Exception:
+        logger.exception("Could not read the current state of %s %s", doctype, name)
+        return False
+
+    return str(current or "") == modified
