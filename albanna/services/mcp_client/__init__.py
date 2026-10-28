@@ -1,0 +1,1 @@
+"""Albanna MCP client layer draft: registry + search + dispatch."""
