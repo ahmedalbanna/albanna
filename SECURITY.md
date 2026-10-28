@@ -44,6 +44,7 @@ recorded in `CONTEXT.md` and `docs/adr/`:
 
 | Version | Supported |
 |---|---|
+| 0.2.x | yes |
 | 0.1.x | yes |
 
 ## What is out of scope
