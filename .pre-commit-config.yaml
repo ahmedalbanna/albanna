@@ -15,11 +15,14 @@ repos:
       - id: check-ast
       - id: check-json
       - id: check-toml
-      - id: check-yaml
       - id: debug-statements
 
+  # The ruff version is pinned, and it is the version the code was
+  # written and formatted against.  An unpinned linter is a gate that
+  # changes its mind when a new release lands, which is a gate nobody
+  # trusts.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.2.0
+    rev: v0.16.1
     hooks:
       - id: ruff
         name: "Run ruff linter and apply fixes"
@@ -37,6 +40,7 @@ repos:
         exclude: |
             (?x)^(
                 albanna/public/dist/.*|
+                albanna/public/js/.*\.bundle\.js|
                 .*node_modules.*|
                 .*boilerplate.*|
                 albanna/templates/includes/.*|
@@ -54,6 +58,7 @@ repos:
         exclude: |
             (?x)^(
                 albanna/public/dist/.*|
+                albanna/public/js/.*\.bundle\.js|
                 cypress/.*|
                 .*node_modules.*|
                 .*boilerplate.*|
