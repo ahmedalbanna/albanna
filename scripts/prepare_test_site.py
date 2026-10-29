@@ -14,6 +14,8 @@ operations where they exist:
   measure, the warehouse type — from the setup wizard's fixtures;
 * a company with a chart of accounts, and the fiscal year the year
   belongs to;
+* the price lists, and the defaults that name the company and its
+  currency, from the setup wizard's defaults;
 * one item and one customer, which the demo data would otherwise have
   provided.
 
@@ -88,18 +90,58 @@ def ensure_company() -> str:
     return company
 
 
+def ensure_defaults(company: str) -> None:
+    """The price lists, and the defaults that name the company.
+
+    A Sales Invoice needs a price list.  ERPNext fills it in from the
+    selling settings, and the selling settings take it from the first
+    price list that is created — so the site needs ERPNext's own price
+    lists, made by ERPNext's own operation, and the global defaults that
+    say which company and currency the site trades in.
+    """
+    if frappe.db.exists("Price List", "Standard Selling"):
+        _say("the price lists are already there")
+        return
+
+    from erpnext.setup.setup_wizard.operations import install_fixtures
+
+    currency = frappe.db.get_value("Company", company, "default_currency") or CURRENCY
+    install_fixtures.install_defaults(
+        frappe._dict(
+            {
+                "company_name": company,
+                "company_abbr": COMPANY_ABBR,
+                "currency": currency,
+                "country": COUNTRY,
+            }
+        )
+    )
+    _say("the price lists and the defaults are in place")
+
+
 def ensure_item() -> str:
-    """One item, so the suite has something to read and to sell."""
+    """One item, so the suite has something to read and to sell.
+
+    A *service*, not a stock item: a stock item has to be shipped from a
+    warehouse, and the suite's documents name an item and nothing else.
+    That is what the site the suite usually runs against gives it — the
+    item it reads there is a service — and this is the same thing.
+    """
     if frappe.db.exists("Item", ITEM_CODE):
         _say(f"the item {ITEM_CODE} is already there")
         return ITEM_CODE
 
-    group = frappe.db.get_value("Item Group", {"is_group": 0}, "name") or "All Item Groups"
+    group = (
+        "Services"
+        if frappe.db.exists("Item Group", "Services")
+        else frappe.db.get_value("Item Group", {"is_group": 0}, "name") or "All Item Groups"
+    )
     item = frappe.new_doc("Item")
     item.item_code = ITEM_CODE
     item.item_name = ITEM_CODE
     item.item_group = group
     item.stock_uom = "Nos"
+    item.is_stock_item = 0
     item.insert(ignore_permissions=True)
     _say(f"the item {item.name} is in place")
     return item.name
@@ -161,7 +203,8 @@ def main() -> int:
     frappe.connect()
     try:
         ensure_standard_masters()
-        ensure_company()
+        company = ensure_company()
+        ensure_defaults(company)
         ensure_item()
         ensure_customer()
         frappe.db.commit()

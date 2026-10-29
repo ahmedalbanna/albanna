@@ -158,9 +158,10 @@ jobs:
         #
         # So the site is given the smallest set the suite needs, by the
         # app's own script, which uses ERPNext's own operations where
-        # they exist.  What it does not get is a submitted Sales
-        # Invoice: the two tests that need one skip themselves, and say
-        # so, on a site that has none.
+        # they exist: the setup wizard's masters, its company and fiscal
+        # year, and its price lists and defaults.  What it does not get
+        # is a submitted Sales Invoice: the two tests that need one skip
+        # themselves, and say so, on a site that has none.
         run: |
           ./env/bin/python apps/albanna/scripts/prepare_test_site.py --site test_site
           bench --site test_site set-config allow_tests true
