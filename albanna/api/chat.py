@@ -23,12 +23,11 @@ long will have it cut off.  The worker moves the wait off the request.
 
 from __future__ import annotations
 
+import base64
 import logging
 import time
 import uuid
 from typing import Any
-
-import base64
 
 import frappe
 from frappe import _

@@ -822,10 +822,8 @@ class ChatService:
                 # reported what it would do, then the transaction was
                 # rolled back.  The reader is told, so a preview is never
                 # mistaken for a change.
-                try:
+                with contextlib.suppress(Exception):
                     frappe.db.rollback()
-                except Exception:
-                    pass
                 result = replace(result, dry_run=True, content=result.content + "\n(dry run — not saved)")
             elif spec.mutating and result.ok:
                 # The audit row records the write in the same transaction
@@ -844,19 +842,18 @@ class ChatService:
                 except Exception:
                     logger.exception("Could not commit a successful write")
 
-                if not recorded:
-                    # The change is made, and the row does not know it.
-                    # The row is the truth about the turn, so it is told
-                    # again — after the commit, in a transaction of its
-                    # own, because the change must not be undone by the
-                    # ledger's trouble.  A row that says "confirmed" and
-                    # never ran would send the reader off to make the
-                    # same change a second time.
-                    if self._record_write(call, result, request_id):
-                        try:
-                            frappe.db.commit()
-                        except Exception:
-                            logger.exception("Could not record a write in the audit row")
+                # The change is made, and the row does not know it.
+                # The row is the truth about the turn, so it is told
+                # again — after the commit, in a transaction of its
+                # own, because the change must not be undone by the
+                # ledger's trouble.  A row that says "confirmed" and
+                # never ran would send the reader off to make the
+                # same change a second time.
+                if not recorded and self._record_write(call, result, request_id):
+                    try:
+                        frappe.db.commit()
+                    except Exception:
+                        logger.exception("Could not record a write in the audit row")
         except Exception as exc:  # noqa: BLE001 - a tool must not kill the turn
             logger.exception("Tool '%s' could not be run", call.name)
             message = f"The tool '{call.name}' could not be run: {type(exc).__name__}: {exc}"

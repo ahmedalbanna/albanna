@@ -38,6 +38,7 @@ this file.
 
 from __future__ import annotations
 
+import contextlib
 import json
 
 import frappe
@@ -2023,15 +2024,13 @@ class TestWriteApproval(TestToolPath):
             def make_emit(decision):
                 def emit(event):
                     if event.get("event") == "confirm":
-                        try:
+                        with contextlib.suppress(Exception):
                             record_decision(
                                 event["request_id"],
                                 email,
                                 decision,
                                 ttl=60,
                             )
-                        except Exception:
-                            pass
                 return emit
 
             from albanna.services.chat_service import ChatService, TurnRequest
@@ -2593,7 +2592,6 @@ class TestWriteApproval(TestToolPath):
         """
         from albanna.services.settings_service import get_settings
 
-        settings = get_settings(refresh=True)
         frappe.db.set_value("Albanna Settings", "Albanna Settings", "dry_run", 1)
         frappe.db.commit()
         get_settings(refresh=True)
@@ -3121,7 +3119,6 @@ class TestUndo(FrappeTestCase):
         """
         from albanna.api.conversations import undo_turn
 
-        name = self._customer()
         conversation, message = self._turn(
             [
                 {
