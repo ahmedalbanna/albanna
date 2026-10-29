@@ -5,6 +5,44 @@ All notable changes to Albanna are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] — 2026-10-29
+
+What an independent review of 0.2.5 found.  The claim did not change;
+the edges of it got tighter, and the claim is now proved end to end.
+
+### Fixed
+
+- **The turn's own last write could drop the reader's answer.**  The row
+  is written once more when the turn ends, and that write reads the row
+  to keep the approvals.  Read without a lock, the payload can be stale
+  by the time it is written back — and an answer that arrived in between
+  goes with it.  The row is now locked before it is read, and the lock
+  is held until the write is committed.
+- **A row that could not be written was left saying the change never
+  ran.**  The write and the row's record of it share a transaction, so
+  they usually agree; when the row could not be written, the change still
+  stood and the row did not know.  The row is now told again, in a
+  transaction of its own — a row that says "confirmed" and never ran
+  sends the reader off to make the same change twice.
+- **A merge into a row that is not there reported success.**  It now
+  says so, and the caller logs it.
+- **The same call could be recorded twice** in a row that grows as the
+  turn runs.  A call is now identified by what it did, so a retried turn
+  does not make the row say it did the same thing twice.
+- **The document named in an approval record is now named only when the
+  reader may read it**, for every tool and not only for the update one.
+- **The reader's answer carries a timestamp** (`decided_at`), so the
+  ledger says when it was given.
+
+### Added
+
+- **The claim is proved end to end.**  A test runs a real turn, answers
+  it through the real endpoint, lets the write not run, and reads the
+  panel's own answer: it names the change the reader confirmed and says
+  it did not run.  Nothing in that test is a hand-written row.
+- **A dry run is proved not to record a change as having run**, and the
+  pure merge rules have their own fast tests, in the domain suite.
+
 ## [0.2.5] — 2026-10-29
 
 The last open hole in the trust layer.  The panel could name the documents
