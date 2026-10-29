@@ -296,6 +296,21 @@ customer email threads still cannot be read, because all four Email
 Accounts have `enable_incoming = 0` and the site has no `User Email` row
 for the support mailbox.
 
+*Deployed on production, 2026-10-29, following `docs/DEPLOYMENT.md`:*
+backup (`20261029_042500`, the dump taken before the migrate) → build →
+maintenance mode on → migrate (25 s) → maintenance mode off → every worker
+set restarted (systemd web + three workers, supervisor two workers + the
+scheduler).  Verified after it: the site answers `200`; the assets are
+served by nginx with the same bundle hash as before (nothing in this
+release touched the front end); the reaper's `Scheduled Job Type` is now
+`Cron` with `*/5 * * * *`, the old `Daily` row is gone, and the job
+**fired** at 04:32 — the first scheduler tick after its 04:30 slot — and
+moved its next execution to 04:35; a live turn answered in 18 s over three
+rounds, and its ledger row carries `status: ok` with the per-round
+timings (`[7848, 5201, 4374]`); the worker log holds no traceback; the site
+reports `albanna 0.2.2`; and the Error Log holds nothing new since the
+deploy.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
