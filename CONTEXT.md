@@ -1647,6 +1647,22 @@ reader's answer, silently, in the one case where the reader needs it
 most.  A lock is cheap here: the row is written by a turn, not by a
 request that has to be fast.
 
+**Every writer locks — including the turn's own last write.**  The turn
+ends by writing the row once more, with its calls and its timings, and
+that write reads what the row holds to keep the approvals.  Read without
+the lock, that payload can be stale by the time it is written back — and
+the answer, which arrived in between, goes with it.  So the lock is
+taken before the row is read, and held until the write is committed.
+
+**A row that could not be written is told again.**  The write and the
+row's record of it share a transaction, so they usually agree.  When the
+row cannot be written — a lock that timed out, a row that is not there —
+the change still stands: the change is what the reader asked for, and
+the ledger's trouble is not a reason to undo it.  But the row is then
+told again, in a transaction of its own, because a row that says
+"confirmed" and never ran sends the reader off to make the same change
+twice.
+
 **The panel names what never ran.**  A change the reader confirmed and
 that never ran is the worst of both — the reader believes it happened, and
 it did not — so it is named as exactly that, by document, rather than left

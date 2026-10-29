@@ -511,6 +511,44 @@ write — which is what the site suite proves, in the dead-turn tests of
 `albanna/tests/test_integration.py`, and which is not worth staging on a
 live site to demonstrate.
 
+### Shipped in this pass (v0.2.6, the review of 0.2.5)
+
+v0.2.5 was reviewed before it was called finished, and the review was
+worth more than the release had been.  The claim did not change — a
+confirmed change that never ran is named — but three edges of it were
+not as tight as the decision said they were.
+
+- **The turn's own last write could drop the reader's answer.**  The row
+  is written once more when the turn ends, and that write reads the row
+  to keep the approvals.  Read without a lock, the payload can be stale
+  by the time it is written back — and an answer that arrived in between
+  goes with it.  The row is now locked before it is read, and the lock
+  is held until the write is committed.  Every writer locks now, not
+  only the two that merge.
+- **A row that could not be written was left saying the change never
+  ran.**  The write and the row's record of it share a transaction, so
+  they usually agree; when the row could not be written, the change
+  still stood (the change is what the reader asked for, and the ledger's
+  trouble is not a reason to undo it) and the row did not know.  The row
+  is now told again, in a transaction of its own — because a row that
+  says "confirmed" and never ran sends the reader off to make the same
+  change twice.
+- **A merge into a row that is not there reported success**, and the
+  same call could be recorded twice in a row that grows as the turn
+  runs.  Both are now what they say they are: the merge says when there
+  was no row to write into, and a call is identified by what it did.
+- **The document named in an approval record is named only when the
+  reader may read it** — for every tool, not only for the update one.
+- **The reader's answer carries a timestamp**, so the ledger says when
+  it was given.
+
+And the claim is now proved the way it is claimed: a test runs a real
+turn, answers it through the **real endpoint**, lets the write not run,
+and reads the **panel's own answer** — it names the change the reader
+confirmed and says that it did not run.  Nothing in that test is a
+hand-written row; the synthetic rows are still there for the edges, but
+the middle is the app.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
