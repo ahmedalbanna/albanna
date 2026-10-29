@@ -474,6 +474,43 @@ The ledger is read by operators, and a value the reader alone may see has
 no business there; the document's identity is enough to answer *did my
 change happen?*.
 
+One narrow thing this does not cover: if the **endpoint's** write to the
+row fails — a database error, not a race — the reader's answer is in the
+cache only, and the row does not learn it.  The failure is logged rather
+than raised, because the decision is already in the cache and the worker
+is already acting on it; refusing the reader's answer over a failed
+ledger write would be worse than the ledger missing it.  The hole that
+leaves is the narrowest one of all: a turn that died between the
+approval and the write, *and* whose endpoint write failed.
+
+*Deployed on production, 2026-10-29, following `docs/DEPLOYMENT.md`:*
+backup (`20261029_110858`) → build → maintenance mode on → migrate (29 s)
+→ maintenance mode off → every worker set restarted (systemd web + three
+workers, supervisor two workers + the scheduler).  Verified after it: the
+site answers `200`; the site reports `albanna 0.2.5`; the bundles are
+served under their hashes (no front end changed in this release); **the
+recording was proved on production** with a turn that proposed a
+`create_doc` — while the turn was waiting for the reader, its row already
+held `{"approvals": [{"request_id": …, "tool": "create_doc", "doctype":
+"Customer", "name": ""}]}`, which is the approval recorded *before* the
+reader is asked; the decision endpoint was then called with `reject`, and
+the row carried `"decision": "reject"` a moment later, which is the
+reader's answer written by a separate request from the worker; the turn
+finished `ok` in three rounds and its final payload still held the calls,
+the per-round timings **and** the approval, so the turn's own write did
+not drop what it had recorded on the way; and nothing was created — there
+is no Customer named "Verify 0.2.5", because the write was refused.  In
+the browser the panel opens and a question asked in it answers *"There are
+12 customers in total."* with its sources and its links; the Error Log
+holds no row since the deploy; the worker error log is empty and the
+journal holds no traceback.
+
+What was **not** proved on production is the panel's sentence for a dead
+turn, because that needs a worker killed between an approval and its
+write — which is what the site suite proves, in the dead-turn tests of
+`albanna/tests/test_integration.py`, and which is not worth staging on a
+live site to demonstrate.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
