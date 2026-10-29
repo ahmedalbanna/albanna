@@ -118,8 +118,12 @@ jobs:
           # not move, so the gate tests the same framework tomorrow as it
           # tests today.  v16 is the line this app is written against.
           bench init --frappe-branch v16.0.0 --skip-redis-config-generation --skip-assets --python "$(which python)" ~/frappe-bench
-          mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL character_set_server = 'utf8mb4'"
-          mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL collation_server = 'utf8mb4_unicode_ci'"
+          # `--skip-ssl`: the MariaDB container serves no TLS, and the
+          # client asks for it by default — so the connection fails with
+          # "SSL is required, but the server does not support it" before
+          # a single statement runs.
+          mariadb --host 127.0.0.1 --port 3306 -u root -proot --skip-ssl -e "SET GLOBAL character_set_server = 'utf8mb4'"
+          mariadb --host 127.0.0.1 --port 3306 -u root -proot --skip-ssl -e "SET GLOBAL collation_server = 'utf8mb4_unicode_ci'"
 
       - name: Install
         working-directory: /home/runner/frappe-bench
