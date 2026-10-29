@@ -845,6 +845,7 @@ a day later, and after a deploy?**
 | Frappe deletes a site's own backups after **24 hours** by default, which would have deleted the safety net taken before a migration a day later | the dump taken before *that* migration is not the same thing as yesterday's scheduled dump | `keep_backups_for_hours` is 336 (a fortnight) on both covered sites |
 | The deployment knowledge was in one operator's head — which units to restart, that `bench restart` does nothing here, that the migrate locks the site | the next deploy is inevitable, and the discovery work is not something to repeat | `docs/DEPLOYMENT.md`, written from what the 0.2.1 deployment needed |
 | **The repository's own gates were red on every commit** — the CI installed `ruff` without a version and judged the code against rules this app never agreed to, the pre-commit configuration listed the same hook twice (so pre-commit refused to run at all), and the server job installed Frappe v15 while the app targets v16 | a gate that is red is not a gate; the local suites were the only ones that had been running, so "CI is green" was a claim nobody had checked | the tools are pinned (ruff 0.16.1, pytest, `frappe-bench`, Node 24), the duplicate hook is gone, the formatter is part of the CI job, the complexity bar is explicit, and the server job installs the tag `v16.0.0` — **and runs**: as of 2026-10-29 the whole workflow is green (pre-commit, the linters and the seventeen front-end suites, 203 domain tests and 174 site tests) |
+| **The support agent's account was not linked to the site's support mailbox**, so the assistant could not read a single customer email — and the reason was invisible from inside the app: the framework hides email Communications from any reader without a `User Email` row, and the site had none | the customer wrote in; the agent asked the assistant; the assistant said what it could read, and the customer's own words were not in it | the `User Email` row now exists, linking the support agent's account to the site's "Support" email account.  What remains is the operator's half: a real mailbox behind that account, incoming enabled, and the agent account enabled |
 
 Two of these were found by *running* the thing rather than reading it: the
 backup script's first run against both live sites caught a missing
@@ -861,9 +862,10 @@ What this pass did **not** do, on purpose:
 * It did not back up `test.localhost`.  It is a disposable clone that the
   test suite overwrites; backing it up would fill the disk to protect
   nothing.
-* It did not choose the model.  The evidence is in §8's finding 2 — and the
-  ledger's own timings now say it precisely.  Measured on production's
-  ledger (164 turns, 2026-10-21 → 2026-10-29, `model = auto`):
+* It did not choose the model *by itself* — and on 2026-10-29 the owner
+  chose it.  The evidence is in §8's finding 2 — and the ledger's own
+  timings now say it precisely.  Measured on production's ledger (164 turns,
+  2026-10-21 → 2026-10-29, `model = auto`):
 
   | Model | Turns | Answered | Median turn | Slowest turn |
   |---|---:|---:|---:|---:|
@@ -899,6 +901,45 @@ What this pass did **not** do, on purpose:
   while the DocType ships 8192.  Eight turns came back *truncated*, six of
   them on `stepfun-ai/step-5-preview` — a model that spends its budget
   thinking.  The setting was lowered at some point and nothing says why.
+
+  **And now it is set, on production, on 2026-10-29.**  `model` is
+  `sensenova-6.8-flash-lite`, and `max_tokens` is **8192** — the
+  DocType's own default.  The fallback is left exactly as it was
+  (`step-5-preview`), so a turn the pinned model cannot answer is still
+  answered.
+
+  Verified after the change, on the site itself: a live turn asked
+  "Name three customers" and answered with three names and one
+  `list_docs` call in 8.1 s, on the pinned model, with nothing
+  truncated.  The ledger row `atnje22e7e` says `ok`, 5 543 tokens in
+  and 43 out.
+
+  `price_per_million` is still **0**, and that is a fact rather than an
+  oversight.  The provider reports no cost for this model on this
+  gateway — every `sensenova` row in the ledger carries
+  `provider_cost = 0`, while a `DeepSeek-V4-Flash` row carries a real
+  number — and the site's own price is what *the operator* pays per
+  million tokens, in the site's currency (YER).  A number invented here
+  would be a wrong number in a ledger that is supposed to be right about
+  money.  The provider's own figure is kept in the same row, in its own
+  currency, for whoever reconciles the two.
+
+* It did not connect a mailbox.  The `User Email` row exists now, so
+  the *permission* is right and the day mail arrives the agent sees it;
+  but the site's "Support" email account is ERPNext's demo placeholder
+  (`support@example.com`, incoming off), this host has no incoming mail
+  at all, and the support agent's account is still disabled — it is a
+  test account, and a test account with a known password is not
+  something to enable on a production site on the strength of a
+  visibility problem.  Connecting a real mailbox and enabling a real
+  agent's account is the operator's half, and it is named here rather
+  than half-done here.
+
+  The mechanism was proved on a scratch site before it was touched on
+  production: a reader linked to an email account sees that account's
+  Communications and nobody else's; a reader with no such row sees no
+  email Communications at all; and a System Manager sees everything,
+  which is Frappe's own rule and not this app's.
 * It did not make the CI test the framework production runs.  Production
   runs Albanna's own fork of Frappe — `16.0.0-dev`, on Python 3.12 — and
   that fork is not public, so the CI installs upstream Frappe `v16.0.0` on

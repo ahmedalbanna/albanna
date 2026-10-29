@@ -9,9 +9,10 @@ and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 No change to what the app does.  This is the pass that looked at the
 feature drafts an agent had opened against the repository, the gates
-those drafts were measured against, and the three tests that had been
+those drafts were measured against, the three tests that had been
 skipping themselves in the CI because the site they ran on was not
-prepared for them.
+prepared for them, and the two settings the owner asked to change on
+the live site.
 
 ### Fixed
 
@@ -88,6 +89,21 @@ prepared for them.
 
 ### Changed
 
+- **The site answers with one model now.**  This is configuration, not
+  code: production's `Albanna Settings` pins `model` to
+  `sensenova-6.8-flash-lite` (it was `auto`, which picked a different
+  model per turn — fourteen models in a hundred turns, with a
+  twenty-fold spread in seconds per round) and restores `max_tokens`
+  to the DocType's own 8192 (the site was carrying 1200, and eight
+  turns came back truncated).  The fallback is untouched, so a turn
+  the pinned model cannot answer is still answered.  `price_per_million`
+  stays at 0, which the app records as "the cost is not known": the
+  provider reports no cost for this model on this gateway, and the
+  site's own price is what the operator pays, in the site's currency —
+  a number invented here would be a wrong number about money.  A live
+  turn after the change answered in 8.1 s with one tool call and
+  nothing truncated.  **No deploy was needed for this**: it is the
+  site's settings, read fresh on every request.
 - **The code is formatted by the formatter the gate pins.**  Thirty-one
   Python files and thirteen JavaScript and Vue files were laid out by
   hand; the diff is wrapping and punctuation only.  The domain suite
