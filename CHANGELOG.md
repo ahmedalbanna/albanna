@@ -5,6 +5,43 @@ All notable changes to Albanna are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.5] — 2026-10-29
+
+The last open hole in the trust layer.  The panel could name the documents
+a dead turn **changed**; it could not name the change a reader
+**confirmed** and that never ran.
+
+The reason was where the answer lived: the approval gate keeps the
+pending write and the reader's answer in a cache record with a
+two-minute life — the right place for a *wait*, and the wrong place for a
+*fact*.  The wait ends when the worker dies, which is exactly when the
+reader needs the answer most.
+
+### Fixed
+
+- **A confirmed change that never ran is named.**  The approval is
+  recorded in the turn's `Albanna Chat Log` row before the reader is
+  asked, the reader's answer is recorded in it when they answer, and the
+  write records itself in the same transaction as the change it made.  The
+  panel reads that and says *"The change you confirmed did not run:
+  Customer CUST-0001."*  A change that ran is not named as one that did
+  not, and a change the reader turned down is not named at all.
+- **A write that ran is recorded even when the turn dies afterwards.**
+  The row's calls used to be written only when the turn *ended*, so a
+  worker killed half-way through left a row that named nothing — a turn
+  that wrote a document and then died was a change nobody was told about.
+  The write now records itself in the transaction that carries it.
+
+### Added
+
+- **The approvals ride the existing `tools` field**, beside the calls and
+  the per-round timings, so no DDL is needed on production.
+- **The merge is under a lock on the row.**  The endpoint owns the
+  decision and the worker owns the write; without the lock the worker can
+  read the row, the endpoint can write the answer, and the worker can
+  write its own version over the top — losing the reader's answer
+  silently, in the one case where the reader needs it most.
+
 ## [0.2.4] — 2026-10-29
 
 The one-door release.  The question it answers came from the owner of

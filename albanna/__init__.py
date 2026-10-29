@@ -45,4 +45,4 @@ layers above them. That is what makes the interesting half of this app
 testable on a machine with no bench, no site and no network.
 """
 
-__version__ = "0.2.4"
+__version__ = "0.2.5"
