@@ -465,7 +465,15 @@ def _record_decision_in_row(request_id: str, decision: str, pending: dict[str, A
     try:
         merge_payload(
             row,
-            {"approvals": [{"request_id": request_id, "decision": decision}]},
+            {
+                "approvals": [
+                    {
+                        "request_id": request_id,
+                        "decision": decision,
+                        "decided_at": frappe.utils.now(),
+                    }
+                ]
+            },
         )
         frappe.db.commit()
     except Exception:

@@ -225,6 +225,34 @@ def _payload_of(row: dict[str, Any]) -> Any:
 # -- writing --------------------------------------------------------------
 
 
+def lock_row(row_name: str) -> bool:
+    """Take the ledger row's lock, and say whether the row is there.
+
+    Every writer of the row's payload takes this lock before it reads
+    the row, and holds it until it commits.  Without it two writers can
+    read the same payload, and the second one's write is the only one
+    that survives — and what is lost is the reader's answer, silently,
+    in the one case where the reader needs it most.
+
+    Returns ``False`` when there is no row to lock.  There is then
+    nothing to write into either, and a writer that believes it wrote
+    something is worse than one that knows it did not.
+    """
+    if not row_name:
+        return False
+
+    try:
+        rows = frappe.db.sql(
+            f"select name from `tab{LOG_DOCTYPE}` where name = %s for update",
+            (row_name,),
+        )
+    except Exception:
+        logger.exception("Could not lock the audit row %s", row_name)
+        return False
+
+    return bool(rows)
+
+
 def merge_payload(row_name: str, changes: dict[str, Any]) -> bool:
     """Merge *changes* into the row's ``tools`` payload, and save it.
 
@@ -253,13 +281,13 @@ def merge_payload(row_name: str, changes: dict[str, Any]) -> bool:
     if not row_name or not changes:
         return False
 
+    # The lock is taken before the row is read, so the payload this
+    # merge is based on is the one the writer sees.
+    if not lock_row(row_name):
+        logger.warning("The audit row %s is not there to merge into", row_name)
+        return False
+
     try:
-        # The lock is taken before the row is read, so the payload this
-        # merge is based on is the one the writer sees.
-        frappe.db.sql(
-            f"select name from `tab{LOG_DOCTYPE}` where name = %s for update",
-            (row_name,),
-        )
         current = frappe.db.get_value(LOG_DOCTYPE, row_name, "tools")
     except Exception:
         logger.exception("Could not read the audit row %s", row_name)
@@ -304,10 +332,37 @@ def _append_calls(existing: list[Any], incoming: list[Any]) -> list[dict[str, An
     dies mid-way still says what it had already changed.  The turn's own
     final payload replaces the list when it ends, so nothing is counted
     twice.
+
+    A call that is already there is not added again: the same call
+    recorded twice is one call in the ledger's eyes, and a turn that is
+    retried must not make the row say it did the same thing twice.
     """
     calls: list[dict[str, Any]] = [item for item in existing if isinstance(item, dict)]
-    calls.extend(item for item in incoming if isinstance(item, dict))
+    seen = {_call_key(item) for item in calls}
+
+    for item in incoming:
+        if not isinstance(item, dict):
+            continue
+        key = _call_key(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        calls.append(item)
+
     return calls
+
+
+def _call_key(call: dict[str, Any]) -> tuple:
+    """What makes two recorded calls the same call.
+
+    A call is what it did: the tool, and the documents it touched.  Two
+    records with the same key are the same call, whoever wrote them.
+    """
+    documents = call.get("documents") or []
+    names = tuple(
+        sorted(str(doc.get("name") or "") for doc in documents if isinstance(doc, dict))
+    )
+    return (str(call.get("name") or ""), names, bool(call.get("ok")))
 
 
 def _merge_approvals(existing: list[Any], incoming: list[Any]) -> list[dict[str, Any]]:

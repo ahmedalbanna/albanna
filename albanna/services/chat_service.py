@@ -838,11 +838,25 @@ class ChatService:
                 # afterwards, and the audit row is not the only thing that
                 # does.  The user asked for the document; the assistant's
                 # ability to describe it is a separate concern.
-                self._record_write(call, result, request_id)
+                recorded = self._record_write(call, result, request_id)
                 try:
                     frappe.db.commit()
                 except Exception:
                     logger.exception("Could not commit a successful write")
+
+                if not recorded:
+                    # The change is made, and the row does not know it.
+                    # The row is the truth about the turn, so it is told
+                    # again — after the commit, in a transaction of its
+                    # own, because the change must not be undone by the
+                    # ledger's trouble.  A row that says "confirmed" and
+                    # never ran would send the reader off to make the
+                    # same change a second time.
+                    if self._record_write(call, result, request_id):
+                        try:
+                            frappe.db.commit()
+                        except Exception:
+                            logger.exception("Could not record a write in the audit row")
         except Exception as exc:  # noqa: BLE001 - a tool must not kill the turn
             logger.exception("Tool '%s' could not be run", call.name)
             message = f"The tool '{call.name}' could not be run: {type(exc).__name__}: {exc}"
@@ -981,6 +995,7 @@ class ChatService:
         if not row:
             return
 
+        from albanna.permissions import may_read
         from albanna.services.approval import write_target
         from albanna.services.audit_rows import merge_payload
 
@@ -992,11 +1007,19 @@ class ChatService:
         # approval must not name it either.
         target = write_target(call.name, arguments)
         name = str(target.get("name") or "").strip()
-        if not name and call.name != "update_doc":
+        if not name:
             # The tools that change a document carry its name in their
-            # arguments, and the ledger already records the names they
-            # touched.
-            name = str(arguments.get("name") or "").strip()
+            # arguments.  It is used only when the reader may read it:
+            # the record is shown to the reader when the turn dies, and
+            # the card's own rule is the rule here.
+            candidate = str(arguments.get("name") or "").strip()
+            if candidate and doctype:
+                try:
+                    document = frappe.get_doc(doctype, candidate)
+                except Exception:
+                    document = None
+                if document is not None and may_read(document):
+                    name = candidate
 
         merge_payload(
             row,
@@ -1017,7 +1040,7 @@ class ChatService:
         except Exception:
             logger.exception("Could not commit the approval to the chat log row")
 
-    def _record_write(self, call: ToolCall, result: ToolResult, request_id: str) -> None:
+    def _record_write(self, call: ToolCall, result: ToolResult, request_id: str) -> bool:
         """Write the call into the turn's audit row, and mark its approval.
 
         The record is written **before** the transaction that carries the
@@ -1026,10 +1049,15 @@ class ChatService:
         A turn that dies between the write and the end of its answer
         still says what it changed, and an approval that the write
         answered is marked as answered.
+
+        Returns whether the row was written.  A row that could not be
+        written is a row that does not know the change happened, and the
+        caller says so again afterwards rather than leave the reader
+        with a change that "did not run" and did.
         """
         row = getattr(self, "_audit_name", "") or ""
         if not row:
-            return
+            return False
 
         from albanna.services.audit_rows import merge_payload
 
@@ -1037,7 +1065,12 @@ class ChatService:
         if request_id:
             changes["approvals"] = [{"request_id": request_id, "ran": True}]
 
-        merge_payload(row, changes)
+        recorded = merge_payload(row, changes)
+        if not recorded:
+            logger.warning(
+                "The audit row %s did not record the write %s", row, call.name
+            )
+        return recorded
 
     def _explain_failure(
         self,
@@ -1189,6 +1222,15 @@ class ChatService:
         try:
             name = getattr(self, "_audit_name", None)
             if name and frappe.db.exists("Albanna Chat Log", name):
+                # The row is locked before it is read.  The endpoint that
+                # records the reader's answer writes to the same row,
+                # and a payload read without the lock can be stale by
+                # the time it is written back — which would drop the
+                # reader's answer, and the answer is the one thing in
+                # this row that cannot be recovered.
+                from albanna.services.audit_rows import lock_row
+
+                lock_row(name)
                 doc = frappe.get_doc("Albanna Chat Log", name)
                 is_update = True
             else:

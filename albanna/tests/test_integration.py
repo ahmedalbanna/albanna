@@ -2304,6 +2304,118 @@ class TestWriteApproval(TestToolPath):
 
     # -- what the row knows ------------------------------------------------
 
+    def test_the_panel_names_a_confirmed_change_that_never_ran(self):
+        """The whole claim, end to end.
+
+        A real turn asks the reader; the reader's answer goes through the
+        **real endpoint**; the write does not run; and the panel — the
+        reader's own polling of a turn that is gone — names the change
+        the reader confirmed and says that it did not run.
+
+        Nothing here is a hand-written row.  The row is the one the turn
+        wrote as it ran, and the answer in it is the one the endpoint
+        wrote, which is the only way to know that the three of them —
+        worker, endpoint and panel — agree.
+        """
+        from albanna.api.chat import confirm_write, status
+        from albanna.core.messages import Message, ToolCall
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.chat_service import ChatService, TurnRequest
+
+        email = self.sales_user
+
+        customer = f"Albanna Approval Dead Turn {self._testMethodName}"
+        if not frappe.db.exists("Customer", customer):
+            group = frappe.db.get_value("Customer", {"disabled": 0}, "customer_group")
+            doc = frappe.new_doc("Customer")
+            doc.customer_name = customer
+            doc.customer_type = "Company"
+            doc.customer_group = group
+            doc.flags.ignore_permissions = True
+            doc.insert()
+
+        marker = "Albanna dead turn marker"
+
+        completion = Completion(
+            message=Message(
+                role="assistant",
+                content="I will change the customer.",
+                tool_calls=(
+                    ToolCall(
+                        id="call_1",
+                        name="update_doc",
+                        arguments={
+                            "doctype": "Customer",
+                            "name": customer,
+                            "data": {"customer_details": marker},
+                        },
+                    ),
+                ),
+            ),
+            provider="openai",
+            model="a-model",
+            usage=Usage(input_tokens=10, output_tokens=5),
+        )
+
+        self._make_policy(email, "always")
+        try:
+            self._as(email)
+
+            def emit(event):
+                if event.get("event") != "confirm":
+                    return
+                # The reader's answer goes through the endpoint, as it
+                # does in the browser — not through the cache alone.
+                confirm_write(request_id=event["request_id"], decision="approve")
+                # And the document moves while they are looking at the
+                # card, so the write does not run.
+                frappe.db.set_value(
+                    "Customer",
+                    customer,
+                    "customer_details",
+                    "changed by somebody else",
+                )
+
+            service = ChatService()
+            service._complete = lambda config, messages, tools, emit, stream: completion
+
+            service.run(
+                TurnRequest(question="change the customer", page="test|approval|dead|"),
+                emit=emit,
+            )
+        finally:
+            self._restore_policy(email)
+
+        row = self._row_of(email)
+        approvals = row["payload"].get("approvals") or []
+        self.assertTrue(approvals, "the row did not record the approval")
+        self.assertEqual(approvals[0].get("decision"), "approve")
+        self.assertFalse(approvals[0].get("ran"), "the write did not run, and the row says it did")
+
+        # A worker killed before it can write its final status leaves the
+        # row as it was: 'running', with the payload it had written as it
+        # went.  That is the state the panel reads.
+        frappe.db.set_value("Albanna Chat Log", row["name"], "status", "running")
+        frappe.db.commit()
+
+        # The panel answers to the reader, so the reader is the one who
+        # asks it.
+        self._as(email)
+
+        try:
+            answer = status(stream_id="a-turn-that-never-finished")
+        finally:
+            frappe.db.delete("Albanna Chat Log", row["name"])
+            frappe.db.commit()
+
+        self.assertEqual(answer.get("status"), "error")
+        self.assertIn(
+            customer,
+            answer["error"],
+            "the panel did not name the change the reader confirmed",
+        )
+        self.assertIn("did not run", answer["error"])
+
     def _row_of(self, user: str) -> dict:
         """The reader's own audit row, with its payload."""
         rows = frappe.get_all(
@@ -2401,20 +2513,38 @@ class TestWriteApproval(TestToolPath):
         not.  So the answer is written into the row as well — otherwise
         a worker that dies after the answer leaves a row that never
         learned the reader said yes.
+
+        The row already holds what the worker asked for, and the answer
+        is *added* to it: a record that replaced the approval would hold
+        the answer and lose the question, and the panel would have
+        nothing to name.
         """
         from albanna.api.chat import confirm_write
         from albanna.services.approval import record_pending
 
+        request_id = "decision-in-the-row"
+
         doc = frappe.new_doc("Albanna Chat Log")
         doc.user = self.accounts_user
         doc.status = "running"
-        doc.tools = json.dumps({"calls": []})
+        doc.tools = json.dumps(
+            {
+                "calls": [],
+                "approvals": [
+                    {
+                        "request_id": request_id,
+                        "tool": "create_doc",
+                        "doctype": "Sales Invoice",
+                        "name": "",
+                    }
+                ],
+            }
+        )
         doc.flags.ignore_permissions = True
         doc.insert()
         frappe.db.commit()
 
         self._as(self.accounts_user)
-        request_id = "decision-in-the-row"
         record_pending(
             request_id,
             self.accounts_user,
@@ -2431,6 +2561,9 @@ class TestWriteApproval(TestToolPath):
         self.assertEqual(len(approvals), 1, "the decision was not written into the row")
         self.assertEqual(approvals[0].get("request_id"), request_id)
         self.assertEqual(approvals[0].get("decision"), "approve")
+        self.assertEqual(approvals[0].get("tool"), "create_doc")
+        self.assertEqual(approvals[0].get("doctype"), "Sales Invoice")
+        self.assertTrue(approvals[0].get("decided_at"), "the answer has no timestamp")
 
     def test_an_approved_write_is_recorded_as_ran(self):
         """The row must not say a change never ran when it did.
@@ -2448,6 +2581,36 @@ class TestWriteApproval(TestToolPath):
         self.assertTrue(
             approvals[0].get("ran"),
             "the row says the confirmed change never ran, and it did",
+        )
+
+    def test_a_dry_run_does_not_record_the_change_as_having_run(self):
+        """A dry run changes nothing, and the row must not say it did.
+
+        The "ran" flag is what tells the panel whether a change the
+        reader confirmed is in the database.  A dry run rolls the change
+        back, so the flag must not be set — and if the turn dies, the
+        panel says the change did not run, which is exactly true.
+        """
+        from albanna.services.settings_service import get_settings
+
+        settings = get_settings(refresh=True)
+        frappe.db.set_value("Albanna Settings", "Albanna Settings", "dry_run", 1)
+        frappe.db.commit()
+        get_settings(refresh=True)
+
+        try:
+            self._run(self.accounts_user, "approve")
+        finally:
+            frappe.db.set_value("Albanna Settings", "Albanna Settings", "dry_run", 0)
+            frappe.db.commit()
+            get_settings(refresh=True)
+
+        row = self._row_of(self.accounts_user)
+        approvals = row["payload"].get("approvals") or []
+        self.assertTrue(approvals, "the row did not record the approval")
+        self.assertFalse(
+            approvals[0].get("ran"),
+            "the row says the change ran, and a dry run changes nothing",
         )
 
     def test_the_turns_final_row_keeps_the_approvals(self):
