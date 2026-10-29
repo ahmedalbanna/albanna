@@ -148,23 +148,21 @@ jobs:
         env:
           CI: "Yes"
 
-      - name: Give the site some data
+      - name: Give the site the data the suite reads
         working-directory: /home/runner/frappe-bench
-        # The site suite writes a document and reads it back, so the site
-        # needs a company, a customer and an item.  ERPNext's own demo
-        # setup is the honest way to get them: it uses the framework's
-        # paths, so it cannot drift from the data the tests expect.
+        # The site suite reads a Company, an Item and a Customer, and it
+        # finds the customer's group through the customer.  ERPNext's
+        # demo setup clones the first company it finds — and a site that
+        # has just had ERPNext installed has none, so the demo setup
+        # fails before it makes anything.
         #
-        # It needs a company to clone, and a site that has just had
-        # ERPNext installed has none — so the company comes first, made
-        # by ERPNext's own setup-wizard operation, with the fiscal year
-        # the demo's transactions are posted in.
+        # So the site is given the smallest set the suite needs, by the
+        # app's own script, which uses ERPNext's own operations where
+        # they exist.  What it does not get is a submitted Sales
+        # Invoice: the two tests that need one skip themselves, and say
+        # so, on a site that has none.
         run: |
-          YEAR=$(date +%Y)
-          ARGS=$(printf '{"company_name": "Albanna Test Company", "company_abbr": "ATC", "currency": "USD", "country": "United States", "fy_start_date": "%s-01-01", "fy_end_date": "%s-12-31"}' "$YEAR" "$YEAR")
-          bench --site test_site execute erpnext.setup.setup_wizard.operations.company_setup.create_fiscal_year_and_company \
-            --args "[$ARGS]"
-          bench --site test_site execute erpnext.setup.demo.setup_demo_data
+          ./env/bin/python apps/albanna/scripts/prepare_test_site.py --site test_site
           bench --site test_site set-config allow_tests true
           bench build
         env:
