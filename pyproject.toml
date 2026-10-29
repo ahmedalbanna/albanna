@@ -10,8 +10,11 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Framework :: Frappe",
-    "License :: OSI Approved :: MIT License",
 ]
+# The licence is the SPDX expression above.  The `License :: OSI Approved
+# :: MIT License` classifier used to say the same thing, and flit refuses
+# to build a package that says it twice: the classifier is deprecated
+# (PEP 639), and the build failed on every modern flit.
 requires-python = ">=3.10"
 readme = "README.md"
 dynamic = ["version"]
