@@ -110,6 +110,16 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y mariadb-client
+          # The MariaDB container serves no TLS, and Ubuntu's client asks
+          # for it by default — so every connection fails with "SSL is
+          # required, but the server does not support it", including the
+          # ones the framework makes itself when it creates the site's
+          # database.  The client is told the truth about this container
+          # instead.
+          sudo tee /etc/mysql/mariadb.conf.d/99-no-ssl.cnf >/dev/null <<'EOF'
+          [client]
+          skip-ssl
+          EOF
 
       - name: Setup the bench
         run: |
