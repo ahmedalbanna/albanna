@@ -55,6 +55,7 @@ API_VERSION = "2023-06-01"
 
 class AnthropicProvider:
     """Talks to Anthropic's native messages endpoint."""
+
     #: The endpoint used when the settings leave the base URL
     #: blank.  It is here, and not only in the request code, because the
     #: settings have to know it too: a provider with no base URL is a
@@ -138,6 +139,7 @@ class AnthropicProvider:
             # at any moment, so the closing cannot be left to a
             # generator that nobody collects.
             response.close()
+
     def _open_stream(self, config: ProviderConfig, payload: dict[str, Any]) -> requests.Response:
         """Open the streaming request, mapping transport failures to errors."""
         try:
@@ -278,7 +280,9 @@ class AnthropicProvider:
     def _split_system(self, messages: list[Message]) -> tuple[str, list[dict[str, Any]]]:
         """Split the system prompt out and build Anthropic's turn list."""
         system_text = "\n\n".join(
-            message.content for message in messages if message.role == "system" and message.content.strip()
+            message.content
+            for message in messages
+            if message.role == "system" and message.content.strip()
         )
 
         turns: list[dict[str, Any]] = []

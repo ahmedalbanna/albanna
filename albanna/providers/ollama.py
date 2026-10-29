@@ -51,6 +51,7 @@ DEFAULT_BASE_URL = "http://127.0.0.1:11434"
 
 class OllamaProvider:
     """Talks to Ollama's native chat endpoint."""
+
     #: The endpoint used when the settings leave the base URL
     #: blank.  It is here, and not only in the request code, because the
     #: settings have to know it too: a provider with no base URL is a
@@ -116,7 +117,9 @@ class OllamaProvider:
 
             yield StreamDone(
                 completion=Completion(
-                    message=Message(role="assistant", content="".join(chunks), tool_calls=tuple(calls)),
+                    message=Message(
+                        role="assistant", content="".join(chunks), tool_calls=tuple(calls)
+                    ),
                     provider=config.kind,
                     model=model,
                     usage=usage,
@@ -131,6 +134,7 @@ class OllamaProvider:
             # at any moment, so the closing cannot be left to a
             # generator that nobody collects.
             response.close()
+
     def _open_stream(self, config: ProviderConfig, payload: dict[str, Any]) -> requests.Response:
         """Open the streaming request, mapping transport failures to errors."""
         try:

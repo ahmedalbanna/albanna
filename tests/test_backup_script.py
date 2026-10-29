@@ -109,8 +109,7 @@ def test_no_pipeline_ends_in_a_quiet_grep():
         line.strip()
         for line in _script().splitlines()
         # A comment may *name* the trap; only code can walk into it.
-        if not line.strip().startswith("#")
-        and re.search(r"\|\s*grep\b[^|]*\s-q\b", line)
+        if not line.strip().startswith("#") and re.search(r"\|\s*grep\b[^|]*\s-q\b", line)
     ]
     assert not offenders, (
         "a pipeline ends in a quiet grep, which under `set -o pipefail` "
@@ -123,9 +122,7 @@ def test_the_unit_runs_the_script_in_this_repository():
     assert TIMER.exists(), "the systemd timer is missing"
     unit = UNIT.read_text(encoding="utf-8")
     assert "ExecStart=" in unit
-    exec_start = next(
-        line for line in unit.splitlines() if line.startswith("ExecStart=")
-    )
+    exec_start = next(line for line in unit.splitlines() if line.startswith("ExecStart="))
     assert str(SCRIPT) in exec_start, (
         "the unit runs an installed copy of the script, so the version that "
         "runs can drift from the version that is committed"

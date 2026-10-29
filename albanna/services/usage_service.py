@@ -53,7 +53,9 @@ def usage_summary() -> dict[str, Any]:
         as_dict=True,
     )
 
-    tokens = sum(_as_int(row.get("input_tokens")) + _as_int(row.get("output_tokens")) for row in rows)
+    tokens = sum(
+        _as_int(row.get("input_tokens")) + _as_int(row.get("output_tokens")) for row in rows
+    )
     # The site's own figure: the cost in the site's currency.
     cost = sum(_as_float(row.get("cost")) for row in rows)
     # The provider's own figure, in the provider's own currency.  It is

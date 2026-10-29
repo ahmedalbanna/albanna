@@ -140,7 +140,9 @@ def _meta(doctype: str):
 
 def _known_fields(meta) -> set[str]:
     """The fieldnames a query may name for this DocType."""
-    known = {df.fieldname for df in (getattr(meta, "fields", []) or []) if getattr(df, "fieldname", None)}
+    known = {
+        df.fieldname for df in (getattr(meta, "fields", []) or []) if getattr(df, "fieldname", None)
+    }
     try:
         from frappe.model.meta import DEFAULT_FIELD_LABELS
 
@@ -425,9 +427,7 @@ def _hidden_fields(document) -> set[str]:
         return set()
 
     return {
-        df.fieldname
-        for df in document.meta.fields
-        if df.permlevel and df.permlevel not in access
+        df.fieldname for df in document.meta.fields if df.permlevel and df.permlevel not in access
     }
 
 
@@ -576,7 +576,9 @@ def run_report(
     return ok(
         f"Report '{report}' returned {payload['total_rows']} row(s)",
         data={"columns": payload["columns"], "rows": payload["rows"]},
-        **{key: value for key, value in payload.items() if key not in ("status", "columns", "rows")},
+        **{
+            key: value for key, value in payload.items() if key not in ("status", "columns", "rows")
+        },
     )
 
 
@@ -795,8 +797,7 @@ def _create_refusal_for(doctype: str, data: Any) -> str | None:
         # authorised *that* one.  A DocType inside the data would be a
         # second, unchecked answer to the same question.
         return error(
-            "The document's data must not name a doctype: the doctype is the "
-            "first argument.",
+            "The document's data must not name a doctype: the doctype is the first argument.",
             doctype=doctype,
         )
 
@@ -924,8 +925,7 @@ def _protected_refusal(doctype: str, data: dict, name: str = "") -> str | None:
     if not protected:
         return None
     return error(
-        f"These field(s) belong to the framework and cannot be set: "
-        f"{', '.join(protected)}.",
+        f"These field(s) belong to the framework and cannot be set: {', '.join(protected)}.",
         doctype=doctype,
         name=name,
         actionable="Give only the fields the user asked to change.",
@@ -957,8 +957,7 @@ def _field_refusal(meta, doctype: str, data: dict, name: str = "") -> str | None
     readonly = _read_only_fields(meta, data)
     if readonly:
         return error(
-            f"These field(s) are read-only and cannot be changed: "
-            f"{', '.join(readonly)}.",
+            f"These field(s) are read-only and cannot be changed: {', '.join(readonly)}.",
             doctype=doctype,
             name=name,
             actionable="Give only the fields the user asked to change.",
@@ -1287,10 +1286,7 @@ def _update_message(
             continue
         message += f". Replaced the {before} line(s) of '{field}' with {after}"
         if after < before:
-            message += (
-                f" — the {before - after} line(s) that were not in the new "
-                f"list are gone"
-            )
+            message += f" — the {before - after} line(s) that were not in the new list are gone"
 
     if submitted:
         message += ", and submitted it"
@@ -1526,7 +1522,6 @@ def delete_doc(doctype: str, name: str) -> str:
         doctype=doctype,
         name=name,
     )
-
 
 
 def bulk_update_doc(doctype: str, filters: Any, data: Any, limit: int = 50) -> str:

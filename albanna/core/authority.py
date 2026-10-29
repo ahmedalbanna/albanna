@@ -269,8 +269,7 @@ class Authority:
         if not isinstance(doctype, str) or not doctype.strip():
             return Decision.deny(
                 "missing_doctype",
-                f"The tool '{spec.name}' needs a '{spec.doctype_arg}' naming the "
-                f"DocType to write.",
+                f"The tool '{spec.name}' needs a '{spec.doctype_arg}' naming the DocType to write.",
             )
 
         doctype = doctype.strip()
@@ -279,8 +278,7 @@ class Authority:
         if self._checker is None:
             return Decision.deny(
                 "no_permission_checker",
-                f"Cannot establish whether '{doctype}' may be "
-                f"{verb['infinitive']}ed.",
+                f"Cannot establish whether '{doctype}' may be {verb['infinitive']}ed.",
             )
 
         try:
@@ -294,8 +292,7 @@ class Authority:
             # open door.
             return Decision.deny(
                 "permission_check_failed",
-                f"Could not establish permission to {verb['infinitive']} "
-                f"'{doctype}'.",
+                f"Could not establish permission to {verb['infinitive']} '{doctype}'.",
             )
 
         if not allowed:

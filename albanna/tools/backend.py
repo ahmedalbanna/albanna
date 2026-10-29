@@ -118,7 +118,9 @@ class ErpnextBackend:
         """
         expected = (context.site or "").strip()
         if not expected:
-            raise RuntimeError(f"Refusing to run '{spec.name}': no site was resolved for this call.")
+            raise RuntimeError(
+                f"Refusing to run '{spec.name}': no site was resolved for this call."
+            )
 
         actual = str(getattr(frappe.local, "site", "") or "").strip()
         if actual != expected:
@@ -136,7 +138,9 @@ class ErpnextBackend:
         """
         user = (context.principal.user or "").strip()
         if not user:
-            raise RuntimeError(f"Refusing to run '{spec.name}': no user was resolved for this call.")
+            raise RuntimeError(
+                f"Refusing to run '{spec.name}': no user was resolved for this call."
+            )
 
         current = str(getattr(frappe.session, "user", "") or "").strip()
         if current != user:

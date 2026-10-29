@@ -254,7 +254,9 @@ def load_messages(conversation: str, limit: int = 20) -> list[Message]:
                     ToolCall(
                         id=str(item.get("id") or ""),
                         name=str(item.get("name") or ""),
-                        arguments=item.get("arguments") if isinstance(item.get("arguments"), dict) else {},
+                        arguments=item.get("arguments")
+                        if isinstance(item.get("arguments"), dict)
+                        else {},
                     )
                     for item in (raw if isinstance(raw, list) else [])
                     if isinstance(item, dict) and item.get("name")

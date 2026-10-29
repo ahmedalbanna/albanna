@@ -59,6 +59,8 @@ def _ensure_role() -> None:
     role.flags.ignore_permissions = True
     role.insert(ignore_if_duplicate=True)
     frappe.db.commit()
+
+
 #:
 #: Conservative on purpose: the chat is off for every account that does not
 #: hold the ``Albanna User`` role, and the model is a real provider with no

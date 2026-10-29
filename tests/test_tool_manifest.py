@@ -65,22 +65,28 @@ def test_the_implementation_accepts_exactly_what_the_schema_declares():
         required = set(spec.parameters.get("required") or [])
 
         # Everything the schema declares, the function must accept.
-        assert declared <= parameters, f"{name}: the schema declares {declared - parameters}, which the function does not accept"
+        assert declared <= parameters, (
+            f"{name}: the schema declares {declared - parameters}, which the function does not accept"
+        )
 
         # Everything the function *requires* must be in the schema, or the
         # model is asked for a document without being told what it needs.
         needed = {
             name_
             for name_, parameter in inspect.signature(function).parameters.items()
-            if parameter.default is inspect.Parameter.empty and parameter.kind
-            not in (parameter.VAR_POSITIONAL, parameter.VAR_KEYWORD)
+            if parameter.default is inspect.Parameter.empty
+            and parameter.kind not in (parameter.VAR_POSITIONAL, parameter.VAR_KEYWORD)
         }
-        assert needed <= declared, f"{name}: the function requires {needed - declared}, which the schema does not declare"
+        assert needed <= declared, (
+            f"{name}: the function requires {needed - declared}, which the schema does not declare"
+        )
         assert required <= declared
 
         # And the required ones must be the ones the function cannot do
         # without.
-        assert required <= needed, f"{name}: the schema requires {required - needed}, which the function can do without"
+        assert required <= needed, (
+            f"{name}: the schema requires {required - needed}, which the function can do without"
+        )
 
 
 def test_the_manifest_schemas_reject_a_missing_required_argument():
@@ -90,7 +96,9 @@ def test_the_manifest_schemas_reject_a_missing_required_argument():
 
 
 def test_the_manifest_schemas_accept_a_good_argument_set():
-    assert validate_arguments(TOOL_MANIFEST.get("get_doc"), {"doctype": "Item", "name": "X"}) is None
+    assert (
+        validate_arguments(TOOL_MANIFEST.get("get_doc"), {"doctype": "Item", "name": "X"}) is None
+    )
     assert validate_arguments(TOOL_MANIFEST.get("list_docs"), {"doctype": "Item"}) is None
     assert (
         validate_arguments(
@@ -182,8 +190,7 @@ def test_a_read_tool_is_not_a_write():
     for spec in TOOL_MANIFEST.all():
         if spec.tier == "read":
             assert spec.write_permission == "create", (
-                f"{spec.name} is a read, so the write permission it carries "
-                f"is never consulted"
+                f"{spec.name} is a read, so the write permission it carries is never consulted"
             )
 
 

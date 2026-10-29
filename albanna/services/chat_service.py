@@ -218,6 +218,7 @@ class TurnAudit:
     #: production avoids a DDL on ``tabAlbanna Chat Log``.
     round_ms: list[int] = field(default_factory=list)
 
+
 def turn_payload(outcome: TurnOutcome) -> dict[str, Any]:
     """The wire shape of a turn.
 
@@ -294,7 +295,10 @@ class ChatService:
 
         image_dropped = bool(request.image) and not (
             getattr(settings.provider, "supports_vision", False)
-            or (settings.fallback is not None and getattr(settings.fallback, "supports_vision", False))
+            or (
+                settings.fallback is not None
+                and getattr(settings.fallback, "supports_vision", False)
+            )
         )
 
         if not settings.enabled:
@@ -453,7 +457,12 @@ class ChatService:
                 written = append_messages(
                     conversation,
                     [
-                        {"role": "user", "content": question, "round_no": 0, "image_url": image_url},
+                        {
+                            "role": "user",
+                            "content": question,
+                            "round_no": 0,
+                            "image_url": image_url,
+                        },
                         {
                             "role": "assistant",
                             "content": reply,
@@ -700,16 +709,10 @@ class ChatService:
 
             header, payload = (image.split(",", 1) + [""])[:2]
             raw = base64.b64decode(payload, validate=True)
-            mime = (
-                header.split(";")[0].split(":")[-1].strip()
-                if header.startswith("data:")
-                else ""
-            )
+            mime = header.split(";")[0].split(":")[-1].strip() if header.startswith("data:") else ""
             ext = self.ATTACHABLE.get(mime)
             if ext is None:
-                logger.warning(
-                    "Rejected an attached file of unsupported type %r", mime or "(none)"
-                )
+                logger.warning("Rejected an attached file of unsupported type %r", mime or "(none)")
                 return ""
             filename = f"albanna-{frappe.generate_hash(length=8)}{ext}"
             folder = self._ensure_albanna_folder()
@@ -824,7 +827,9 @@ class ChatService:
                 # mistaken for a change.
                 with contextlib.suppress(Exception):
                     frappe.db.rollback()
-                result = replace(result, dry_run=True, content=result.content + "\n(dry run — not saved)")
+                result = replace(
+                    result, dry_run=True, content=result.content + "\n(dry run — not saved)"
+                )
             elif spec.mutating and result.ok:
                 # The audit row records the write in the same transaction
                 # as the change it made, so the two cannot disagree: a
@@ -1064,9 +1069,7 @@ class ChatService:
 
         recorded = merge_payload(row, changes)
         if not recorded:
-            logger.warning(
-                "The audit row %s did not record the write %s", row, call.name
-            )
+            logger.warning("The audit row %s did not record the write %s", row, call.name)
         return recorded
 
     def _explain_failure(
@@ -1196,9 +1199,7 @@ class ChatService:
             )
         if diagnosis.get("last_error"):
             parts.append(f"The last step that failed was: {diagnosis['last_error']}")
-        parts.append(
-            "One question is allowed this many steps, and this one used them all."
-        )
+        parts.append("One question is allowed this many steps, and this one used them all.")
         return " ".join(parts)
 
     # -- the audit row ----------------------------------------------------
@@ -1527,6 +1528,3 @@ def _created_name(call, result: ToolResult) -> str:
         return ""
     name = data.get("name")
     return str(name) if name else ""
-
-
-

@@ -172,9 +172,7 @@ def reader_message(exc: BaseException) -> str:
         # The composed message repeats the provider's label and names the
         # exception's class.  The reader needs to know that no model
         # answered, not how the failures were concatenated.
-        return _(
-            "No model provider answered. Check the provider settings, then try again."
-        )
+        return _("No model provider answered. Check the provider settings, then try again.")
 
     for error_class, message in READER_MESSAGES.items():
         if isinstance(exc, error_class):

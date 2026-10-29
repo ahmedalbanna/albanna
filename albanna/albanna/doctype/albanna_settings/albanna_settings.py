@@ -66,9 +66,9 @@ class AlbannaSettings(Document):
             stored = self._stored_value(fieldname)
             if stored is not None and not _is_mask(stored):
                 frappe.msgprint(
-                    frappe._(
-                        "The {0} was stored in plain text and has been encrypted."
-                    ).format(fieldname),
+                    frappe._("The {0} was stored in plain text and has been encrypted.").format(
+                        fieldname
+                    ),
                     indicator="green",
                     alert=True,
                 )
@@ -120,9 +120,9 @@ class AlbannaSettings(Document):
         if clamped != seconds:
             self.confirm_timeout = clamped
             frappe.msgprint(
-                frappe._("The approval wait is kept between {0} and {1} seconds; {2} was used.").format(
-                    int(MIN_TIMEOUT), int(MAX_TIMEOUT), clamped
-                ),
+                frappe._(
+                    "The approval wait is kept between {0} and {1} seconds; {2} was used."
+                ).format(int(MIN_TIMEOUT), int(MAX_TIMEOUT), clamped),
                 indicator="orange",
                 alert=True,
             )

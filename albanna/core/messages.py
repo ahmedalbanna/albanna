@@ -230,9 +230,7 @@ def sanitize(messages: list[Message]) -> list[Message]:
     turns with the same role are merged, and a tool result with no matching
     call in the history is dropped.
     """
-    known_call_ids = {
-        call.id for message in messages for call in message.tool_calls if call.id
-    }
+    known_call_ids = {call.id for message in messages for call in message.tool_calls if call.id}
 
     kept: list[Message] = []
     for message in messages:

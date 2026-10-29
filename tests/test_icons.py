@@ -43,9 +43,7 @@ EMOJI_BLOCKS = (
 
 #: The files that reach the reader's browser.
 SOURCES = sorted(
-    path
-    for path in FRONT_END.rglob("*")
-    if path.suffix in {".vue", ".mjs", ".js", ".css"}
+    path for path in FRONT_END.rglob("*") if path.suffix in {".vue", ".mjs", ".js", ".css"}
 )
 
 

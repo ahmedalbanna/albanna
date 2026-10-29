@@ -302,9 +302,7 @@ def merge_payload(row_name: str, changes: dict[str, Any]) -> bool:
 
     for key, value in changes.items():
         if key == APPROVALS_KEY:
-            payload[APPROVALS_KEY] = _merge_approvals(
-                payload.get(APPROVALS_KEY) or [], value or []
-            )
+            payload[APPROVALS_KEY] = _merge_approvals(payload.get(APPROVALS_KEY) or [], value or [])
         elif key == "calls":
             payload["calls"] = _append_calls(payload.get("calls") or [], value or [])
         else:
@@ -359,9 +357,7 @@ def _call_key(call: dict[str, Any]) -> tuple:
     records with the same key are the same call, whoever wrote them.
     """
     documents = call.get("documents") or []
-    names = tuple(
-        sorted(str(doc.get("name") or "") for doc in documents if isinstance(doc, dict))
-    )
+    names = tuple(sorted(str(doc.get("name") or "") for doc in documents if isinstance(doc, dict)))
     return (str(call.get("name") or ""), names, bool(call.get("ok")))
 
 

@@ -22,9 +22,7 @@ HELLO = "aGVsbG8="
 
 
 def _settings(image_support=True, max_image_size_kb=2048):
-    return SimpleNamespace(
-        image_support=image_support, max_image_size_kb=max_image_size_kb
-    )
+    return SimpleNamespace(image_support=image_support, max_image_size_kb=max_image_size_kb)
 
 
 def _data_url(mime="image/png", payload=HELLO):

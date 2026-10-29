@@ -80,6 +80,7 @@ def wait_seconds(configured) -> float:
         return DEFAULT_TIMEOUT
     return min(max(seconds, MIN_TIMEOUT), MAX_TIMEOUT)
 
+
 #: How long between two reads of the decision.  Short enough that the
 #: reader's approval is acted on within a tenth of a second, long enough
 #: that an idle turn does not hammer Redis.
@@ -194,7 +195,15 @@ def _preview_bulk(doctype: str, arguments: dict, data: dict) -> str:
 
 def _preview_title(doctype: str, data: dict) -> str:
     """The most identifying value in a new document's data."""
-    for key in ("customer_name", "supplier_name", "full_name", "item_name", "subject", "title", "name"):
+    for key in (
+        "customer_name",
+        "supplier_name",
+        "full_name",
+        "item_name",
+        "subject",
+        "title",
+        "name",
+    ):
         value = data.get(key)
         if value:
             return str(value)
@@ -323,7 +332,9 @@ def read_pending(request_id: str, user: str) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def record_decision(request_id: str, user: str, decision: str, ttl: float = DEFAULT_TIMEOUT) -> dict:
+def record_decision(
+    request_id: str, user: str, decision: str, ttl: float = DEFAULT_TIMEOUT
+) -> dict:
     """Record the reader's decision on a pending write — once.
 
     The first decision is the decision.  A second one is refused rather

@@ -59,8 +59,7 @@ def _candidates_for(names: list[str]) -> set[str]:
             continue
         try:
             rows = frappe.db.sql(
-                "select distinct parent from `tabHas Role` "
-                "where role = %s and parenttype = %s",
+                "select distinct parent from `tabHas Role` where role = %s and parenttype = %s",
                 (role, "User"),
                 as_dict=True,
             )

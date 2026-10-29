@@ -40,9 +40,7 @@ def test_a_402_naming_a_budget_is_a_budget_error(monkeypatch):
     def fake_post(*args, **kwargs):
         return FakeResponse(
             payload={
-                "error": {
-                    "message": "You requested up to 4096 tokens, but can only afford 2048."
-                }
+                "error": {"message": "You requested up to 4096 tokens, but can only afford 2048."}
             },
             status_code=402,
         )

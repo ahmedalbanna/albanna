@@ -65,11 +65,7 @@ def _scheduler_events() -> dict:
 def _crons_for(event: str) -> list[str]:
     """The cron expressions that schedule one event."""
     events = _scheduler_events()
-    return [
-        cron
-        for cron, scheduled in (events.get("cron") or {}).items()
-        if event in scheduled
-    ]
+    return [cron for cron, scheduled in (events.get("cron") or {}).items() if event in scheduled]
 
 
 def test_the_reaper_is_scheduled_by_cron():

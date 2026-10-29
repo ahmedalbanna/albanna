@@ -49,9 +49,7 @@ def interrupt_stale_chat_logs() -> None:
     so a turn that is merely slow is not mislabelled.
     """
     try:
-        cutoff = frappe.utils.add_to_date(
-            frappe.utils.now_datetime(), minutes=-STALE_AFTER_MINUTES
-        )
+        cutoff = frappe.utils.add_to_date(frappe.utils.now_datetime(), minutes=-STALE_AFTER_MINUTES)
         frappe.db.sql(
             """
             update `tabAlbanna Chat Log`

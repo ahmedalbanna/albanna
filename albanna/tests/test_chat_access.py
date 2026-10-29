@@ -208,7 +208,7 @@ class TestChatAccess(FrappeTestCase):
         self.assertTrue(can_use_chat())
 
     def test_a_blank_override_inherits_the_matrix(self):
-        """"Site default" is an absence of opinion, not a refusal."""
+        """ "Site default" is an absence of opinion, not a refusal."""
         self._set_policy(self.plain, "Site default")
         self._as(self.plain)
         self.assertFalse(can_use_chat())

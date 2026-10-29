@@ -130,7 +130,9 @@ class ToolRegistry:
         refused at call time — it is never mentioned.
         """
         disabled = set(names)
-        return self._build({spec.name: spec.enabled and spec.name not in disabled for spec in self._specs.values()})
+        return self._build(
+            {spec.name: spec.enabled and spec.name not in disabled for spec in self._specs.values()}
+        )
 
     def without_writes_out_of_reach(
         self,
@@ -166,8 +168,7 @@ class ToolRegistry:
         }
         return self._build(
             {
-                spec.name: (not spec.mutating)
-                or reachable.get(spec.write_permission, False)
+                spec.name: (not spec.mutating) or reachable.get(spec.write_permission, False)
                 for spec in self._specs.values()
             }
         )
@@ -288,9 +289,7 @@ LIST_DOCS = ToolSpec(
             },
             "order_by": {
                 "type": "string",
-                "description": (
-                    "Sort order, e.g. 'modified desc' or 'creation asc'."
-                ),
+                "description": ("Sort order, e.g. 'modified desc' or 'creation asc'."),
             },
         },
         "required": ["doctype"],
@@ -351,9 +350,7 @@ GET_DOCTYPE_META = ToolSpec(
             },
             "fields": {
                 "type": "array",
-                "description": (
-                    "Fieldnames to describe. Omit to get every field."
-                ),
+                "description": ("Fieldnames to describe. Omit to get every field."),
                 "items": {"type": "string"},
             },
         },
@@ -425,10 +422,7 @@ CREATE_DOC = ToolSpec(
         "properties": {
             "doctype": {
                 "type": "string",
-                "description": (
-                    "The DocType to create, e.g. 'Customer', 'Item', "
-                    "'Sales Order'."
-                ),
+                "description": ("The DocType to create, e.g. 'Customer', 'Item', 'Sales Order'."),
             },
             "data": {
                 "type": "object",
@@ -474,8 +468,7 @@ UPDATE_DOC = ToolSpec(
             "doctype": {
                 "type": "string",
                 "description": (
-                    "The DocType of the document to change, e.g. 'Customer', "
-                    "'Item', 'Sales Order'."
+                    "The DocType of the document to change, e.g. 'Customer', 'Item', 'Sales Order'."
                 ),
             },
             "name": {
@@ -638,10 +631,7 @@ DELETE_DOC = ToolSpec(
         "properties": {
             "doctype": {
                 "type": "string",
-                "description": (
-                    "The DocType of the document, e.g. 'Customer', 'Item', "
-                    "'ToDo'."
-                ),
+                "description": ("The DocType of the document, e.g. 'Customer', 'Item', 'ToDo'."),
             },
             "name": {
                 "type": "string",

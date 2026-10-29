@@ -76,6 +76,7 @@ def _affordable_tokens(detail: str) -> int | None:
 
 class OpenAIProvider:
     """Talks to any OpenAI-compatible ``/chat/completions`` endpoint."""
+
     #: The endpoint used when the settings leave the base URL
     #: blank.  It is here, and not only in the request code, because the
     #: settings have to know it too: a provider with no base URL is a
@@ -173,6 +174,7 @@ class OpenAIProvider:
             # at any moment, so the closing cannot be left to a
             # generator that nobody collects.
             response.close()
+
     def _open_stream(self, config: ProviderConfig, payload: dict[str, Any]) -> requests.Response:
         """Open the streaming request, mapping transport failures to errors."""
         try:
@@ -237,7 +239,12 @@ class OpenAIProvider:
             # The model cannot see images: drop them so the request is
             # valid, and the chat service reports the drop to the reader.
             wire_messages = [
-                Message(role=m.role, content=m.content, tool_calls=m.tool_calls, tool_call_id=m.tool_call_id).to_wire()
+                Message(
+                    role=m.role,
+                    content=m.content,
+                    tool_calls=m.tool_calls,
+                    tool_call_id=m.tool_call_id,
+                ).to_wire()
                 for m in messages
             ]
         payload: dict[str, Any] = {

@@ -72,6 +72,7 @@ def _prepare_image(image: str, settings: Any) -> tuple[str, str]:
         )
     return image, ""
 
+
 #: Where a finished turn is parked for the polling fallback.
 TURN_CACHE_KEY = "albanna:turn:{stream_id}"
 

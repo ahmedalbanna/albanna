@@ -170,22 +170,22 @@ def require_chat_access() -> None:
     if roles:
         frappe.throw(
             frappe._(
-                "You do not have access to the chat. Reading {0} is done by "
-                "these roles: {1}."
+                "You do not have access to the chat. Reading {0} is done by these roles: {1}."
             ).format(CHAT_DOCTYPE, ", ".join(roles)),
             frappe.PermissionError,
         )
 
     frappe.throw(
         frappe._(
-            "You do not have access to the chat. No role on this site holds "
-            "read on {0}."
+            "You do not have access to the chat. No role on this site holds read on {0}."
         ).format(CHAT_DOCTYPE),
         frappe.PermissionError,
     )
 
 
-def _doctypes_for_permission(user: str, ptype: str, exclude: tuple[str, ...] = ("Guest", "All")) -> list[str]:
+def _doctypes_for_permission(
+    user: str, ptype: str, exclude: tuple[str, ...] = ("Guest", "All")
+) -> list[str]:
     """The DocTypes this account holds *ptype* on.
 
     One query over the permission table, and it takes milliseconds.
@@ -382,9 +382,7 @@ class FrappePermissionChecker:
             import frappe.permissions
 
             return bool(
-                frappe.permissions.has_permission(
-                    str(doctype).strip(), ptype, print_logs=False
-                )
+                frappe.permissions.has_permission(str(doctype).strip(), ptype, print_logs=False)
             )
         except Exception:
             logger.exception("Permission check failed for %s (%s)", doctype, ptype)

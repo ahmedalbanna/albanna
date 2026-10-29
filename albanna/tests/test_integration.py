@@ -758,9 +758,7 @@ class TestSettings(FrappeTestCase):
             self.assertTrue(settings.provider.usable)
         finally:
             frappe.db.set_single_value("Albanna Settings", "base_url", original or "")
-            frappe.db.set_single_value(
-                "Albanna Settings", "provider_kind", original_kind or ""
-            )
+            frappe.db.set_single_value("Albanna Settings", "provider_kind", original_kind or "")
             frappe.db.commit()
             get_settings(refresh=True)
 
@@ -1067,7 +1065,9 @@ class TestConversationOrder(FrappeTestCase):
 
     def test_a_conversation_belongs_to_its_owner(self):
         conversation = ensure_conversation("Administrator", "test|owner|")
-        self.assertEqual(frappe.db.get_value("Albanna Conversation", conversation, "user"), "Administrator")
+        self.assertEqual(
+            frappe.db.get_value("Albanna Conversation", conversation, "user"), "Administrator"
+        )
 
     def test_the_index_keeps_going_up(self):
         conversation = ensure_conversation("Administrator", "test|index|")
@@ -1148,7 +1148,9 @@ class TestTranscriptWindow(FrappeTestCase):
 
         transcript = load_transcript(conversation, limit=100)
 
-        self.assertEqual([message["idx"] for message in transcript], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+        self.assertEqual(
+            [message["idx"] for message in transcript], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        )
 
     def test_the_window_says_how_many_the_conversation_holds(self):
         conversation = self._conversation(turns=4)
@@ -1606,7 +1608,9 @@ class TestTheUpdatePath(FrappeTestCase):
     def setUp(self):
         super().setUp()
         self.sales_user = self._make_user("albanna.test.update@albanna.dev", "Sales User")
-        self.accounts_user = self._make_user("albanna.test.update.accounts@albanna.dev", "Accounts User")
+        self.accounts_user = self._make_user(
+            "albanna.test.update.accounts@albanna.dev", "Accounts User"
+        )
         self.backend = ErpnextBackend()
 
     def _make_user(self, email: str, role: str) -> str:
@@ -1700,7 +1704,9 @@ class TestTheUpdatePath(FrappeTestCase):
         context = self._context(self.sales_user)
         customer = self._customer()
 
-        result = self._update(context, {"customer_details": "Albanna update test marker"}, name=customer)
+        result = self._update(
+            context, {"customer_details": "Albanna update test marker"}, name=customer
+        )
 
         self.assertTrue(result.ok, result.content)
         self.assertEqual(
@@ -1717,7 +1723,9 @@ class TestTheUpdatePath(FrappeTestCase):
         context = self._context(self.sales_user)
         customer = self._customer()
 
-        result = self._update(context, {"customer_details": "Albanna update test marker"}, name=customer)
+        result = self._update(
+            context, {"customer_details": "Albanna update test marker"}, name=customer
+        )
 
         self.assertTrue(result.ok, result.content)
         self.assertIn("customer_details", result.content)
@@ -1838,7 +1846,7 @@ class TestTheUpdatePath(FrappeTestCase):
         self.assertIn("unknown field", result.error.lower())
 
     def test_a_document_that_does_not_exist_is_reported_as_such(self):
-        """"Not found" and "not permitted" are different answers.
+        """ "Not found" and "not permitted" are different answers.
 
         Telling a reader that a document they named does not exist is
         useful.  Telling them they may not change a document that does not
@@ -1945,11 +1953,6 @@ class TestTheUpdatePath(FrappeTestCase):
         return invoice.name
 
 
-
-
-
-
-
 @pytest.mark.integration
 class TestWriteApproval(TestToolPath):
     """A write waits for the reader before it runs."""
@@ -1971,7 +1974,9 @@ class TestWriteApproval(TestToolPath):
             {
                 "doctype": "Albanna User Policy",
                 "user": email,
-                "confirm_writes_override": {"always": "Always", "never": "Never"}.get(override, override),
+                "confirm_writes_override": {"always": "Always", "never": "Never"}.get(
+                    override, override
+                ),
             }
         )
         doc.flags.ignore_permissions = True
@@ -2031,6 +2036,7 @@ class TestWriteApproval(TestToolPath):
                                 decision,
                                 ttl=60,
                             )
+
                 return emit
 
             from albanna.services.chat_service import ChatService, TurnRequest
@@ -2069,11 +2075,7 @@ class TestWriteApproval(TestToolPath):
         # wrote something it never wrote — the result is a sentence, and
         # the sentence is not the document.  This is the assertion that
         # would have caught it.
-        created = [
-            entry.get("created")
-            for entry in outcome.tool_calls
-            if entry.get("created")
-        ]
+        created = [entry.get("created") for entry in outcome.tool_calls if entry.get("created")]
         self.assertTrue(created, "the approved write must name what it created")
         for name in created:
             self.assertTrue(
@@ -2173,7 +2175,9 @@ class TestWriteApproval(TestToolPath):
 
         self._as(self.accounts_user)
         request_id = "one-shot-test"
-        record_pending(request_id, self.accounts_user, "create_doc", {"doctype": "Customer"}, ttl=60)
+        record_pending(
+            request_id, self.accounts_user, "create_doc", {"doctype": "Customer"}, ttl=60
+        )
 
         first = confirm_write(request_id=request_id, decision="approve")
         self.assertEqual(first["decision"], "approve")
@@ -2199,7 +2203,9 @@ class TestWriteApproval(TestToolPath):
 
         self._as(self.accounts_user)
         request_id = "other-account-test"
-        record_pending(request_id, self.accounts_user, "create_doc", {"doctype": "Customer"}, ttl=60)
+        record_pending(
+            request_id, self.accounts_user, "create_doc", {"doctype": "Customer"}, ttl=60
+        )
 
         self._as(other)
         with self.assertRaises(NoPendingWrite):
@@ -2470,9 +2476,7 @@ class TestWriteApproval(TestToolPath):
                     if event.get("event") != "confirm":
                         return
                     if capture is not None:
-                        raw = frappe.db.get_value(
-                            "Albanna Chat Log", service._audit_name, "tools"
-                        )
+                        raw = frappe.db.get_value("Albanna Chat Log", service._audit_name, "tools")
                         capture["payload"] = json.loads(raw or "{}")
                         capture["request_id"] = event["request_id"]
                     record_decision(event["request_id"], email, decision, ttl=60)
@@ -2665,6 +2669,7 @@ class TestDisabledToolsAreHonoured(FrappeTestCase):
         names = [s.name for s in tool_registry("Administrator").enabled()]
         self.assertIn("get_doc", names, "a tool that is not disabled must remain")
 
+
 @pytest.mark.integration
 class TestContextEndpoints(FrappeTestCase):
     """The list-page context endpoints: counts and nudges."""
@@ -2693,6 +2698,7 @@ class TestContextEndpoints(FrappeTestCase):
 
         result = nudge_for_page("NoSuchDoctype")
         self.assertIn("message", result)
+
 
 @pytest.mark.integration
 class TestTheSettingsHealAPlainTextKey(FrappeTestCase):
@@ -2726,9 +2732,7 @@ class TestTheSettingsHealAPlainTextKey(FrappeTestCase):
         """What the encrypted store holds, or None."""
         from frappe.utils.password import get_decrypted_password
 
-        return get_decrypted_password(
-            self.DOCTYPE, self.NAME, fieldname, raise_exception=False
-        )
+        return get_decrypted_password(self.DOCTYPE, self.NAME, fieldname, raise_exception=False)
 
     def _column(self, fieldname):
         return frappe.db.get_single_value(self.DOCTYPE, fieldname, cache=False)
@@ -2783,9 +2787,7 @@ class TestTheSettingsHealAPlainTextKey(FrappeTestCase):
         """A saved key must not be re-encrypted as the literal asterisks."""
         from frappe.utils.password import set_encrypted_password
 
-        set_encrypted_password(
-            self.DOCTYPE, self.NAME, "sk-a-real-key", "api_key"
-        )
+        set_encrypted_password(self.DOCTYPE, self.NAME, "sk-a-real-key", "api_key")
 
         doc = frappe.get_single(self.DOCTYPE)
         doc.api_key = "*" * 10
@@ -2801,9 +2803,7 @@ class TestTheSettingsHealAPlainTextKey(FrappeTestCase):
         """The whole point: the reader gets the key back, not the mask."""
         from frappe.utils.password import set_encrypted_password
 
-        set_encrypted_password(
-            self.DOCTYPE, self.NAME, "sk-read-back", "api_key"
-        )
+        set_encrypted_password(self.DOCTYPE, self.NAME, "sk-read-back", "api_key")
 
         settings = get_settings(refresh=True)
         self.assertEqual(settings.provider.api_key, "sk-read-back")
@@ -3327,7 +3327,13 @@ class TestTurnDurability(FrappeTestCase):
                     message=Message(
                         role="assistant",
                         content="",
-                        tool_calls=[ToolCall(id="c1", name="create_doc", arguments={"doctype": "ToDo", "data": {"description": "x"}})],
+                        tool_calls=[
+                            ToolCall(
+                                id="c1",
+                                name="create_doc",
+                                arguments={"doctype": "ToDo", "data": {"description": "x"}},
+                            )
+                        ],
                     ),
                     provider="openai",
                     model="a-model",

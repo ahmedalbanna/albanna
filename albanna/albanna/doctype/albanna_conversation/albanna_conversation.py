@@ -30,7 +30,11 @@ class AlbannaConversation(Document):
         # The owner is not editable.  A conversation that could be handed to
         # another user would be a conversation whose history that user can
         # read, and the permission hooks key off this field.
-        if not self.is_new() and self.get_doc_before_save() and self.get_doc_before_save().user != self.user:
+        if (
+            not self.is_new()
+            and self.get_doc_before_save()
+            and self.get_doc_before_save().user != self.user
+        ):
             frappe.throw(
                 frappe._("A conversation's owner cannot be changed."),
                 frappe.PermissionError,

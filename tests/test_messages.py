@@ -24,7 +24,9 @@ from albanna.core.messages import (
 
 
 def test_message_round_trip():
-    original = assistant("hello", (ToolCall(id="call_1", name="list_docs", arguments={"doctype": "Item"}),))
+    original = assistant(
+        "hello", (ToolCall(id="call_1", name="list_docs", arguments={"doctype": "Item"}),)
+    )
     parsed = Message.from_wire(original.to_wire())
     assert parsed.role == "assistant"
     assert parsed.content == "hello"
