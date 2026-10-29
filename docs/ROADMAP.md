@@ -549,6 +549,21 @@ confirmed and says that it did not run.  Nothing in that test is a
 hand-written row; the synthetic rows are still there for the edges, but
 the middle is the app.
 
+*Deployed on production, 2026-10-29, following `docs/DEPLOYMENT.md`:*
+backup (`20261029_121723`) → build → maintenance mode on → migrate (33 s)
+→ maintenance mode off → every worker set restarted (systemd web + three
+workers, supervisor two workers + the scheduler).  Verified after it: the
+site answers `200`; the site reports `albanna 0.2.6`; the recording was
+proved on the live site again — a turn that proposed a `create_doc` held
+its approval in the row before the reader was asked, the decision
+endpoint wrote the answer *and its timestamp* into the row
+(`"decision": "reject", "decided_at": "2026-10-29 12:21:05"`), the
+turn's own final payload still held the approval — which is the write
+that the lock now covers — and nothing was created.  In the browser the
+panel opens and a question asked in it answers with its sources and its
+links; the Error Log holds no row since the deploy; the worker error log
+is empty.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
