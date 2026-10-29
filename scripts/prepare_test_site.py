@@ -193,7 +193,7 @@ def ensure_customer() -> str:
     return customer.name
 
 
-def report_customer_meta() -> None:
+def report_customer_meta(label: str) -> None:
     """Say what the site's Customer looks like.
 
     The read-only test reads the Customer's fields, so what they are
@@ -201,12 +201,38 @@ def report_customer_meta() -> None:
     read-only field is saying something about the site, and it should
     say it out loud — a gate that quietly stops testing a thing is
     worse than a gate that fails.
+
+    The label says *when* the report was taken, because the two
+    reports are not the same: a site that has just had ERPNext
+    installed has a cached Customer meta from before ERPNext's fields
+    were synced, and the cache is not invalidated by the sync.  So the
+    first report may show a Customer with no fields at all — which is
+    a stale cache, not a site — and the second, taken after the cache
+    is cleared, shows the real one.
     """
     meta = frappe.get_meta("Customer")
     read_only = [df.fieldname for df in meta.fields if getattr(df, "read_only", 0)]
-    _say(f"the customer has {len(meta.fields)} fields, {len(read_only)} of them read-only")
+    _say(
+        f"the customer has {len(meta.fields)} fields, {len(read_only)} of them read-only ({label})"
+    )
     if read_only:
         _say(f"the read-only fields are: {', '.join(read_only)}")
+
+
+def clear_customer_meta_cache() -> None:
+    """Throw away the site's cached Customer meta.
+
+    A fresh site has one stale entry: the Customer meta as it was
+    before ERPNext synced its fields.  The framework caches a doctype's
+    meta when the doctype is created and does not invalidate that entry
+    when the fields arrive, so a read that happens before the cache is
+    cleared sees a Customer with no fields — and the read-only test,
+    which reads the Customer's fields, skips itself and says so.
+
+    That is what happened in the CI, and it was the whole of the skip:
+    the site's Customer was fine, and the cache was not.
+    """
+    frappe.clear_cache(doctype="Customer")
 
 
 def ensure_read_only_probe() -> None:
@@ -332,8 +358,10 @@ def main() -> int:
         ensure_defaults(company)
         item = ensure_item()
         customer = ensure_customer()
+        report_customer_meta("before the probe")
         ensure_read_only_probe()
-        report_customer_meta()
+        clear_customer_meta_cache()
+        report_customer_meta("after the probe and a cache clear")
         ensure_submitted_invoice(company, customer, item)
         ensure_provider_key()
         frappe.db.commit()

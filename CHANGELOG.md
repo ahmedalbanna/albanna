@@ -25,6 +25,14 @@ prepared for them.
   happens to lock, which is ERPNext's business and may change — and
   the key is one that is not a real key.  The CI's site suite now runs
   **174 tests with no skips**, and so does the bench's.
+- **The read-only test skipped itself on a site whose Customer was
+  fine.**  The framework caches a doctype's meta when the doctype is
+  created and does not invalidate that entry when the fields arrive, so
+  a fresh site holds a Customer meta from before ERPNext synced its
+  fields — and the test, which reads the Customer's fields, saw none.
+  The site's preparation now clears that cache on purpose and says out
+  loud what the Customer looks like before and after, so the next
+  person is not left with the same question.
 - **The repository's CI had been red on every commit since 0.2.1**, for
   three separate reasons: the linter was installed without a version and
   judged the code against rules the app never agreed to; the pre-commit
