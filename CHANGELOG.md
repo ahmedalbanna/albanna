@@ -28,6 +28,15 @@ the live site.
   that is linked but may only read the threads it owns, hide the mail in
   two different ways — and the second one looks like a correctly set-up
   account.  A reader told the wrong one fixes the wrong thing.
+- **And the first live run of that fix said something false to the
+  Administrator.**  The note told it *"this account has no email account
+  configured, so email Communications are not included in this list"*,
+  but the framework exempts a System Manager from the mailbox rule and
+  the Administrator reads every thread.  A false statement about a
+  privileged reader is worse than no statement, because it is believed.
+  A reader the framework exempts is now told nothing, and the exemption
+  is read from the framework's own condition rather than from a copy of
+  its list of exempt roles.  A test pins it.
 - **Three of the CI's site tests skipped themselves, and a skipped test
   is a test that quietly stopped testing anything.**  One needed a
   submitted Sales Invoice, one needed a field on Customer the form will

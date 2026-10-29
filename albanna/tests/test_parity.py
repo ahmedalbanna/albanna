@@ -326,6 +326,18 @@ class TestPermissionParity(AlbannaTestCase):
         self.assertTrue(result.ok, result.content)
         self.assertNotIn("email thread could not be read", result.content)
 
+        # And a reader the framework exempts from the rule — a System
+        # Manager — reads every thread, so it must not be told that it
+        # cannot read the mail.  This case was found by a live run: the
+        # note said "no email account configured" to an Administrator who
+        # reads everything, and a false statement about a privileged
+        # reader is the kind that gets believed.
+        self._unlink_mailbox("Administrator")
+        result = self._call("list_docs", {"doctype": "Communication"}, "Administrator")
+        self.assertTrue(result.ok, result.content)
+        self.assertNotIn("email thread could not be read", result.content)
+        self.assertNotIn("no email account configured", result.content)
+
     def _mailbox(self) -> str:
         """An email account of this test's own."""
         name = "Albanna Parity Mailbox"

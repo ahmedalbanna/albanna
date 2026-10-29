@@ -425,11 +425,32 @@ def _communication_limitation(user: str) -> str:
     note that only knew about the link would stay silent exactly when
     it should have spoken.
 
-    Frappe's own rule decides this rather than a copy of it: if the
-    framework changes what it restricts, the app follows.  And when the
-    app cannot tell, it says nothing: a wrong limitation is worse than
-    no limitation.
+    And a third case is not a limitation at all: a reader the framework
+    exempts from the rule (a System Manager, a Super Email User) reads
+    every thread, so a note that only knew about the link would tell
+    *them* that they could not read the mail — a false statement about
+    a privileged reader, and the worst kind of note, because it is
+    believed.
+
+    So the framework's own rule decides all of it rather than a copy of
+    it: if the framework changes what it restricts, the app follows.
+    And when the app cannot tell, it says nothing: a wrong limitation
+    is worse than no limitation.
     """
+    try:
+        from frappe.core.doctype.communication.communication import (
+            get_permission_query_conditions_for_communication,
+        )
+
+        # The framework's own condition for this reader.  ``None`` means
+        # the reader is exempt from the mailbox rule entirely: they see
+        # every thread, and there is nothing to say.
+        condition = get_permission_query_conditions_for_communication(user)
+        if condition is None:
+            return ""
+    except Exception:
+        return ""
+
     try:
         linked = bool(
             frappe.get_all(

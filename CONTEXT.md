@@ -1825,6 +1825,14 @@ site made for it.
 
 The site suite now runs 176 tests with no skips, in the CI and on the bench.
 
+The domain suite has one skip, and it is a legitimate one rather than a
+hole: the test that compares the *installed* systemd unit with the
+committed one has nothing to compare on a machine that installs no unit —
+a CI runner — and it runs on the bench, where the unit is installed.  A
+skip whose premise does not exist on that machine is not the same thing
+as a skip that hid a missing fixture, and treating them alike is how a
+real skip gets waved through.
+
 ### 85. The app names which limitation hid the threads, and says it where the model can hear it
 
 The limitation on the customer email threads is the framework's rule and the
@@ -1852,6 +1860,24 @@ And it says it in the tool's **hints**, because that is the channel the
 tool's answer carries to the model.  The hints are how the other tools
 speak to the reader — "say this as a fact about the account, and do not
 apologise for it" — and a limitation belongs with them.
+
+Putting the note where the model can hear it turned the note from a
+promise into a statement, and a statement has to be true for everybody
+who hears it.  The first live run of the fixed code said to the
+Administrator: *"this account has no email account configured, so email
+Communications are not included in this list"* — which was false, because
+the framework exempts a System Manager from the mailbox rule entirely and
+the Administrator reads every thread.  A false statement about a
+privileged reader is worse than no statement at all, because it is
+believed and it is wrong.
+
+So the note has a third case, and the third case is *not a note*: a
+reader the framework exempts is told nothing, because there is nothing to
+tell them.  The exemption is read from the framework's own condition
+rather than from a copy of the framework's list of exempt roles — the
+same rule decides what is hidden and what is said, so the two cannot
+drift apart.  And the case is pinned by a test, because a live run found
+it and a live run is not a test.
 
 ## What is deliberately not here
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.
