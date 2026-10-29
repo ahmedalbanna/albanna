@@ -72,7 +72,7 @@ def ensure_company() -> str:
         create_fiscal_year_and_company,
     )
 
-    year = frappe.utils.nowdate().year
+    year = frappe.utils.getdate().year
     create_fiscal_year_and_company(
         {
             "company_name": COMPANY_NAME,
