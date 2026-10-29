@@ -142,32 +142,33 @@ jobs:
           bench get-app $GITHUB_WORKSPACE
           bench setup requirements --dev
           bench pip install pytest==9.1.1
-          bench new-site --db-root-password root --admin-password admin test_site
-          bench --site test_site install-app erpnext
-          bench --site test_site install-app albanna
         env:
           CI: "Yes"
 
       - name: Give the site the data the suite reads
         working-directory: /home/runner/frappe-bench
-        # The site suite reads a Company, an Item and a Customer, and it
-        # finds the customer's group through the customer.  ERPNext's
-        # demo setup clones the first company it finds — and a site that
-        # has just had ERPNext installed has none, so the demo setup
-        # fails before it makes anything.
+        # The site is built by the app's own script — the same one that
+        # builds the site the bench's own gate runs against — so there is
+        # one way to make a site the suite can run on, and not two that
+        # can drift apart.
         #
-        # So the site is given the smallest set the suite needs, by the
-        # app's own script, which uses ERPNext's own operations where
-        # they exist: the setup wizard's masters, its company and fiscal
-        # year, and its price lists and defaults.  What it does not get
-        # is a submitted Sales Invoice: the two tests that need one skip
-        # themselves, and say so, on a site that has none.
+        # The script does not use ERPNext's demo data, and that is
+        # deliberate: the demo setup clones the first company it finds,
+        # and a site that has just had ERPNext installed has none, so
+        # the demo setup fails before it makes anything.  What the site
+        # gets instead is the smallest set the suite reads, made with
+        # ERPNext's own operations where they exist, plus the three
+        # things the suite needs and cannot make for itself: a submitted
+        # Sales Invoice, a field the form will not let a person change,
+        # and a provider key that is not a real key.  Without them three
+        # of the tests skip themselves, and a skipped test is a test
+        # that quietly stopped testing anything.
         run: |
-          ./env/bin/python apps/albanna/scripts/prepare_test_site.py --site test_site
-          bench --site test_site set-config allow_tests true
+          ./apps/albanna/scripts/rebuild_test_site.sh --site test_site --skip-tests
           bench build
         env:
           CI: "Yes"
+          DB_ROOT_PASSWORD: root
 
       - name: The domain suite
         # The domain suite needs no site, but five of its modules import

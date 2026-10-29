@@ -65,7 +65,7 @@ from albanna.services.conversation_service import (
     transcript_window,
 )
 from albanna.services.settings_service import get_settings
-from albanna.tests.base import AlbannaTestCase
+from albanna.tests.base import READ_ONLY_PROBE, AlbannaTestCase
 from albanna.tools.backend import ErpnextBackend
 from albanna.tools.base import ToolContext
 from albanna.tools.erpnext import PROTECTED_FIELDS
@@ -1840,9 +1840,14 @@ class TestTheUpdatePath(AlbannaTestCase):
         if not read_only:
             self.skipTest("this site has no read-only field on Customer")
 
+        # The site's preparation makes a field whose only job is to be
+        # read-only, so this test does not depend on which fields
+        # ERPNext happens to lock.
+        field = READ_ONLY_PROBE if READ_ONLY_PROBE in read_only else read_only[0]
+
         context = self._context(self.sales_user)
 
-        result = self._update(context, {read_only[0]: "something"})
+        result = self._update(context, {field: "something"})
 
         self.assertFalse(result.ok)
         self.assertIn("read-only", result.error.lower())

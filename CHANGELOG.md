@@ -8,11 +8,23 @@ and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 No change to what the app does.  This is the pass that looked at the
-feature drafts an agent had opened against the repository, and the
-gates those drafts were measured against.
+feature drafts an agent had opened against the repository, the gates
+those drafts were measured against, and the three tests that had been
+skipping themselves in the CI because the site they ran on was not
+prepared for them.
 
 ### Fixed
 
+- **Three of the CI's site tests skipped themselves, and a skipped test
+  is a test that quietly stopped testing anything.**  One needed a
+  submitted Sales Invoice, one needed a field on Customer the form will
+  not let a person change, and one needed a provider key to redact.
+  The site's preparation now makes all three: the invoice is submitted
+  the way an operator's would be, the read-only field is a *custom*
+  field — so the test no longer depends on which fields ERPNext
+  happens to lock, which is ERPNext's business and may change — and
+  the key is one that is not a real key.  The CI's site suite now runs
+  **174 tests with no skips**, and so does the bench's.
 - **The repository's CI had been red on every commit since 0.2.1**, for
   three separate reasons: the linter was installed without a version and
   judged the code against rules the app never agreed to; the pre-commit
@@ -25,6 +37,7 @@ gates those drafts were measured against.
   linters and the seventeen front-end suites, and the server job —
   203 domain tests and 174 site tests, with the three site tests that
   need a submitted Sales Invoice skipping themselves and saying so.
+  (Those three no longer skip: see above.)
 - **The site suite only passed in one order.**  A test that acts as
   somebody left the session as that person, and the framework does not
   put it back — so the next test started as somebody it did not choose.
@@ -50,6 +63,21 @@ gates those drafts were measured against.
   this repository's file.  A new test holds the unit systemd actually
   runs to the committed one.
 
+### Added
+
+- **`scripts/rebuild_test_site.sh` — a site the suite can run on, made
+  from scratch.**  The bench's gate ran against a database dump of
+  production taken by hand, on a day, and left to drift; the CI built
+  its own site a second way.  A clone nobody can rebuild is a clone
+  that quietly stops being what it was, and two ways to build a site
+  are two ways to disagree about one.  The script makes the site
+  instead: a new site, ERPNext, the app, the data the suite reads, and
+  the suite itself.  It refuses to drop a site that already exists
+  without `--replace`, and it takes the database root password from
+  the environment or from the host's credentials file — never from its
+  own text.  The CI uses it now, so the CI's site and the bench's are
+  made the same way.
+
 ### Changed
 
 - **The code is formatted by the formatter the gate pins.**  Thirty-one
@@ -61,7 +89,11 @@ gates those drafts were measured against.
   using ERPNext's own setup operations — its masters, its company and
   fiscal year, its price lists and defaults — and one service item and
   one customer.  ERPNext's demo setup cannot be used: it clones the
-  first company it finds, and a fresh site has none.
+  first company it finds, and a fresh site has none.  It now also makes
+  the three things the suite needs and cannot make for itself (see
+  above), and it says out loud what the site's Customer looks like, so
+  a site that cannot run the read-only test says so instead of
+  skipping quietly.
 - **The feature drafts were reviewed, and the verdict is written down**
   — `docs/ROADMAP.md` §11, and the design decision behind it in
   `CONTEXT.md` (80).  One idea survived: compacting a long thread's

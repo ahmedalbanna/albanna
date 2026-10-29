@@ -609,6 +609,36 @@ the released v16 line*; what the bench says is *the app works against
 what is deployed*, and that is the site suite run against the deployed
 fork, before a deploy (CONTEXT 81).
 
+**And then the skips were closed, because a skipped test is a test that
+quietly stopped testing anything.**  Three of the CI's site tests had
+been skipping themselves: one needed a submitted Sales Invoice, one
+needed a field on Customer the form will not let a person change, and
+one needed a provider key to redact.  The site's preparation now makes
+all three, and the read-only field it makes is a *custom* field — the
+test should not depend on which fields ERPNext happens to lock, which
+is ERPNext's business and may change under the suite.  The CI's site
+suite now runs **174 tests with no skips**, and so does the bench's.
+
+**And the site the suite runs on is now made, not inherited.**  The
+bench's gate ran against a database dump of production taken by hand,
+on a day, and left to drift; the CI built its own site a second way.
+A clone nobody can rebuild is a clone that quietly stops being what it
+was, and two ways to build a site are two ways to disagree about one.
+`scripts/rebuild_test_site.sh` makes the site instead — a new site,
+ERPNext, the app, the data the suite reads, the suite itself — and the
+CI uses it now, so the CI's site and the bench's are made the same
+way.  It refuses to drop a site that already exists without
+`--replace`: a site is somebody's work.  It was proved by building a
+site from nothing on this host and running the suite on it: 174 tests,
+no skips.
+
+One thing this did **not** do, on purpose: it did not rebuild
+`test.localhost` itself.  The ERP-Next MCP backend's own test suite
+runs against that site, and what it needs from it is not written down
+anywhere; replacing a site's data on the strength of a guess is the
+kind of thing that breaks somebody else's gate.  The script is there
+when that is decided.
+
 **And three defects the bench could not see, found while repairing the
 gates:**
 

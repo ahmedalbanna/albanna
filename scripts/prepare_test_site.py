@@ -17,18 +17,29 @@ operations where they exist:
 * the price lists, and the defaults that name the company and its
   currency, from the setup wizard's defaults;
 * one item and one customer, which the demo data would otherwise have
-  provided.
+  provided;
+* one submitted Sales Invoice, because two of the suite's tests read
+  one and skip themselves when the site has none;
+* one field on Customer that the form will not let a person change,
+  because the suite's test for that refusal needs one to refuse;
+* a provider key that is not a real key, because the suite's test for
+  the key's redaction needs a key to redact.
 
 Every step is skipped when the site already has what it needs, so the
 script is safe to run against a site twice, and against a site that
-already carries ERPNext's demo data.
+already carries ERPNext's demo data.  Nothing it writes overwrites
+what is already there: a site with a real provider key keeps it.
 
     cd /path/to/frappe-bench && ./env/bin/python apps/albanna/scripts/prepare_test_site.py --site test_site
 
-What the site suite does *not* get from this script: a submitted
-Sales Invoice.  Two of its tests need one and skip themselves when
-there is none.  On a site that carries ERPNext's demo data — the test
-site, and production — they run.
+Why the invoice and the read-only field are made *here* rather than in
+the tests: the suite deliberately does not submit an invoice of its own
+— the submission runs whatever hooks the site's apps put on it, and a
+test that depends on the app set is a test that breaks when the app set
+changes — and it deliberately does not depend on ERPNext's field
+layout, which is ERPNext's business and may change.  A gate that skips
+the tests it cannot set up is a gate that quietly stops testing them,
+so the site is prepared instead and the tests run.
 """
 
 from __future__ import annotations
@@ -39,12 +50,31 @@ import sys
 
 import frappe
 
+
+def _read_only_probe_name() -> str:
+    """The name of the read-only probe field, from the suite itself."""
+    from albanna.tests.base import READ_ONLY_PROBE
+
+    return READ_ONLY_PROBE
+
+
 COUNTRY = "United States"
 CURRENCY = "USD"
 COMPANY_NAME = "Albanna Test Company"
 COMPANY_ABBR = "ATC"
 ITEM_CODE = "Albanna Test Item"
 CUSTOMER_NAME = "Albanna Test Customer"
+
+#: The field the read-only test refuses to write.  It is a custom field
+#: so that the test does not depend on ERPNext's Customer layout, which
+#: is ERPNext's business and may change under the suite.  The name
+#: comes from the suite itself, so the two cannot drift apart.
+READ_ONLY_PROBE = _read_only_probe_name()
+
+#: A provider key that is not a real key.  The redaction test needs a
+#: key to redact; it never calls the provider, and a real key has no
+#: business being written to a site by a preparation script.
+NOT_A_REAL_KEY = "sk-albanna-site-preparation-not-a-real-key"
 
 
 def _say(message: str) -> None:
@@ -163,6 +193,101 @@ def ensure_customer() -> str:
     return customer.name
 
 
+def report_customer_meta() -> None:
+    """Say what the site's Customer looks like.
+
+    The read-only test reads the Customer's fields, so what they are
+    decides whether that test runs.  A site that says it has no
+    read-only field is saying something about the site, and it should
+    say it out loud — a gate that quietly stops testing a thing is
+    worse than a gate that fails.
+    """
+    meta = frappe.get_meta("Customer")
+    read_only = [df.fieldname for df in meta.fields if getattr(df, "read_only", 0)]
+    _say(f"the customer has {len(meta.fields)} fields, {len(read_only)} of them read-only")
+    if read_only:
+        _say(f"the read-only fields are: {', '.join(read_only)}")
+
+
+def ensure_read_only_probe() -> None:
+    """A field on Customer that the form will not let a person change.
+
+    The suite has a test for the app's refusal to write a read-only
+    field — the chat must not be a way around a field the form locks.
+    The test needs one to refuse.  ERPNext's Customer has five, but
+    that is ERPNext's layout: a test that depends on it skips itself
+    the day ERPNext moves them, and a skipped test is a test that
+    quietly stopped testing anything.  So the site is given a field
+    whose only job is to be read-only.
+    """
+    if frappe.db.exists("Custom Field", {"dt": "Customer", "fieldname": READ_ONLY_PROBE}):
+        _say("the read-only probe is already there")
+        return
+
+    field = frappe.new_doc("Custom Field")
+    field.dt = "Customer"
+    field.fieldname = READ_ONLY_PROBE
+    field.label = "Albanna Read Only Probe"
+    field.fieldtype = "Data"
+    field.read_only = 1
+    field.insert(ignore_permissions=True)
+    _say("the read-only probe is in place")
+
+
+def ensure_submitted_invoice(company: str, customer: str, item: str) -> None:
+    """One submitted Sales Invoice, so the tests that read one do not skip.
+
+    The suite reads a submitted invoice; it does not submit one, because
+    the submission runs whatever hooks the site's apps put on it.  Here
+    the invoice is made by the site's preparation, and the tests read
+    it.
+    """
+    if frappe.db.exists("Sales Invoice", {"docstatus": 1}):
+        _say("a submitted sales invoice is already there")
+        return
+
+    currency = frappe.db.get_value("Company", company, "default_currency") or CURRENCY
+    price_list = (
+        frappe.db.get_single_value("Selling Settings", "selling_price_list")
+        or frappe.db.get_value("Price List", {"selling": 1}, "name")
+        or "Standard Selling"
+    )
+
+    invoice = frappe.new_doc("Sales Invoice")
+    invoice.company = company
+    invoice.currency = currency
+    invoice.customer = customer
+    invoice.selling_price_list = price_list
+    invoice.append("items", {"item_code": item, "qty": 1, "rate": 10})
+    invoice.insert(ignore_permissions=True)
+    invoice.submit()
+    _say(f"the sales invoice {invoice.name} is submitted")
+
+
+def ensure_provider_key() -> None:
+    """A provider key for the redaction test to redact.
+
+    The test checks that a key the provider quotes in its refusal never
+    reaches the chat log.  It needs a key to quote, and it never calls
+    the provider — so a key that is not a real key is enough, and a
+    real key has no business being written here.  A site that already
+    has a key keeps it.
+    """
+    from frappe.utils.password import get_decrypted_password
+
+    existing = get_decrypted_password(
+        "Albanna Settings", "Albanna Settings", "api_key", raise_exception=False
+    )
+    if existing:
+        _say("the site already has a provider key")
+        return
+
+    from frappe.utils.password import set_encrypted_password
+
+    set_encrypted_password("Albanna Settings", "Albanna Settings", NOT_A_REAL_KEY, "api_key")
+    _say("a provider key that is not a real key is in place")
+
+
 def _sites_path(explicit: str = "") -> str:
     """Where the sites live.
 
@@ -205,8 +330,12 @@ def main() -> int:
         ensure_standard_masters()
         company = ensure_company()
         ensure_defaults(company)
-        ensure_item()
-        ensure_customer()
+        item = ensure_item()
+        customer = ensure_customer()
+        ensure_read_only_probe()
+        report_customer_meta()
+        ensure_submitted_invoice(company, customer, item)
+        ensure_provider_key()
         frappe.db.commit()
     except Exception:
         frappe.db.rollback()

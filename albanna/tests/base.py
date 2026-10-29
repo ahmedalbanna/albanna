@@ -22,6 +22,19 @@ from __future__ import annotations
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
+#: A field on Customer that the form will not let a person change.
+#:
+#: The suite has a test for the app's refusal to write a read-only
+#: field.  It needs one to refuse, and ERPNext's Customer happens to
+#: lock five — but that is ERPNext's layout, and a test that depends
+#: on it skips itself the day ERPNext moves them.  So the site's
+#: preparation makes a field whose only job is to be read-only, and
+#: this is its name.
+#:
+#: The script that makes it lives in ``scripts/prepare_test_site.py``
+#: and reads the name from here, so the two cannot drift apart.
+READ_ONLY_PROBE = "albanna_read_only_probe"
+
 
 class AlbannaTestCase(FrappeTestCase):
     """A test case that leaves the session as it found it."""
