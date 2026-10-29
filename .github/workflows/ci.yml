@@ -161,8 +161,9 @@ jobs:
         # the demo's transactions are posted in.
         run: |
           YEAR=$(date +%Y)
+          ARGS=$(printf '{"company_name": "Albanna Test Company", "company_abbr": "ATC", "currency": "USD", "country": "United States", "fy_start_date": "%s-01-01", "fy_end_date": "%s-12-31"}' "$YEAR" "$YEAR")
           bench --site test_site execute erpnext.setup.setup_wizard.operations.company_setup.create_fiscal_year_and_company \
-            --kwargs "{\"company_name\": \"Albanna Test Company\", \"company_abbr\": \"ATC\", \"currency\": \"USD\", \"country\": \"United States\", \"fy_start_date\": \"$YEAR-01-01\", \"fy_end_date\": \"$YEAR-12-31\"}"
+            --args "[$ARGS]"
           bench --site test_site execute erpnext.setup.demo.setup_demo_data
           bench --site test_site set-config allow_tests true
           bench build
