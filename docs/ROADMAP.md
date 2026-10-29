@@ -565,6 +565,46 @@ panel opens and a question asked in it answers with its sources and its
 links; the Error Log holds no row since the deploy; the worker error log
 is empty.
 
+### In this pass (unreleased — the gates, and the drafts that were reviewed)
+
+Nothing here changes what the app does.  Two things happened: the
+repository's own gates were repaired, and the feature drafts an agent
+had opened against it were reviewed and closed (the verdict is §11, and
+the design decision behind it is CONTEXT 80).
+
+**The gates had been red on every commit since 0.2.1** — an unpinned
+linter, a pre-commit configuration that listed the same hook twice, and
+a server job that installed Frappe v15 against an app written for v16.
+Each reason was found by running the job and reading its log, and each
+is fixed: the tools are pinned, the duplicate hook is gone, the
+formatter is part of the CI job, the complexity bar is explicit, and
+the server job installs the framework the app is written against.
+
+**Three real defects came out of the same pass**, all of them things
+the local bench could not see:
+
+* `conversation_service.py` used `Any` in an annotation without
+  importing it — harmless at runtime, and a `NameError` waiting for
+  the day it was not;
+* the package said its licence twice — the SPDX expression and the
+  deprecated classifier — and a modern flit refused to build it;
+* the CI's domain suite had never been runnable where it was, because
+  five of its modules import the framework.
+
+*Deployed on production, 2026-10-29, following `docs/DEPLOYMENT.md`:*
+the scheduled backup was fresh (`last_ok` 2026-10-29 03:47) → build
+(the bundles came out byte-identical, which is what a change of
+whitespace should do) → **no migrate**: the migrate syncs the schema,
+the scheduler's job types and the fixtures, and none of those changed,
+so there was no lock to take and no window to ask for → every worker
+set restarted (systemd web + three workers, supervisor two workers and
+the scheduler).  Verified after it: the site answers `200`; the assets
+answer `200` under their hashed name; a live turn answered "12" for
+*How many Customers are there?* — two rounds, 10.8 s, model
+`sensenova-6.8-flash-lite`, one `list_docs` call that found the twelve
+customers and named them; the ledger row `11i036me5b` says `ok`, one
+tool call, 10 802 ms; the Error Log holds no row since the deploy.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
@@ -795,6 +835,13 @@ What this pass did **not** do, on purpose:
   while the DocType ships 8192.  Eight turns came back *truncated*, six of
   them on `stepfun-ai/step-5-preview` — a model that spends its budget
   thinking.  The setting was lowered at some point and nothing says why.
+* It did not make the CI test the framework production runs.  Production
+  runs Albanna's own fork of Frappe — `16.0.0-dev`, on Python 3.12 — and
+  that fork is not public, so the CI installs upstream Frappe `v16.0.0` on
+  Python 3.14 instead.  The gate therefore tests the released line, not
+  the deployed one.  It is the closest public thing to the deployed one,
+  and it is not the same thing: the site suite run against the deployed
+  fork is the gate that speaks for what is deployed.
 
 ## 11. The drafts that were reviewed (2026-10-29)
 
