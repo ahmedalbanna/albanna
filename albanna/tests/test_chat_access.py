@@ -38,6 +38,10 @@ ALLOWED = "chat-access-allowed@example.com"
 #: Holds a role that does not carry the chat, so the matrix refuses it.
 PLAIN = "chat-access-plain@example.com"
 
+#: Runs the site, and is not otherwise anything: the role that used to
+#: carry the chat by accident, and must not carry it now.
+MANAGER = "chat-access-manager@example.com"
+
 
 @pytest.mark.integration
 class TestChatAccess(FrappeTestCase):
@@ -47,6 +51,7 @@ class TestChatAccess(FrappeTestCase):
         super().setUp()
         self.allowed = self._make_user(ALLOWED, "Albanna User")
         self.plain = self._make_user(PLAIN, "Sales User")
+        self.manager = self._make_user(MANAGER, "System Manager")
         self._clear_policies()
 
     def tearDown(self):
@@ -55,8 +60,8 @@ class TestChatAccess(FrappeTestCase):
 
     # -- the helpers -------------------------------------------------------
 
-    def _make_user(self, email: str, role: str) -> str:
-        """A user with exactly *role* — no more, so the matrix is known."""
+    def _make_user(self, email: str, *roles: str) -> str:
+        """A user with exactly *roles* — no more, so the matrix is known."""
         if not frappe.db.exists("User", email):
             user = frappe.new_doc("User")
             user.email = email
@@ -72,7 +77,7 @@ class TestChatAccess(FrappeTestCase):
 
         user = frappe.get_doc("User", email)
         user.flags.ignore_permissions = True
-        user.add_roles(role)
+        user.add_roles(*roles)
         return email
 
     def _clear_policies(self) -> None:
@@ -138,6 +143,50 @@ class TestChatAccess(FrappeTestCase):
         allowed, reason = chat_access()
         self.assertFalse(allowed)
         self.assertEqual(reason, "permission")
+
+    def test_a_system_manager_is_refused_the_chat(self):
+        """Running the site is not holding the door open.
+
+        The shipped matrix names one role, and a System Manager who does
+        not hold it is a caller like any other.  The site owner asked for
+        a single door, and the door is a role, not a title.
+        """
+        self._as(self.manager)
+
+        self.assertFalse(can_use_chat())
+        allowed, reason = chat_access()
+        self.assertFalse(allowed)
+        self.assertEqual(reason, "permission")
+
+    def test_a_system_manager_who_takes_the_chat_role_may_chat(self):
+        """The role is the door, whoever holds it."""
+        self._make_user(self.manager, "System Manager", "Albanna User")
+        self._as(self.manager)
+
+        self.assertTrue(can_use_chat())
+
+    # -- the transcript ----------------------------------------------------
+
+    def test_a_system_manager_does_not_read_another_readers_conversation(self):
+        """Running the site is not reading somebody's chat.
+
+        Decision 13 says a System Manager is not exempt from the ownership
+        check.  The permission hooks said the opposite for the list view,
+        and the two halves of the app disagreed.
+        """
+        from albanna.services.conversation_service import has_permission
+
+        doc = frappe._dict(doctype="Albanna Conversation", user=self.allowed)
+        self.assertFalse(has_permission(doc, user=self.manager))
+        self.assertTrue(has_permission(doc, user=self.allowed))
+
+    def test_the_list_of_conversations_is_the_readers_own(self):
+        """The list view is filtered to the reader, whoever the reader is."""
+        from albanna.services.conversation_service import get_permission_query_conditions
+
+        condition = get_permission_query_conditions(user=self.manager)
+        self.assertIn("tabAlbanna Conversation", condition)
+        self.assertIn(self.manager, condition)
 
     # -- the policy --------------------------------------------------------
 

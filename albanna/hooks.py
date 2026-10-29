@@ -5,11 +5,11 @@ assets that load on every Desk page, the permission hooks that keep one
 user's transcripts out of another's reach, the installer, and the scheduler.
 
 The permission hooks at the bottom are the load-bearing part.  ``Albanna
-Conversation`` grants ``All`` read/write — that grant is what makes the
-chat-access gate reachable for a user who is not a System Manager — and the
-hooks registered here are what keep one user's chat history private.  Widening
-the doctype without narrowing these hooks widens it for everyone, so both are
-edited together or not at all.
+Conversation`` grants the ``Albanna User`` role read/write, and that row
+is the chat-access gate: an account may chat when it holds that role.
+The hooks registered here are what keep one user's chat history private
+from another's.  Widening the doctype without narrowing these hooks
+widens it for everyone, so both are edited together or not at all.
 """
 
 app_name = "albanna"
@@ -48,9 +48,10 @@ app_include_js = [
 app_include_css = ["albanna-side-chat.bundle.css"]
 
 # Chat history is private to the user who created it.  The doctype grants
-# ``All`` read/write deliberately — without that grant a non-manager user
-# could not reach the chat endpoints at all — and these two hooks are what
-# make "All" mean "the owner, and a System Manager".
+# the ``Albanna User`` role read/write, every row ``if_owner``, and these
+# two hooks are what make that mean "the owner" — a reader who is not the
+# owner sees nothing of it.  A System Manager is not exempt: running the
+# site and reading somebody's chat are different acts.
 permission_query_conditions = {
     "Albanna Conversation": "albanna.services.conversation_service.get_permission_query_conditions",
 }

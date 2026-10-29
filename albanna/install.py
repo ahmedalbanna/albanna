@@ -5,9 +5,10 @@ exists, so that a freshly installed app is usable rather than failing on a
 missing document the first time somebody opens the widget.
 
 The defaults it writes are deliberately conservative: the chat is off for
-everybody except System Managers, and the model is a real provider with no
-key, so the first thing an administrator sees when they open the settings
-is a clear "this needs a key" rather than a widget that silently fails.
+every account that does not hold the ``Albanna User`` role, and the model
+is a real provider with no key, so the first thing an administrator sees
+when they open the settings is a clear "this needs a key" rather than a
+widget that silently fails.
 """
 
 import frappe
@@ -59,10 +60,10 @@ def _ensure_role() -> None:
     role.insert(ignore_if_duplicate=True)
     frappe.db.commit()
 #:
-#: Conservative on purpose: the chat is off for everybody except System
-#: Managers, and the model is a real provider with no key, so the first
-#: thing an administrator sees when they open the settings is a clear "this
-#: needs a key" rather than a widget that silently fails.
+#: Conservative on purpose: the chat is off for every account that does not
+#: hold the ``Albanna User`` role, and the model is a real provider with no
+#: key, so the first thing an administrator sees when they open the settings
+#: is a clear "this needs a key" rather than a widget that silently fails.
 #:
 #: The provider is the one this deployment uses.  It is an OpenAI-compatible
 #: endpoint, so the same settings work against any other.

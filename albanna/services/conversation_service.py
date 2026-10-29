@@ -745,19 +745,31 @@ def trim_conversation(conversation: str, keep: int = MAX_STORED_MESSAGES) -> Non
 
 
 def get_permission_query_conditions(user: str | None = None) -> str:
-    """Restrict list views and reports to the caller's own conversations."""
+    """Restrict list views and reports to the caller's own conversations.
+
+    A System Manager is not exempt.  Running the site and reading
+    somebody's chat are different acts, and the chat is the reader's:
+    the audit trail lives in ``Albanna Chat Log``, which the operator can
+    read.  The Administrator is exempt, because for the site owner the
+    list of conversations is a fact about their own site.
+    """
     user = user or frappe.session.user
-    if user == "Administrator" or "System Manager" in frappe.get_roles():
+    if user == "Administrator":
         return ""
 
     return f"`tabAlbanna Conversation`.`user` = {frappe.db.escape(user)}"
 
 
 def has_permission(doc, user: str | None = None, ptype: str = "read") -> bool:
-    """Allow the owner, and a System Manager, and nobody else."""
+    """Allow the owner, and nobody else.
+
+    A System Manager is not exempt here either, for the reason decision
+    13 gives: an administrator reading somebody else's chat is a
+    different act from an administrator running the site.
+    """
     user = user or frappe.session.user
 
-    if user == "Administrator" or "System Manager" in frappe.get_roles():
+    if user == "Administrator":
         return True
 
     owner = doc.get("user") if hasattr(doc, "get") else getattr(doc, "user", "")

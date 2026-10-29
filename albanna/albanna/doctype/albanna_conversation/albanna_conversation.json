@@ -32,7 +32,7 @@
             "label": "Pinned"
         },
         {
-            "description": "Who owns this conversation. Only this user, and a System Manager, can read it.",
+            "description": "Who owns this conversation. Only this user can read it.",
             "fieldname": "user",
             "fieldtype": "Link",
             "in_list_view": 1,
@@ -88,17 +88,6 @@
     "name": "Albanna Conversation",
     "owner": "Administrator",
     "permissions": [
-        {
-            "delete": 1,
-            "email": 1,
-            "export": 1,
-            "print": 1,
-            "read": 1,
-            "report": 1,
-            "role": "System Manager",
-            "share": 1,
-            "write": 1
-        },
         {
             "create": 1,
             "delete": 1,

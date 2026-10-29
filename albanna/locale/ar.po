@@ -640,8 +640,8 @@ msgstr "المستخدم"
 msgid "Which tool round this turn belongs to. Round 0 is the first."
 msgstr "جولة الأدوات التي ينتمي إليها هذا الدور. الجولة صفر هي الأولى."
 
-msgid "Who owns this conversation. Only this user, and a System Manager, can read it."
-msgstr "من يملك هذه المحادثة. لا يقرؤها إلا هذا المستخدم ومدير النظام."
+msgid "Who owns this conversation. Only this user can read it."
+msgstr "من يملك هذه المحادثة. لا يقرؤها إلا هذا المستخدم."
 
 msgid "Who produced this turn."
 msgstr "من أنتج هذا الدور."

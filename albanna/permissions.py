@@ -84,9 +84,10 @@ def can_use_chat() -> bool:
     User`` role and an operator widens or narrows with the permission
     matrix.
 
-    A System Manager is not a special case here, and does not need to be:
-    the shipped rows grant them read outright, so the framework's own
-    answer already covers them.  A special case would be a second rule
+    A System Manager is not a special case here.  The shipped rows name
+    ``Albanna User`` and nothing else, so a System Manager who wants the
+    chat takes that role like anybody else — and one who does not take it
+    is refused like anybody else.  A special case would be a second rule
     that could disagree with the matrix, and the matrix is the one the
     operator can see.
 
