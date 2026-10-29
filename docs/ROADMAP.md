@@ -151,6 +151,7 @@ Each item names the trigger that would make it worth doing.
 | 6 | **Per-ticket conversation memory** — the thread is per page today; an agent moving between the Issue and the Customer gets two threads | the agent reads the same customer across records | M | an agent actually asks about a customer in two threads in one sitting |
 | 7 | **The assistant says what it could not read** — when a tool is refused for a missing right, the answer says so, instead of leaving the reader to believe the silence was the whole truth | on a support seat the customer thread was invisible (no Communication read) and the answer paraphrased a date field instead of the customer's words | S | immediately — the refusals are already counted, they are only not said out loud |
 | 8 | **An approval always ends in a sentence** — after the reader approves, the panel says what happened to the write: it ran, it was refused, or the turn died before it could run.  The audit row is written before the turn can die | found live: a turn that needed an approval hit the ten-minute wall, and the reader was left with the one question that matters — "did it happen?" — and no answer | S | immediately — this is a trust hole, not a feature |
+| 9 | **A long thread remembers** — the model sees only the last `history_limit` messages of a thread (50 by default), so a ticket that has been worked on for days loses its earlier decisions, and it loses them silently | the thread belongs to the page, and a support ticket stays open for longer than fifty messages | M | an agent's thread passes the history limit and the answer forgets what was already decided |
 
 ---
 
@@ -739,6 +740,7 @@ a day later, and after a deploy?**
 | The MCP control-plane backup covers PostgreSQL, Redis and the secrets, and says so — **the MariaDB site databases were not covered at all**; the only copy of production's data was a manual dump on the same disk as the database it protected | a backup on the same disk protects against a mistake, not against the disk | a daily, verified backup of `albanna.localhost` and `frappe.localhost`, with the runbook next to the artifacts |
 | Frappe deletes a site's own backups after **24 hours** by default, which would have deleted the safety net taken before a migration a day later | the dump taken before *that* migration is not the same thing as yesterday's scheduled dump | `keep_backups_for_hours` is 336 (a fortnight) on both covered sites |
 | The deployment knowledge was in one operator's head — which units to restart, that `bench restart` does nothing here, that the migrate locks the site | the next deploy is inevitable, and the discovery work is not something to repeat | `docs/DEPLOYMENT.md`, written from what the 0.2.1 deployment needed |
+| **The repository's own gates were red on every commit** — the CI installed `ruff` without a version and judged the code against rules this app never agreed to, the pre-commit configuration listed the same hook twice (so pre-commit refused to run at all), and the server job installed Frappe v15 while the app targets v16 | a gate that is red is not a gate; the local suites were the only ones that had been running, so "CI is green" was a claim nobody had checked | the tools are pinned (ruff 0.16.1, pytest, `frappe-bench`, Node 24), the duplicate hook is gone, the formatter is part of the CI job, the complexity bar is explicit, and the server job runs against v16 — the branch the code targets |
 
 Two of these were found by *running* the thing rather than reading it: the
 backup script's first run against both live sites caught a missing
@@ -793,3 +795,48 @@ What this pass did **not** do, on purpose:
   while the DocType ships 8192.  Eight turns came back *truncated*, six of
   them on `stepfun-ai/step-5-preview` — a model that spends its budget
   thinking.  The setting was lowered at some point and nothing says why.
+
+## 11. The drafts that were reviewed (2026-10-29)
+
+An agent opened a pull request against this repository with a set of
+feature drafts — PR #1, *"feat: compact session + MCP client + missing
+feature drafts"* — and a second branch carrying a four-week plan built
+on it.  Nothing in either was wired into the chat loop, so nothing
+shipped by accident; the question was what to do with the ideas.
+
+**The verdict, item by item.**
+
+| What was proposed | What was decided | Why |
+|---|---|---|
+| An MCP client: a registry of external servers, a tool search, a dispatch | **Rejected** | §4 already says the tool set is fixed by design, and an external tool cannot have permission parity, an approval card, an undo, or a ledger row (CONTEXT 80) |
+| The approval gate generalised to external tool calls | **Rejected** | it only means anything with the line above it; the ERPNext-side equivalent was closed in 0.2.5 and 0.2.6 |
+| Compact context: summarise the older turns, keep the recent ones | **Kept as a candidate — §2 item 9** | the model sees only the last `history_limit` messages (50 by default), so a long thread forgets without saying so; it waits for its trigger, like items 1 and 6 |
+| Uploading documents other than images and PDFs, and extracting their text | **Deferred to v3** | §3 already lists "File drop → analyse" as v3 work that needs a named customer |
+| Inline actions: edit a message, branch a thread, regenerate any answer | **Deferred** | not support-shaped; §6's first question is whether it makes the hero journey better, and branching fights the one-thread-per-page decision |
+| More providers: Gemini, Azure OpenAI, Bedrock | **Deferred** | §10's finding is *which* model, not which provider; the latency is a pinning decision, not an adapter |
+| Real per-model pricing in the ledger | **Already shipped** | `price_per_million` and `core/cost.py` have been there since v1; the gap is that the setting is zero on production, which is the operator's job and not a feature |
+
+**What the audit in the draft got wrong.**  It claimed PDF text
+extraction was in place: a PDF can be attached, but nothing reads it —
+§3 says so.  It listed per-model pricing as missing when the ledger
+has had it since v1.  It called the escalation to a human partial,
+when the road to a handover that fits support is short (item 1).
+
+**What was wrong with the draft itself.**  It was built on a base from
+before 0.2.5, so "the tests still pass" was an assumption; it carried
+no tests at all; one of its files sat at the root of the repository,
+outside the package, where it would never have been imported or
+installed; its registry was a module-level global, which each worker
+would have held separately; its tool calls had no permission check, no
+approval, no ledger row and no secret redaction, so wiring it up would
+have broken the promise the panel makes; its MCP transport was a bare
+JSON-RPC POST with no session negotiation, so it would not have spoken
+to a real server; and it carried an install script for a
+reverse-engineering toolchain, which is the agent's business and not
+the product's.
+
+**What became of the branches.**  PR #1 was closed, unmerged, with this
+verdict on it.  The branch with the four-week plan was deleted; its one
+surviving idea is §2 item 9.  The stale local branch was deleted: it
+was the per-user policy as it stood before 0.2.3 and 0.2.4 reworked
+it, and nothing in it was left to keep.

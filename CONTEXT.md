@@ -1668,6 +1668,44 @@ that never ran is the worst of both — the reader believes it happened, and
 it did not — so it is named as exactly that, by document, rather than left
 to the reader's imagination.
 
+### 80. The tool set stays fixed, because an external tool cannot have permission parity
+
+Every tool this app can run is a tool this app implements against
+Frappe.  The manifest in `core/tools.py` declares what each one needs,
+`core/authority.py` asks Frappe whether *this* caller may do it, and
+the write goes through the framework's own permission engine.  That is
+the moat — the assistant can never reach past the person it is
+answering — and it is not a property of the model or the prompt.  It is
+a property of **where the write happens**.
+
+An external tool cannot have that, and it is worth being exact about
+why, because the answer is not "it would be more work":
+
+* **There is nobody to ask.**  Whether the caller may read a document
+  and change it is Frappe's answer, for this account, on this site.  A
+  foreign server cannot be asked what this account may do, so an
+  external tool would have to trust the model's judgement of who is
+  asking — which is the one thing the moat is made of.
+* **There is no diff to show.**  The approval card shows what the write
+  would change, before it changes it.  That is only possible because
+  the app can read the document the same way the reader can.
+* **There is no undo.**  Undo is the same operation in the opposite
+  direction, on the same record (decision 50).  An external tool's
+  reversal is whatever its author says it is, and the app cannot check.
+* **There is no row.**  The write and the ledger's record of it share a
+  transaction, so they cannot disagree (decision 79).  A write that
+  happens somewhere else cannot share a transaction with anything
+  here.
+
+So the tool set stays fixed: eleven tools, a manifest and an adapter,
+checked against each other by a test.  An external tool is an
+integration project, not a chat feature, and when one is wanted it
+arrives with its own approval, its own ledger and its own undo — not as
+a row in a registry inside this one.
+
+The drafts that proposed it were reviewed and closed on 2026-10-29; the
+verdict, item by item, is in `docs/ROADMAP.md` §11.
+
 ## What is deliberately not here
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.
   It is a good feature and it is a separate one; v1 has no retrieval.

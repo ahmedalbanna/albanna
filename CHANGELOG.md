@@ -5,6 +5,40 @@ All notable changes to Albanna are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+No change to what the app does.  This is the pass that looked at the
+feature drafts an agent had opened against the repository, and the
+gates those drafts were measured against.
+
+### Fixed
+
+- **The repository's CI had been red on every commit since 0.2.1**, for
+  three separate reasons: the linter was installed without a version and
+  judged the code against rules the app never agreed to; the pre-commit
+  configuration listed the same hook twice, so pre-commit refused to run
+  at all; and the server job installed Frappe v15 while the app targets
+  v16.  The tools are now pinned (ruff 0.16.1, pytest, `frappe-bench`,
+  Node 24), the duplicate hook is gone, the formatter is part of the CI
+  job, and the server job runs against the branch the code targets.
+- **A name that was never imported.**  `conversation_service.py` used
+  `Any` in an annotation without importing it — harmless at runtime, and
+  a `NameError` waiting for the day it was not.
+- **The complexity bar is explicit.**  Ruff's default of 10 fired on
+  functions this app wrote on purpose; it sits at 15 now, the worst
+  function that exists.
+
+### Changed
+
+- **The code is formatted by the formatter the gate pins.**  Thirty-one
+  Python files and thirteen JavaScript and Vue files were laid out by
+  hand; the diff is wrapping and punctuation only.  The domain suite
+  (202 tests), the site suite and the seventeen JavaScript suites pass.
+- **The feature drafts were reviewed, and the verdict is written down**
+  — `docs/ROADMAP.md` §11, and the design decision behind it in
+  `CONTEXT.md` (80).  One idea survived: compacting a long thread's
+  older turns, which is §2 item 9 and waits for its trigger.
+
 ## [0.2.6] — 2026-10-29
 
 What an independent review of 0.2.5 found.  The claim did not change;
