@@ -124,6 +124,11 @@ timings are carried inside the existing `tools` field as
 `{"calls": [...], "round_ms": [...]}` rather than a new column, so no
 DDL is needed on production.
 
+The reaper that does the re-labelling runs every five minutes, and the
+cadence is tied to the cutoff it uses — a job that runs less often than
+the window it closes leaves the row saying `running` about a turn that
+finished by dying.  The tie is asserted in `tests/test_scheduler.py`.
+
 ### 4c. The stored answer is corrected when the undo is carried out
 
 The undo took the change back, and the panel said so — while the stored
@@ -1374,6 +1379,40 @@ answer that still says what it did.
 This was found by the live run, not by a test: a turn on production
 created a ToDo, the ToDo was undone, and the answer kept the link.  The
 dead link is visible in the screenshot and deliberate.
+
+### 74. The reaper's cadence is part of what it says
+
+The task that re-labels a dead turn's row was scheduled once a day, and
+the row it re-labels stops being true a quarter of an hour after the
+turn died.  So the ledger spent up to a day saying `running` about a turn
+that had finished by dying — the one thing the ledger exists not to do.
+
+Nothing about that failure is loud.  The job ran, the job succeeded, the
+row was eventually relabelled, and the numbers were right the whole time
+because `usage_summary` excludes `running` rows whether they are stale or
+not.  Only the row's own text was wrong, and only for a while — which is
+exactly the class of defect that survives to production.
+
+So the cutoff moved out of the SQL and into a named constant, and the
+cadence is now a cron expression that runs every five minutes.  The two
+numbers are tied by a test: the gap between two runs of the reaper must
+be no longer than the window the reaper closes.  A test that only checked
+the cutoff would have passed while the ledger lied for a day, because the
+cutoff was never the thing that was wrong.
+
+The scheduling is a cron expression rather than one of the framework's
+named buckets because the buckets are `hourly` at best, and an hour of
+`running` is still an hour of a lie.  The framework accepts a cron
+expression as a key of the `cron` section of `scheduler_events`, so the
+cadence can be as fine as the truth needs.
+
+Five minutes rather than ten, because a cron slot does not fire at the
+minute it names: the scheduler wakes on its own tick — four minutes by
+default — and enqueues whatever is due, so a job fires on the first tick
+after its slot.  The real gap is the cron gap plus up to one tick, and
+that is the number the test asserts against, because that is the number
+the ledger feels.  Ten minutes plus a tick leaves one minute of margin
+against a fifteen-minute window; five leaves nine.
 
 ## What is deliberately not here
 

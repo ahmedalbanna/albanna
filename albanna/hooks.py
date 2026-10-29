@@ -68,9 +68,21 @@ after_migrate = "albanna.install.after_migrate"
 # Chat logs are an audit trail, not a business record.  They are pruned by age
 # so the table does not grow without bound; conversations are kept until the
 # user deletes them.
+#
+# The reaper runs every five minutes, and not once a day, because of what it
+# is for.  A turn that dies leaves its row saying 'running', and the row
+# stops being true a quarter of an hour after the turn died.  A reaper that
+# runs once a day leaves the ledger saying 'running' about a turn from
+# yesterday — which is the one thing the ledger must not do.  The cadence is
+# tied to the cutoff the task uses, and the tie is asserted in
+# ``tests/test_scheduler.py``.
 scheduler_events = {
     "daily": [
         "albanna.tasks.prune_chat_logs",
-        "albanna.tasks.interrupt_stale_chat_logs",
     ],
+    "cron": {
+        "*/5 * * * *": [
+            "albanna.tasks.interrupt_stale_chat_logs",
+        ],
+    },
 }

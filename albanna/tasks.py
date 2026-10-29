@@ -1,6 +1,6 @@
 """Scheduled jobs.
 
-One job: prune the chat log.
+Two jobs: prune the chat log, and interrupt the rows of turns that died.
 
 The log is an audit trail, not a business record, and it grows by a row per
 turn.  Conversations are *not* pruned — a user's chat history is theirs,
@@ -16,6 +16,18 @@ logger = logging.getLogger(__name__)
 
 #: How long a chat log row is kept.
 LOG_RETENTION_DAYS = 90
+
+#: How long a turn's row may say 'running' after the turn has stopped
+#: being alive.  A turn cannot outlive its own timeout, and the reader
+#: hears about a dead turn a little after that; fifteen minutes is
+#: generous enough not to mislabel a slow turn, and short enough that a
+#: row does not go on saying 'running' for a day.
+#:
+#: The reaper's *cadence* is tied to this number, and the tie is asserted
+#: in ``tests/test_scheduler.py``: a job that runs less often than the
+#: window it is meant to close tells the ledger a lie for as long as the
+#: gap between its runs.
+STALE_AFTER_MINUTES = 15
 
 
 def prune_chat_logs() -> None:
@@ -37,7 +49,9 @@ def interrupt_stale_chat_logs() -> None:
     so a turn that is merely slow is not mislabelled.
     """
     try:
-        cutoff = frappe.utils.add_to_date(frappe.utils.now_datetime(), minutes=-15)
+        cutoff = frappe.utils.add_to_date(
+            frappe.utils.now_datetime(), minutes=-STALE_AFTER_MINUTES
+        )
         frappe.db.sql(
             """
             update `tabAlbanna Chat Log`
