@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   linters:
-    name: Linters and unit tests
+    name: Linters and the front-end suites
     runs-on: ubuntu-latest
     steps:
       - name: Clone
@@ -36,7 +36,7 @@ jobs:
           # The tools are pinned, and they are the versions the code was
           # written and tested against.  An unpinned gate is a gate that
           # changes its mind when a new release lands.
-          pip install ruff==0.16.1 pytest==9.1.1 requests==2.34.2 jsonschema==4.26.0
+          pip install ruff==0.16.1 requests==2.34.2 jsonschema==4.26.0
 
       - name: Ruff
         run: |
@@ -48,40 +48,15 @@ jobs:
         # missing entry is a silent English fallback for Arabic readers.
         run: python scripts/check_translations.py
 
-      - name: The domain suite
-        # No bench, no site, no network: the domain is pure, and these are
-        # the tests that must stay fast.
-        run: pytest -q
-
-      - name: The markdown renderer
-        run: node albanna/public/js/side-chat/markdown.test.mjs
-
-      - name: The turn transport
-        run: node albanna/public/js/side-chat/turn.test.mjs
-
-      - name: The turn's state machine
-        run: node albanna/public/js/side-chat/state.test.mjs
-
-      - name: The Desk's route event
-        run: node albanna/public/js/side-chat/page.test.mjs
-
-      - name: What the widget thinks the page is
-        run: node albanna/public/js/side-chat/context.test.mjs
-
-      - name: The questions the reader has asked
-        run: node albanna/public/js/side-chat/recent-questions.test.mjs
-
-      - name: The rule of a retry
-        run: node albanna/public/js/side-chat/retry.test.mjs
-
-      - name: The transcript window
-        run: node albanna/public/js/side-chat/window.test.mjs
-
-      - name: The turn that is in flight
-        run: node albanna/public/js/side-chat/inflight.test.mjs
-
-      - name: The conversations, grouped by day
-        run: node albanna/public/js/side-chat/groups.test.mjs
+      - name: The front-end suites
+        # Every suite, each file on its own — the rule is that a suite
+        # fails alone, so the file that failed is the file that says
+        # why.  A new suite is picked up by this loop without anyone
+        # having to remember to list it here.
+        run: |
+          for suite in albanna/public/js/side-chat/*.test.mjs; do
+            node "$suite"
+          done
 
   server:
     name: Server tests
@@ -114,7 +89,10 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          # Frappe v16 asks for Python 3.14; the bench's own venv is
+          # created with this interpreter, so the framework and the
+          # tests run on the same one.
+          python-version: "3.14"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -136,20 +114,20 @@ jobs:
       - name: Setup the bench
         run: |
           pip install frappe-bench==5.29.0
-          bench init --skip-redis-config-generation --skip-assets --python "$(which python)" ~/frappe-bench
+          # The framework is pinned to a tag, not to a branch: a tag does
+          # not move, so the gate tests the same framework tomorrow as it
+          # tests today.  v16 is the line this app is written against.
+          bench init --frappe-branch v16.0.0 --skip-redis-config-generation --skip-assets --python "$(which python)" ~/frappe-bench
           mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL character_set_server = 'utf8mb4'"
           mariadb --host 127.0.0.1 --port 3306 -u root -proot -e "SET GLOBAL collation_server = 'utf8mb4_unicode_ci'"
 
       - name: Install
         working-directory: /home/runner/frappe-bench
-        # The app is written against Frappe v16, so the gate runs against
-        # v16.  A gate that runs against an older release than the code
-        # targets is a gate that passes for the wrong reason.
         run: |
-          bench get-app --branch develop frappe
-          bench get-app --branch develop erpnext
+          bench get-app --branch v16.0.0 erpnext
           bench get-app $GITHUB_WORKSPACE
           bench setup requirements --dev
+          bench pip install pytest==9.1.1
           bench new-site --db-root-password root --admin-password admin test_site
           bench --site test_site install-app erpnext
           bench --site test_site install-app albanna
@@ -168,6 +146,14 @@ jobs:
           bench build
         env:
           CI: "Yes"
+
+      - name: The domain suite
+        # The domain suite needs no site, but five of its modules import
+        # the framework — so it runs here, in the bench's own virtualenv,
+        # which is the same command a developer runs: `../../env/bin/python
+        # -m pytest`.
+        working-directory: /home/runner/frappe-bench/apps/albanna
+        run: ../env/bin/python -m pytest
 
       - name: Run the server tests
         working-directory: /home/runner/frappe-bench
