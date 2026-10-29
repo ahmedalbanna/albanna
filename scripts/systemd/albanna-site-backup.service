@@ -1,0 +1,20 @@
+[Unit]
+Description=Back up the bench's site databases (MariaDB dumps, files, site config)
+After=network.target mariadb.service
+# No Requires=: a backup must not drag the site down with it, and a stopped
+# database is a failed run (the artifacts are not declared good), not a
+# reason to refuse to try.
+
+[Service]
+Type=oneshot
+User=frappe
+Group=frappe
+# The script lives in the app's repository, so the version that runs is the
+# version that is committed and pushed — no installed copy to drift.
+ExecStart=/home/frappe/frappe-bench/apps/albanna/scripts/site_backup.sh
+# The script owns its own locking; a hung run must not be killed mid-dump,
+# which would produce a truncated file that looks like a dump.
+TimeoutStartSec=30min
+
+[Install]
+WantedBy=multi-user.target

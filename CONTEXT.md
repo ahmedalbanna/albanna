@@ -1414,6 +1414,42 @@ that is the number the test asserts against, because that is the number
 the ledger feels.  Ten minutes plus a tick leaves one minute of margin
 against a fifteen-minute window; five leaves nine.
 
+### 75. The backup that protects this app's data lives in this app's repository, and it is verified before it is believed
+
+The MCP control-plane backup covers PostgreSQL, Redis and the file-based
+secrets, and its own header says plainly that the MariaDB site databases
+are not included.  Until 2026-10-29 the only copy of production's data was
+a manual dump sitting on the same disk as the database it protected, which
+protects against a bad edit and not against the disk.
+
+Two decisions, both about where the truth lives.
+
+**The script is in the repository, not installed on the host.**  The MCP
+backup's script lives only in `/usr/local/bin`, which means the version
+that runs is the version nobody can read from a commit.  This app's script
+is in `scripts/site_backup.sh` and the systemd unit runs *that path*, so
+there is one copy of it and no installed copy to drift.  The unit files
+live beside it, in `scripts/systemd/`, and are installed with `install`.
+
+**A dump is not good until it has been checked.**  A file that exists is
+not a backup, and the checks are the point: the gzip stream is intact,
+mysqldump's completion footer is present — a truncated dump is still a
+valid gzip stream, so that footer is what catches a cut-short dump — the
+site's own tables are in it, and it holds no fewer tables than the last
+good dump, because the schema only grows.  A run that fails any of these
+exits non-zero and leaves `last_ok` alone.
+
+`last_ok` is the alert, because there is no mail on this host and no
+Email Account is configured.  A stale marker is the only signal there is,
+so it is written only when every site's artifacts have been verified.
+
+The script's own first run is what found the two defects that are now
+impossible by construction: a missing `--with-files`, and the
+`zcat dump | grep -q pattern` trap — under `set -o pipefail` that pipeline
+reports a *missing* pattern when the pattern is there, because grep exits
+early and the producer dies of SIGPIPE.  A test now refuses that shape
+anywhere in the script.
+
 ## What is deliberately not here
 
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.

@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily backup of the bench's site databases
+
+[Timer]
+# 03:47 local — deliberately away from the MCP control-plane backup at
+# 03:17 and from audit-ship's every-5-minutes, and in the quietest hour.
+OnCalendar=*-*-* 03:47:00
+Persistent=true
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

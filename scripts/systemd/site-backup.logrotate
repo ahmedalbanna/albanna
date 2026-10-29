@@ -1,0 +1,15 @@
+# Site database backup log.  A handful of lines per run plus bench's own
+# summary, so size-based rotation only — there is no reason to churn a file
+# that grows by ~20 lines a day.  `su` is needed because the parent
+# directory is root-owned.
+/var/log/site-backup.log {
+    monthly
+    rotate 12
+    size 5M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0640 frappe frappe
+    su root frappe
+}
