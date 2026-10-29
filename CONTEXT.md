@@ -1706,6 +1706,61 @@ a row in a registry inside this one.
 The drafts that proposed it were reviewed and closed on 2026-10-29; the
 verdict, item by item, is in `docs/ROADMAP.md` §11.
 
+### 81. The CI's server job is a claim about the released framework, not about what is deployed
+
+The server job installs upstream Frappe and ERPNext at the **tag**
+`v16.0.0`, on Python 3.14 — the version the app is written against, and
+a tag that does not move, so the gate tests the same framework tomorrow
+as it tests today.
+
+It cannot test what is deployed, and the reason is worth stating rather
+than papering over: **production runs Albanna's own fork of Frappe**
+(`16.0.0-dev`, on Python 3.12), and that fork is not public.  A gate
+that cannot install the deployed framework is not a gate on the deployed
+framework, and calling it one would make "CI is green" a claim about
+something it does not cover.
+
+So the claim is kept narrow and said plainly:
+
+* the CI says *the app works against the released v16 line*;
+* the bench says *the app works against what is deployed* — the site
+  suite run against the deployed fork, `bench --site test.localhost
+  run-tests --app albanna`, 174 tests.
+
+Both are run: the first on every push, the second before a deploy, and
+the second is the one that speaks for production.
+
+What the CI *can* fail early on is everything that is not the fork's
+business: a tool call that stops being a tool call, a permission check
+that stops being Frappe's, a ledger row that stops saying what happened.
+Those are the app's own, and they are most of what the site suite
+covers.
+
+### 82. The site the gate runs against is made by this app, not by ERPNext's demo data
+
+The CI's server job needs a site with a Company, an Item and a Customer
+in it — the site suite writes a Sales Invoice and reads it back — and a
+site that has just had ERPNext installed has none of them.
+
+ERPNext's own answer is its demo setup, and it cannot be used here: the
+demo setup **clones the first company it finds**, so on a fresh site it
+fails before it makes anything.  That is what the first run of this job
+showed, after two earlier reasons for it to be red.
+
+So the site is made by `scripts/prepare_test_site.py`, in this
+repository, using ERPNext's own operations where they exist: the setup
+wizard's standard masters, its company and fiscal year, its price lists
+and defaults — and then one service item and one customer, because those
+two are data rather than configuration.
+
+**What that costs, said plainly.**  Three of the suite's tests need a
+*submitted* Sales Invoice, and they skip themselves on a site that has
+none, saying so in the log.  On the bench site, which carries ERPNext's
+demo data, they run.  So the CI runs 174 tests with 3 skips and the
+bench runs 174 with none.  A gate that hid those skips would be lying
+about what it covers, and a gate that ran the demo setup would be
+testing ERPNext's demo fixtures as much as this app.
+
 ## What is deliberately not here
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.
   It is a good feature and it is a separate one; v1 has no retrieval.

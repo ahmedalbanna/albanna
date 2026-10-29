@@ -580,8 +580,37 @@ is fixed: the tools are pinned, the duplicate hook is gone, the
 formatter is part of the CI job, the complexity bar is explicit, and
 the server job installs the framework the app is written against.
 
-**Three real defects came out of the same pass**, all of them things
-the local bench could not see:
+**And then the job ran, and found what only a job can find.**  A green
+CI is not a gate that was made green by not running: the server job
+builds a site, gives it the data the suite reads, and runs the suite.
+Three more defects came out of that, all of them invisible to the bench:
+
+* **the site suite only passed in one order.**  A test that acts as
+  somebody left the session as that person, and the framework does not
+  put it back — so the next test started as somebody it did not choose,
+  and a test that creates a user failed with "Could not find User: …",
+  naming a user it had never heard of.  Every test class now stands on
+  one base that puts the session back (CONTEXT 81);
+* **a fresh site has no company for ERPNext's demo setup to clone**,
+  and no price list for a Sales Invoice to name — so the site the job
+  tests is made by this app's own script, from ERPNext's own setup
+  operations (CONTEXT 82);
+* **the backup's systemd unit was checked in a way only this host
+  could pass** — the test compared an absolute path with the
+  repository's own.  It now checks the thing that matters, and a new
+  test holds the unit systemd runs to the committed one.
+
+The outcome, measured: **the whole workflow is green** as of
+2026-10-29 — pre-commit, the linters and the seventeen front-end
+suites, and the server job: 203 domain tests and 174 site tests, with
+the three site tests that need a submitted Sales Invoice skipping
+themselves and saying so.  What the CI says is *the app works against
+the released v16 line*; what the bench says is *the app works against
+what is deployed*, and that is the site suite run against the deployed
+fork, before a deploy (CONTEXT 81).
+
+**And three defects the bench could not see, found while repairing the
+gates:**
 
 * `conversation_service.py` used `Any` in an annotation without
   importing it — harmless at runtime, and a `NameError` waiting for
@@ -604,6 +633,11 @@ answer `200` under their hashed name; a live turn answered "12" for
 `sensenova-6.8-flash-lite`, one `list_docs` call that found the twelve
 customers and named them; the ledger row `11i036me5b` says `ok`, one
 tool call, 10 802 ms; the Error Log holds no row since the deploy.
+
+After that deploy the rest of this pass changed no runtime code — the
+tests, the CI's own site script, this document — so it needed no second
+one: no build, no migrate, no worker restart.  The bench still runs the
+suite the same way it did, and now the CI runs it too.
 
 ### Later (v3) — §3, only with a named customer
 
@@ -780,7 +814,7 @@ a day later, and after a deploy?**
 | The MCP control-plane backup covers PostgreSQL, Redis and the secrets, and says so — **the MariaDB site databases were not covered at all**; the only copy of production's data was a manual dump on the same disk as the database it protected | a backup on the same disk protects against a mistake, not against the disk | a daily, verified backup of `albanna.localhost` and `frappe.localhost`, with the runbook next to the artifacts |
 | Frappe deletes a site's own backups after **24 hours** by default, which would have deleted the safety net taken before a migration a day later | the dump taken before *that* migration is not the same thing as yesterday's scheduled dump | `keep_backups_for_hours` is 336 (a fortnight) on both covered sites |
 | The deployment knowledge was in one operator's head — which units to restart, that `bench restart` does nothing here, that the migrate locks the site | the next deploy is inevitable, and the discovery work is not something to repeat | `docs/DEPLOYMENT.md`, written from what the 0.2.1 deployment needed |
-| **The repository's own gates were red on every commit** — the CI installed `ruff` without a version and judged the code against rules this app never agreed to, the pre-commit configuration listed the same hook twice (so pre-commit refused to run at all), and the server job installed Frappe v15 while the app targets v16 | a gate that is red is not a gate; the local suites were the only ones that had been running, so "CI is green" was a claim nobody had checked | the tools are pinned (ruff 0.16.1, pytest, `frappe-bench`, Node 24), the duplicate hook is gone, the formatter is part of the CI job, the complexity bar is explicit, and the server job runs against v16 — the branch the code targets |
+| **The repository's own gates were red on every commit** — the CI installed `ruff` without a version and judged the code against rules this app never agreed to, the pre-commit configuration listed the same hook twice (so pre-commit refused to run at all), and the server job installed Frappe v15 while the app targets v16 | a gate that is red is not a gate; the local suites were the only ones that had been running, so "CI is green" was a claim nobody had checked | the tools are pinned (ruff 0.16.1, pytest, `frappe-bench`, Node 24), the duplicate hook is gone, the formatter is part of the CI job, the complexity bar is explicit, and the server job installs the tag `v16.0.0` — **and runs**: as of 2026-10-29 the whole workflow is green (pre-commit, the linters and the seventeen front-end suites, 203 domain tests and 174 site tests) |
 
 Two of these were found by *running* the thing rather than reading it: the
 backup script's first run against both live sites caught a missing
@@ -841,7 +875,9 @@ What this pass did **not** do, on purpose:
   Python 3.14 instead.  The gate therefore tests the released line, not
   the deployed one.  It is the closest public thing to the deployed one,
   and it is not the same thing: the site suite run against the deployed
-  fork is the gate that speaks for what is deployed.
+  fork is the gate that speaks for what is deployed.  (The job is green;
+  what it cannot cover is the fork, and no amount of green changes
+  that.)
 
 ## 11. The drafts that were reviewed (2026-10-29)
 

@@ -20,20 +20,48 @@ gates those drafts were measured against.
   at all; and the server job installed Frappe v15 while the app targets
   v16.  The tools are now pinned (ruff 0.16.1, pytest, `frappe-bench`,
   Node 24), the duplicate hook is gone, the formatter is part of the CI
-  job, and the server job runs against the branch the code targets.
+  job, and the server job runs against the tag the code targets.
+  **The whole workflow is green** as of 2026-10-29: pre-commit, the
+  linters and the seventeen front-end suites, and the server job —
+  203 domain tests and 174 site tests, with the three site tests that
+  need a submitted Sales Invoice skipping themselves and saying so.
+- **The site suite only passed in one order.**  A test that acts as
+  somebody left the session as that person, and the framework does not
+  put it back — so the next test started as somebody it did not choose.
+  The framework makes the *session's* own settings for a user it
+  creates, so a test that created a user while the session was somebody
+  else failed with "Could not find User: …", naming a user the test
+  had never heard of.  The CI found it, because the CI runs the tests in
+  another order.  Every test class now stands on one base
+  (`albanna/tests/base.py`) that puts the session back, and the two
+  modules that create users create them *as the administrator*.
 - **A name that was never imported.**  `conversation_service.py` used
   `Any` in an annotation without importing it — harmless at runtime, and
   a `NameError` waiting for the day it was not.
 - **The complexity bar is explicit.**  Ruff's default of 10 fired on
   functions this app wrote on purpose; it sits at 15 now, the worst
   function that exists.
+- **The backup's systemd unit was checked in a way only one machine
+  could pass.**  The test compared the unit's path with the
+  repository's own path, which is the same thing on this host and a false
+  failure everywhere else.  It now checks that the unit names the
+  script inside the app's checkout — which is what rules out an
+  installed copy — and, where the path the unit names exists, that it is
+  this repository's file.  A new test holds the unit systemd actually
+  runs to the committed one.
 
 ### Changed
 
 - **The code is formatted by the formatter the gate pins.**  Thirty-one
   Python files and thirteen JavaScript and Vue files were laid out by
   hand; the diff is wrapping and punctuation only.  The domain suite
-  (202 tests), the site suite and the seventeen JavaScript suites pass.
+  (203 tests), the site suite and the seventeen JavaScript suites pass.
+- **The CI's site is made by this app.**  `scripts/prepare_test_site.py`
+  gives a fresh site the Company, Item and Customer the suite reads,
+  using ERPNext's own setup operations — its masters, its company and
+  fiscal year, its price lists and defaults — and one service item and
+  one customer.  ERPNext's demo setup cannot be used: it clones the
+  first company it finds, and a fresh site has none.
 - **The feature drafts were reviewed, and the verdict is written down**
   — `docs/ROADMAP.md` §11, and the design decision behind it in
   `CONTEXT.md` (80).  One idea survived: compacting a long thread's
