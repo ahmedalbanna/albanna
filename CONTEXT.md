@@ -250,6 +250,10 @@ people who own the matrix, and read in the same place the matrix is read
 — so the widget and the endpoints cannot disagree about who may chat.
 See decision 76.
 
+The shipped matrix names one role, `Albanna User`, and the app does not
+widen it for the sake of the site's own administrators: a role is a door
+for everybody who holds it.  See decision 78.
+
 ### 12. A turn is bounded, and the bound is a cost control rather than a boundary
 
 The per-minute limit is per user and per surface, so no path is unlimited.
@@ -277,6 +281,10 @@ The services check it as well, because the rows are deleted with direct
 SQL and the conversation document is deleted with its permissions ignored.
 A check that only the caller remembers is a check that is one refactor away
 from gone.
+
+The permission hooks now say the same thing.  They used to let a System
+Manager see every conversation in a list view, which contradicted this
+decision; they do not any more.  See decision 78.
 
 ### 14. The interface follows the reading direction
 
@@ -1535,6 +1543,49 @@ The rule is held by a test that fails against the old button and passes
 against this one: a reader the gate refuses is given no button, a reader
 it allows is given one, and an answer that arrives late still gives them
 one.
+
+### 78. The chat has one door, and the shipped matrix is it
+
+The shipped matrix carried two rows: `Albanna User`, and `System Manager`
+without `if_owner`.  The second row was a convenience — it meant that
+everybody who runs the site could try the chat without anybody having to
+grant them anything.
+
+It is also a door for every account on the site that holds that role, and
+`System Manager` is one of the most widely held roles on a Frappe site.
+The owner of the site asked for the opposite: the chat belongs to the
+`Albanna User` role, and a System Manager who wants it takes that role
+like anybody else.
+
+So the row is gone, and the shipped matrix names one role.
+
+**The Administrator is inside, by Frappe's rule and not this app's.**
+`frappe.permissions.has_permission` returns `True` for the Administrator
+before it looks at a single row, and `frappe.get_roles` gives the
+Administrator every role on the site — `Albanna User` among them.  An app
+that wanted the Administrator out would need a second rule, and decision
+11 says there is not one.  The lever for one account is the policy row of
+decision 76, which is an exception to the matrix and applies to the
+Administrator as it does to anybody else: an `Off` row on that account
+refuses the chat, and the refusal says so in its own sentence.
+
+**A Desk edit of the live matrix is not the same thing as this change.**
+Editing the permission rows in the Desk survives a `bench migrate` — and
+only because a migrate does not touch a DocType whose JSON has not
+changed.  The next release that touches `albanna_conversation.json`
+writes the rows from the file again, and the edit is undone; a fresh
+install writes them from the file too.  So the matrix the app ships is
+the matrix that holds, and `tests/test_access_matrix.py` reads that file
+and holds it to one role.
+
+**A System Manager is not exempt from the transcript either.**
+Decision 13 says a System Manager is not exempt from the ownership
+check, and the permission hooks said the opposite for the list view: they
+let a System Manager see every conversation on the site.  The two halves
+of the app disagreed — the direct-SQL path said no, the list view said
+yes.  The hooks now say no as well.  An operator who needs to know what
+the chat cost and what was asked for has `Albanna Chat Log`, which is the
+audit trail and is not the transcript.
 
 ## What is deliberately not here
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.

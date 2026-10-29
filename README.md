@@ -41,7 +41,8 @@ bench build --app albanna
 ```
 
 Then open **Albanna Settings** and put a model provider's key in it. The
-chat is off for everybody except System Managers until you widen it.
+chat is off for every account that does not hold the `Albanna User` role
+until you grant it.
 
 The app needs a model provider.  Any OpenAI-compatible endpoint works
 (OpenRouter, OpenAI, Groq, vLLM, LM Studio, or a relay), as do Ollama and
@@ -144,7 +145,8 @@ bench build --app albanna
 ```
 
 Then open **Albanna Settings** and put a model provider's key in it. The
-chat is off for everybody except System Managers until you widen it.
+chat is off for every account that does not hold the `Albanna User` role
+until you grant it.
 
 ```bash
 sudo systemctl restart frappe-bench-frappe-web   # bench restart does not work here
@@ -259,12 +261,13 @@ too.
 | Writes | confirm writes (site default), per-user override via Albanna User Policy |
 | Prompt | system prompt (blank uses the built-in one) |
 
-Chat access starts closed: System Managers only.  To let others chat, grant
-them the `Albanna User` role -- the same way any role is granted in
-Frappe, through the User form.  The role grants read, write, create and
-delete on `Albanna Conversation`, all of them `if_owner`, so a person
-keeps their own conversations and nobody else's.  System Managers are
-covered by the shipped rows and need no role.
+Chat access starts closed: the `Albanna User` role is the only door, and
+nobody holds it until you grant it.  To let somebody chat, give them that
+role -- the same way any role is granted in Frappe, through the User form.
+The role grants read, write, create and delete on `Albanna Conversation`,
+all of them `if_owner`, so a person keeps their own conversations and
+nobody else's.  A System Manager is not a special case: they take the role
+too, if they want the chat.
 
 ### The write tools
 

@@ -1,6 +1,6 @@
 # ADR-0008: Frappe decides who may chat and who may write
 
-Status: **Accepted**
+Status: **Accepted** (amended 2026-10-29, when the shipped matrix was narrowed to one role)
 Date: 2026-10-21
 
 ## Context
@@ -33,9 +33,15 @@ of a switch the operator forgot to flip, is exactly that.
 
 * **Chat access** is read permission on `Albanna Conversation`.  The app
   ships one role, `Albanna User`, with read, write, create and delete rows
-  on that DocType, all `if_owner`, plus a `System Manager` row without
-  `if_owner`.  `can_use_chat()` asks Frappe whether the session user holds
-  read on it.  There is no list of role names.
+  on that DocType, all `if_owner`, and nothing else.  `can_use_chat()` asks
+  Frappe whether the session user holds read on it.  There is no list of
+  role names.
+
+  The matrix also shipped a `System Manager` row when this was written,
+  and it was removed on 2026-10-29.  A row is a door for everybody on the
+  site who holds that role, and the owner of the site asked for one door.
+  A System Manager who wants the chat takes `Albanna User`, like anybody
+  else; one who does not take it is refused, like anybody else.
 * **Write-tool visibility** follows the caller's own rights: `create_doc`
   appears when the caller may create at least one DocType, and `update_doc`
   when they may change at least one.  There is no `allow_writes` switch.
@@ -69,8 +75,8 @@ roles.
   for them, without anyone having to remember a switch.
 * **`get_doc` no longer leaks row data** the caller may not read.
 * **Existing sites migrate.**  A site that named `Desk User` in
-  `chat_roles` keeps its Desk Users chatting; a site that named nothing
-  keeps System Managers only, which the shipped rows already give them.
+  `chat_roles` keeps its Desk Users chatting; a site that named nothing is
+  left with the shipped matrix, which is the gate.
 * **The locked message changed.**  It now names the missing permission
   rather than a setting to edit.  The Arabic catalogue carries the new
   wording.

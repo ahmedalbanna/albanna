@@ -360,6 +360,54 @@ Administrator's form carries the "Ask Albanna" button and it opens the
 panel; the Error Log holds nothing new since the deploy; and the worker
 and web logs hold no traceback.
 
+### Shipped in this pass (v0.2.4, one door)
+
+The question was the one the owner of the site asked: *only one role may
+use the chat — not other roles such as System Manager.*  The chat was
+already a Frappe permission, so the answer was a row in the matrix, and
+the row that had to go was the `System Manager` one.
+
+- **The shipped matrix names one role.**  `Albanna Conversation` carries
+  `Albanna User` — read, write, create, delete, all `if_owner` — and
+  nothing else.  A System Manager who wants the chat takes that role,
+  through the User form, like anybody else; one who does not take it is
+  refused, like anybody else.
+- **The Administrator is inside, by Frappe's rule.**  `has_permission`
+  returns `True` for the Administrator before it looks at a row, and
+  `get_roles` gives that account every role on the site.  The app does
+  not add a second rule to undo it; the per-user policy of v0.2.3 is the
+  lever for one account, the Administrator included.
+- **A System Manager is not exempt from the transcript either.**  The
+  direct-SQL paths have always said "the owner and nobody else" (decision
+  13); the permission hooks said the opposite for the list view, and the
+  two halves of the app disagreed.  The hooks now agree.  An operator
+  still reads `Albanna Chat Log`, which is the audit trail.
+- **The inert role is gone.**  `Albanna Chat User` — created by hand on
+  production, holding no permission rows, granting nothing but Desk
+  access — is deleted.  Assigning it had opened nothing.
+- **The stale comments are fixed.**  `hooks.py` claimed the DocType
+  grants `All` read/write; it has never done so, and the live matrix had
+  two rows and no `All`.  A comment that says the opposite of the code
+  is worse than no comment.
+
+Two facts about the matrix, measured rather than assumed, and worth
+knowing before editing it in the Desk:
+
+- **A Desk edit survives a migrate only until the next release that
+  touches the DocType's JSON.**  The migrate does not rewrite a DocType
+  whose file has not changed, so the edited rows stay; the next change
+  to `albanna_conversation.json` writes the rows from the file again and
+  the edit is undone.  The shipped matrix is the matrix that holds, and
+  `tests/test_access_matrix.py` reads that file and holds it to one role.
+- **Custom DocPerm rows cannot open this gate.**  The doctype-level
+  check reads the DocType's own rows, so a custom permission on
+  `Albanna Conversation` is not a way in.  It is not harmless either:
+  where the framework reads the *valid* permissions — the client-side
+  permission map the Desk builds, the list of DocTypes a user may read —
+  a Custom DocPerm row **replaces** the DocType's own rows, so adding
+  one makes the Desk believe the `Albanna User` role has no rights on the
+  DocType, while the gate still lets its holders in.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
