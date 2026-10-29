@@ -311,6 +311,40 @@ timings (`[7848, 5201, 4374]`); the worker log holds no traceback; the site
 reports `albanna 0.2.2`; and the Error Log holds nothing new since the
 deploy.
 
+### Shipped in this pass (v0.2.3, who may use the chat)
+
+The question behind this pass was an ordinary one: *who can turn this
+on, and who can turn it off for one person?*  The answer was mostly
+already there — the chat is a Frappe permission, and the operator grants
+it the same way they grant everything else — but looking at it properly
+turned up three things, one of them a defect a reader could hit.
+
+- **The matrix is the rule** — read on `Albanna Conversation`, shipped
+  as the `Albanna User` role.  Grant it to a team by putting the role on
+  the team's role; take it from a person by taking the role away.  The
+  widget and the endpoints read one function, so they cannot disagree.
+- **A per-user override** (`Albanna User Policy` → *Chat access*:
+  *Site default* / *On* / *Off*) — because the matrix is granted by
+  *role*, and a role cannot say "everyone except this one".  A Frappe
+  User Permission cannot fill the gap either: it applies at the row
+  level, while this gate is a doctype-level check.
+- **The dead "Ask Albanna" button** — every reader was given the button
+  on every form, and for a reader who may not chat it opened nothing at
+  all.  The launcher and the button were answering the same question
+  separately; the answer now has one home, and the button waits for it.
+
+Two things found on the way, recorded because they are the kind of thing
+that looks done and is not:
+
+- **Production has an inert role.**  `Albanna Chat User` was created by
+  hand on 2026-10-22, before the app was installed, and it holds *no*
+  permission rows at all — assigning it grants Desk access and nothing
+  else.  Anyone who assigned it in the hope of opening the chat for a
+  team opened nothing.  The live matrix on `Albanna Conversation` has two
+  rows: `Albanna User` and `System Manager`.
+- **Only the Administrator holds a chat role** on production, so the chat
+  is System-Manager-only there today.
+
 ### Later (v3) — §3, only with a named customer
 
 ---

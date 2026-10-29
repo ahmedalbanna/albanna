@@ -240,6 +240,16 @@ The two lines of defence are unchanged: a tool the caller may not reach is
 never mentioned to the model, and a call that names a DocType the caller
 may not write is refused with the roles that could.
 
+One exception, and it is narrow: a row in `Albanna User Policy` may
+switch the chat off for one account, or on for one account whose roles
+would not carry it.  The matrix is granted by *role*, and a role cannot
+say "everyone except this one" — so the matrix cannot answer the one
+question a per-account exception is for.  It is an exception to the rule,
+not a second rule: one account, one visible row, written by the same
+people who own the matrix, and read in the same place the matrix is read
+— so the widget and the endpoints cannot disagree about who may chat.
+See decision 76.
+
 ### 12. A turn is bounded, and the bound is a cost control rather than a boundary
 
 The per-minute limit is per user and per surface, so no path is unlimited.
@@ -1450,8 +1460,83 @@ reports a *missing* pattern when the pattern is there, because grep exits
 early and the producer dies of SIGPIPE.  A test now refuses that shape
 anywhere in the script.
 
-## What is deliberately not here
+### 76. The matrix is the rule; a policy row is the exception for one account
 
+The chat is granted by read permission on `Albanna Conversation`, shipped
+as the `Albanna User` role.  That is the right way to grant it, and it is
+the answer for every account that has no policy row.
+
+It cannot answer one question.  The matrix is granted by *role*, and a
+role cannot say "everyone except this one": a support team that gets the
+chat with its role cannot have one person left out of it without
+stripping that person's other rights along with it.  Frappe's own answer
+— a User Permission — does not fit either, and the reason is in the
+framework's code: User Permissions are applied at the *row* level, while
+this gate is a doctype-level check (`frappe/permissions.py` consults them
+only when a document is in hand).  A User Permission on `Albanna
+Conversation` would limit which conversations a person can see, and would
+not touch whether they may start one.
+
+So `Albanna User Policy` carries a `Chat access override`: *Site default*
+(inherit the matrix), *On* (allow this account whatever the matrix says)
+or *Off* (refuse it whatever the matrix says).  It is the same shape as
+the `confirm_writes_override` the table already carries, and it is read
+by the same kind of reader — one row, one account, inherited by
+everyone else.
+
+Three things keep this from becoming a second matrix.
+
+**It is an exception, not a list.**  There is still no list of role names
+in this app.  A policy row says nothing about anybody else, and it is
+visible in the same place the operator looks for everything else about a
+person's access — a table only System Managers can read or write.
+
+**Both layers are read in one place.**  `chat_access()` answers "may this
+account chat, and if not, why", and the widget's options and every
+endpoint ask it that one question.  A gate the panel and the API read
+differently is a gate that fails open somewhere.
+
+**The refusal names the reason that applies.**  A person switched off by
+a policy is told that, rather than being pointed at the roles that hold
+the right — because the policy outranks the roles, and a refusal that
+named them would send the reader to ask for a role that would not open
+the chat.  The refusal is still in the reader's own language.
+
+"On" is the half that needs saying out loud.  It lets an account whose
+roles would not carry the chat have it anyway — a contractor with a Desk
+role of their own, or a person on a team that has not been given the
+chat.  It does not grant any tool: what the assistant may read and write
+is still answered by that account's own permissions, so a chat opened this
+way is a chat that can do only what its holder could do by hand.
+
+### 77. The button waits for the answer
+
+Every reader was given the "Ask Albanna" button on every form, whether or
+not they could use it.  For a reader who may not chat the button was
+dead: the launcher had not mounted, so there was no panel behind it, and
+clicking did nothing at all.  The widget's own gate had already decided
+that this reader was not to have a widget — and the button contradicted
+it in the only way a reader can see.
+
+The cause was two bundles answering the same question separately.  The
+launcher asked the server and decided; the button assumed, and added
+itself to every form on every page.  The answer now has one home: the
+launcher publishes it (`side-chat/access.mjs`), and the button reads it.
+
+The button *waits* for the answer rather than guessing.  An unanswered
+question is not a yes — a button that appears before the answer and
+disappears after it is worse than one that never appears — so it is
+added when the widget exists for this reader and not before.  And when
+the answer lands after the form has already been drawn, the button is
+added then: the reader who *may* chat must not be the one left without
+it.
+
+The rule is held by a test that fails against the old button and passes
+against this one: a reader the gate refuses is given no button, a reader
+it allows is given one, and an answer that arrives late still gives them
+one.
+
+## What is deliberately not here
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.
   It is a good feature and it is a separate one; v1 has no retrieval.
 * **Guest chat.**  A guest has no identity and no history.  It is a
