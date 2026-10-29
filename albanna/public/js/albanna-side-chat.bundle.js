@@ -13,9 +13,17 @@
 // when somebody actually opens the widget.
 //
 // The launcher owns *whether* the widget exists and where it sits.  The Vue
-// app owns everything inside the panel.  That split is why the widget can
-// be rendered in a locked state — a user who may not chat still sees it,
-// with the reason, instead of finding that it silently does not exist.
+// app owns everything inside the panel.  A reader who may not chat gets no
+// widget at all — the reason it is not there is a permission fact that
+// Frappe and the operator's role assignment explain elsewhere, and a panel
+// that cannot be used is not a thing to put on the screen.
+//
+// The answer the server gives is published for the other global bundles
+// (see `side-chat/access.mjs`): the "Ask Albanna" button on a form needs
+// to know the same thing, and it must not offer a button that opens
+// nothing.
+
+import { publishAccess } from "./side-chat/access.mjs";
 
 const OPTIONS_ENDPOINT = "albanna.api.widget.options";
 // The key is the bundle's name in `frappe.boot.assets_json`.  The build
@@ -138,10 +146,19 @@ async function boot() {
 	try {
 		config = await fetchWidgetOptions();
 	} catch (error) {
+		// The answer did not arrive, so there is no widget — and the other
+		// bundles are told so, rather than left waiting for one.
+		publishAccess(null, { window, document });
 		if (window.console && window.console.warn)
 			window.console.warn("albanna: unavailable", error);
 		return;
 	}
+
+	// Published before the early return below: "no widget" is an answer
+	// too, and the bundles that wait for one must not wait for a
+	// decision that has already been made.
+	publishAccess(config, { window, document });
+
 	if (!config || config.visible !== true) return;
 	if (document.getElementById(ROOT_ID)) return;
 

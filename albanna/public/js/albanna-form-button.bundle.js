@@ -25,6 +25,16 @@
 //
 // The router's "change" is still watched, for the SPA case: a route
 // change may open a form whose refresh event has not arrived yet.
+//
+// The third fact is this app's own: the chat is gated, and the gate is
+// decided by the server and published by the launcher
+// (`side-chat/access.mjs`).  A reader who may not chat was given this
+// button anyway, and clicking it did nothing — the launcher had not
+// mounted, so there was no panel for it to open.  The button therefore
+// waits for the answer: it is added when the widget exists for this
+// reader, and not before.
+
+import { chatAllowed, onAccessDecision } from "./side-chat/access.mjs";
 
 (function () {
 	"use strict";
@@ -37,8 +47,16 @@
 		return typeof window.__ === "function" ? window.__("Ask Albanna") : "Ask Albanna";
 	}
 
+	function mayOfferChat() {
+		return chatAllowed({ window, document });
+	}
+
 	function addButton(frm) {
 		if (!frm || typeof frm.add_custom_button !== "function") return;
+		// No widget for this reader means no button: a button that opens
+		// nothing is worse than no button, because it looks like a thing
+		// that works.
+		if (!mayOfferChat()) return;
 
 		const text = label();
 		// The form drops its custom buttons on every refresh, so what is
@@ -64,6 +82,21 @@
 			// The Desk is not ready yet.
 		}
 	}
+
+	/* The answer may arrive after the form has been drawn.
+	 *
+	 * The launcher asks the server, and the server answers in its own
+	 * time.  A form that is already on screen when the answer lands has
+	 * to be given the button then — otherwise the reader who *may* chat
+	 * is the one left without it, which is the same bug wearing the
+	 * other hat. */
+	onAccessDecision(
+		function (decision) {
+			if (!decision || decision.visible !== true) return;
+			watchForms();
+		},
+		{ window, document }
+	);
 
 	if (window.jQuery) {
 		window.jQuery(document).on("form-refresh", function (_event, frm) {
