@@ -5,6 +5,55 @@ All notable changes to Albanna are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] — 2026-10-29
+
+The access release.  The question it answers is an ordinary one — *who
+can turn this on, and who can turn it off for one person?* — and most of
+the answer was already there: the chat is a Frappe permission, granted
+the same way everything else on the site is granted.  Looking at it
+properly turned up one real defect and one gap that only the matrix
+could not fill.
+
+### Fixed
+
+- **The "Ask Albanna" button on a form now respects the gate.**  Every
+  reader was given the button on every form, whether or not they could
+  use it.  For a reader who may not chat it was dead: the launcher had
+  not mounted, so there was no panel behind it, and clicking it did
+  nothing at all.  The launcher and the button were answering the same
+  question separately — the launcher asked the server and decided, the
+  button assumed.  The answer now has one home (`side-chat/access.mjs`),
+  and the button waits for it: it is added when the widget exists for
+  this reader and not before, and it is added even when the answer lands
+  after the form has been drawn.  A test holds the rule, and it fails
+  against the old button.
+- **The launcher's header no longer describes a locked panel it never
+  rendered.**  `options()` reports the widget as not visible for a
+  reader who may not chat, and the launcher returns before rendering —
+  so the "locked state" the comment promised could not appear.  The
+  comment now says what the code does.
+
+### Added
+
+- **A per-user switch for the chat.**  `Albanna User Policy` grows a
+  *Chat access override*: *Site default* (inherit the permission
+  matrix), *On* (allow this account whatever the matrix says) or *Off*
+  (refuse it whatever the matrix says).  It exists because the matrix is
+  granted by *role*, and a role cannot say "everyone except this one" —
+  and a Frappe User Permission cannot fill the gap, because it applies
+  at the row level while this gate is a doctype-level check.  It is an
+  exception to the matrix, not a second matrix: one account, one visible
+  row, kept by the same people who own the matrix, and read in the same
+  place the matrix is read — so the widget and the endpoints cannot
+  disagree about who may chat.  A reader switched off by policy is told
+  *that*, rather than being pointed at roles that would not have helped.
+
+### Changed
+
+- The chat's access is now a question with one answer in the app: the
+  permission matrix decides, a policy row may except one account, and
+  the widget's options and every endpoint ask the same function.
+
 ## [0.2.2] — 2026-10-29
 
 The operations release.  Nothing here changes what the assistant can do;
