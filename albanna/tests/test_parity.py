@@ -44,11 +44,11 @@ from __future__ import annotations
 
 import frappe
 import pytest
-from frappe.tests.utils import FrappeTestCase
 
 from albanna.core.tools import TOOL_MANIFEST
 from albanna.permissions import current_principal
 from albanna.services.conversation_service import ensure_conversation
+from albanna.tests.base import AlbannaTestCase
 from albanna.tools.backend import ErpnextBackend
 from albanna.tools.base import ToolContext
 
@@ -58,7 +58,7 @@ OTHER_USER = "albanna.test.parity.other@albanna.dev"
 
 
 @pytest.mark.integration
-class TestPermissionParity(FrappeTestCase):
+class TestPermissionParity(AlbannaTestCase):
     """The assistant may not reach past the person it is answering."""
 
     def setUp(self):

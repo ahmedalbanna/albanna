@@ -43,7 +43,6 @@ import json
 
 import frappe
 import pytest
-from frappe.tests.utils import FrappeTestCase
 
 from albanna.api.conversations import (
     conversation_for_page,
@@ -66,6 +65,7 @@ from albanna.services.conversation_service import (
     transcript_window,
 )
 from albanna.services.settings_service import get_settings
+from albanna.tests.base import AlbannaTestCase
 from albanna.tools.backend import ErpnextBackend
 from albanna.tools.base import ToolContext
 from albanna.tools.erpnext import PROTECTED_FIELDS
@@ -75,17 +75,27 @@ ACCOUNTS_USER = "albanna.test.accounts@albanna.dev"
 
 
 @pytest.mark.integration
-class TestToolPath(FrappeTestCase):
+class TestToolPath(AlbannaTestCase):
     """The properties that only exist with a real Frappe session."""
 
     def _make_user(self, email: str, role: str) -> str:
         if not frappe.db.exists("User", email):
-            user = frappe.new_doc("User")
-            user.email = email
-            user.first_name = "Albanna"
-            user.last_name = "Test"
-            user.flags.ignore_permissions = True
-            user.insert()
+            # The user is created as the administrator: the framework makes
+            # the session's own settings for a new user, so a session left
+            # as somebody else — a user another test made, and one this
+            # transaction has already rolled back — fails the insert for a
+            # reason that has nothing to do with what this test is about.
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Albanna"
+                user.last_name = "Test"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
         user = frappe.get_doc("User", email)
         user.flags.ignore_permissions = True
         user.add_roles(role, "Albanna User")
@@ -235,7 +245,7 @@ class TestToolPath(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestRateLimit(FrappeTestCase):
+class TestRateLimit(AlbannaTestCase):
     """The per-user, per-minute ceiling on questions.
 
     The counter lives in the site cache with a TTL, and reading it has to
@@ -292,7 +302,7 @@ class TestRateLimit(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestRemovingATurn(FrappeTestCase):
+class TestRemovingATurn(AlbannaTestCase):
     """A reader can take a turn out of their own thread.
 
     The data a person asked about is theirs to erase, and a question that
@@ -444,7 +454,7 @@ class TestRemovingATurn(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestConversationOwnership(FrappeTestCase):
+class TestConversationOwnership(AlbannaTestCase):
     """A conversation belongs to the person who started it.
 
     The rows are read with direct SQL, which does not consult the
@@ -560,7 +570,7 @@ class TestConversationOwnership(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestNewConversation(FrappeTestCase):
+class TestNewConversation(AlbannaTestCase):
     """The panel's "New" button, and the conversation it makes.
 
     The button used to clear the panel and nothing else.  The server
@@ -728,7 +738,7 @@ class TestNewConversation(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestSettings(FrappeTestCase):
+class TestSettings(AlbannaTestCase):
     """The settings, and the way a provider with no base URL used to fail.
 
     A provider with no base URL was not one the app would call, even
@@ -775,7 +785,7 @@ class TestSettings(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestTouchedDocuments(FrappeTestCase):
+class TestTouchedDocuments(AlbannaTestCase):
     """The documents a tool call looked at.
 
     They are what the panel turns into links, so that an answer is a
@@ -1040,7 +1050,7 @@ class TestTouchedDocuments(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestConversationOrder(FrappeTestCase):
+class TestConversationOrder(AlbannaTestCase):
     """The messages of a conversation, in the order they were said."""
 
     def test_the_messages_are_stored_in_the_order_they_were_said(self):
@@ -1086,7 +1096,7 @@ class TestConversationOrder(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestTranscriptWindow(FrappeTestCase):
+class TestTranscriptWindow(AlbannaTestCase):
     """A conversation is read in windows, not all at once.
 
     A conversation of two hundred messages is twenty thousand nodes, and
@@ -1183,7 +1193,7 @@ class TestTranscriptWindow(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestRequestPrivacy(FrappeTestCase):
+class TestRequestPrivacy(AlbannaTestCase):
     """The user's own words stay in the conversation.
 
     Frappe's request logger appends the request's parsed parameters to
@@ -1252,7 +1262,7 @@ class TestRequestPrivacy(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestTheChatLogHoldsNoSecret(FrappeTestCase):
+class TestTheChatLogHoldsNoSecret(AlbannaTestCase):
     """The log is read by operators, exported, and copied off the host.
 
     A provider's refusal often quotes the key it refused — "Incorrect API
@@ -1301,7 +1311,7 @@ class TestTheChatLogHoldsNoSecret(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestUsageSummary(FrappeTestCase):
+class TestUsageSummary(AlbannaTestCase):
     """What the chat has cost, and where it went.
 
     The ledger is written by every turn.  The summary is the read side
@@ -1420,7 +1430,7 @@ class TestUsageSummary(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestTheCostOfATurn(FrappeTestCase):
+class TestTheCostOfATurn(AlbannaTestCase):
     """The cost in the ledger is the site's own.
 
     A provider reports tokens, and money only when its API happens to
@@ -1488,7 +1498,7 @@ class TestTheCostOfATurn(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestTheSettingsRefuseNonsense(FrappeTestCase):
+class TestTheSettingsRefuseNonsense(AlbannaTestCase):
     """The settings are free text, and a typo in them is caught.
 
     The extra options are typed by hand.  JSON that is not JSON would be
@@ -1524,7 +1534,7 @@ class TestTheSettingsRefuseNonsense(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestATruncatedAnswer(FrappeTestCase):
+class TestATruncatedAnswer(AlbannaTestCase):
     """An answer that was cut off says so.
 
     The reader must not be left with an answer that stops mid-sentence
@@ -1593,7 +1603,7 @@ class TestATruncatedAnswer(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestTheUpdatePath(FrappeTestCase):
+class TestTheUpdatePath(AlbannaTestCase):
     """Changing a document that already exists.
 
     A tool set that could only make things and never change them would
@@ -2634,7 +2644,7 @@ class TestWriteApproval(TestToolPath):
 
 
 @pytest.mark.integration
-class TestDisabledToolsAreHonoured(FrappeTestCase):
+class TestDisabledToolsAreHonoured(AlbannaTestCase):
     """A tool named in the settings is hidden from everyone.
 
     The setting used to be a column that nobody read.  Now it narrows the
@@ -2671,7 +2681,7 @@ class TestDisabledToolsAreHonoured(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestContextEndpoints(FrappeTestCase):
+class TestContextEndpoints(AlbannaTestCase):
     """The list-page context endpoints: counts and nudges."""
 
     def setUp(self):
@@ -2701,7 +2711,7 @@ class TestContextEndpoints(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestTheSettingsHealAPlainTextKey(FrappeTestCase):
+class TestTheSettingsHealAPlainTextKey(AlbannaTestCase):
     """A key that was stored in the clear is repaired, not refused.
 
     The old behaviour was to throw, which left the operator with a
@@ -2827,7 +2837,7 @@ class TestTheSettingsHealAPlainTextKey(FrappeTestCase):
         )
 
 
-class TestUndo(FrappeTestCase):
+class TestUndo(AlbannaTestCase):
     """Taking a turn's writes back.
 
     Undo is the one feature in the app that *removes* something the
@@ -3287,7 +3297,7 @@ class TestUndo(FrappeTestCase):
 
 
 @pytest.mark.integration
-class TestTurnDurability(FrappeTestCase):
+class TestTurnDurability(AlbannaTestCase):
     """A write that ran is committed before the turn can die.
 
     The worker's transaction is the reader's safety net: a document the
@@ -3406,7 +3416,7 @@ class TestTurnDurability(FrappeTestCase):
         self.assertEqual(len(committed), 2, "a read-only turn commits only the audit rows")
 
 
-class TestTheAuditRowNamesTheWrites(FrappeTestCase):
+class TestTheAuditRowNamesTheWrites(AlbannaTestCase):
     """What a turn wrote, for the question the panel has to answer.
 
     A turn that dies leaves its audit row behind, and the row is the

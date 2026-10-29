@@ -11,14 +11,14 @@ the form would produce.
 from __future__ import annotations
 
 import frappe
-from frappe.tests.utils import FrappeTestCase
 
 from albanna.services.chat_service import ChatService
+from albanna.tests.base import AlbannaTestCase
 
 PNG = "data:image/png;base64,aGVsbG8="  # "hello", which is not a PNG: bytes are enough here
 
 
-class TestAdoptingAnAttachment(FrappeTestCase):
+class TestAdoptingAnAttachment(AlbannaTestCase):
     def setUp(self):
         self.url = ChatService()._store_image(PNG, frappe.session.user or "Administrator")
         self.assertTrue(self.url.startswith("/private/files/"))

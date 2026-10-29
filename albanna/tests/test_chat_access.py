@@ -27,9 +27,9 @@ from __future__ import annotations
 
 import frappe
 import pytest
-from frappe.tests.utils import FrappeTestCase
 
 from albanna.permissions import can_use_chat, chat_access, require_chat_access
+from albanna.tests.base import AlbannaTestCase
 from albanna.user_policy import chat_access_override
 
 #: Holds the shipped ``Albanna User`` role, so the matrix allows the chat.
@@ -44,7 +44,7 @@ MANAGER = "chat-access-manager@example.com"
 
 
 @pytest.mark.integration
-class TestChatAccess(FrappeTestCase):
+class TestChatAccess(AlbannaTestCase):
     """The gate, read three ways: the matrix, the policy, and the widget."""
 
     def setUp(self):
@@ -63,12 +63,22 @@ class TestChatAccess(FrappeTestCase):
     def _make_user(self, email: str, *roles: str) -> str:
         """A user with exactly *roles* — no more, so the matrix is known."""
         if not frappe.db.exists("User", email):
-            user = frappe.new_doc("User")
-            user.email = email
-            user.first_name = "Chat"
-            user.last_name = "Access"
-            user.flags.ignore_permissions = True
-            user.insert()
+            # The user is created as the administrator: the framework makes
+            # the session's own settings for a new user, so a session left
+            # as somebody else — a user another test made, and one this
+            # transaction has already rolled back — fails the insert for a
+            # reason that has nothing to do with what this test is about.
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Chat"
+                user.last_name = "Access"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
 
         # The roles of a user that a previous run left behind are cleared
         # first: what the matrix says has to be what this test set up, not
