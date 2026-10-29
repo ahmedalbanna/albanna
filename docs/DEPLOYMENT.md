@@ -97,10 +97,8 @@ step 1 is the way back.
 ### 4. Restart every worker set
 
 There are **two** sets of workers on this host, and they share the same
-Redis queues.  A worker that was started before the app was installed
-cannot import it, so its jobs fail with `ModuleNotFoundError` — which
-looks, from the user's side, like the app hanging.  A stale set silently
-takes half the jobs.  Both sets must be restarted.
+Redis queues — so a stale set silently takes half the jobs, and the jobs it
+takes run the *old* code.  Both sets must be restarted.
 
 ```bash
 # systemd: the web server and the three workers
@@ -119,9 +117,19 @@ sudo supervisorctl restart frappe-bench-frappe-schedule
 `supervisorctl` group that does not exist here, and it does not touch the
 systemd units.  Use the commands above.
 
-The scheduler itself is a supervisor process (`frappe-bench-frappe-schedule`);
-it is what enqueues the app's scheduled jobs.  Restart it when the app's
-`hooks.py` changed, so it picks up the new schedule.
+Why the workers and not just the web server: each job runs in a worker
+process, and that process imported the app's modules when it started.  A
+worker that predates the deploy is running the old code, and a worker that
+predates the app's *installation* cannot import it at all — its jobs fail
+with `ModuleNotFoundError`, which looks, from the user's side, like the app
+hanging.
+
+The scheduler (`frappe-bench-frappe-schedule`, under supervisor) is what
+enqueues the app's scheduled jobs.  It reads the `Scheduled Job Type` rows
+from the database — which the migrate has already written — so it does not
+need a restart to pick up a new schedule; it is restarted here anyway, so
+that one process on the host is not the one that was running before the
+deploy.
 
 ### 5. Verify
 
