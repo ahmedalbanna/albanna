@@ -408,6 +408,30 @@ knowing before editing it in the Desk:
   one makes the Desk believe the `Albanna User` role has no rights on the
   DocType, while the gate still lets its holders in.
 
+*Deployed on production, 2026-10-29, following `docs/DEPLOYMENT.md`:*
+backup (`20261029_080235`) → build → maintenance mode on → migrate (24 s)
+→ maintenance mode off → every worker set restarted (systemd web + three
+workers, supervisor two workers + the scheduler).  The inert role was
+deleted through the API — disabled first, which is what clears the
+`Has Role` rows a Role delete would otherwise refuse, then deleted — and
+the API answers `404` for it now.  Verified after it: the site answers
+`200`; the site reports `albanna 0.2.4`; the live matrix on
+`Albanna Conversation` names one role, `Albanna User`, with
+read/write/create/delete and `if_owner`; the bundles are served under
+their hashes (no front end changed in this release); **the gate was
+proved on production** with a probe account that held `System Manager`
+and nothing else — the widget came back `visible: false`, and a turn was
+refused with the sentence that names the one role — and the probe was
+deleted afterwards; the Administrator, who holds `Albanna User`, still
+gets the widget (eleven tools) and a live turn (`status: ok`, two rounds,
+`list_docs` → "12" customers); in the browser the form carries the "Ask
+Albanna" button, the panel opens, and a question asked in it answers
+*"There are 12 customers."* with its sources; the ledger's rows are `ok`
+and carry their per-round timings; the Error Log holds one row since the
+deploy — Frappe's own *"Session Stopped"* for the request that was in
+flight when maintenance mode went on — and nothing else; the worker error
+log is empty and the journal holds no traceback.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
