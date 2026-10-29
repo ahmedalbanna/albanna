@@ -345,6 +345,21 @@ that looks done and is not:
 - **Only the Administrator holds a chat role** on production, so the chat
   is System-Manager-only there today.
 
+*Deployed on production, 2026-10-29, following `docs/DEPLOYMENT.md`:*
+backup (`20261029_064704`) → build → maintenance mode on → migrate (26 s)
+→ maintenance mode off → every worker set restarted (systemd web + three
+workers, supervisor two workers + the scheduler).  Verified after it: the
+site answers `200`; the four bundles are served by nginx under their new
+hashes; the site reports `albanna 0.2.3`; the new column is on the
+policy table; the gate was proved on production by switching the
+Administrator's own chat off — the widget disappeared and a turn was
+refused with *"Your account's Albanna user policy switches it off"* —
+and then by switching it back and running a live turn (`status: ok`, two
+rounds, `list_docs` answered "12" customers); in the browser, the
+Administrator's form carries the "Ask Albanna" button and it opens the
+panel; the Error Log holds nothing new since the deploy; and the worker
+and web logs hold no traceback.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
