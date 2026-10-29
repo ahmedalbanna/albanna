@@ -5,6 +5,59 @@ All notable changes to Albanna are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] — 2026-10-29
+
+The one-door release.  The question it answers came from the owner of
+the site: *only one role may use the chat — not other roles such as
+System Manager.*  The chat was already a Frappe permission, so the answer
+was a row in the matrix, and the row that had to go was the
+`System Manager` one.
+
+### Changed
+
+- **The shipped matrix names one role.**  `Albanna Conversation` carries
+  `Albanna User` — read, write, create, delete, all `if_owner` — and
+  nothing else.  A System Manager who wants the chat takes that role,
+  through the User form, like anybody else; one who does not take it is
+  refused, like anybody else.  The Administrator is inside, by Frappe's
+  own rule: `has_permission` returns `True` for that account before it
+  reads a row, and `get_roles` gives it every role on the site.  The
+  app does not add a second rule to undo that; the per-user policy of
+  v0.2.3 is the lever for one account, the Administrator included.
+- **A System Manager is not exempt from the transcript either.**  The
+  direct-SQL paths have always said "the owner and nobody else"
+  (decision 13), and the permission hooks said the opposite for the list
+  view — so the two halves of the app disagreed about who may read
+  somebody else's conversation.  The hooks now agree.  An operator still
+  reads `Albanna Chat Log`, which is the audit trail and not the
+  transcript.
+
+### Fixed
+
+- **`hooks.py` described a grant the DocType never had.**  It claimed
+  that `Albanna Conversation` grants `All` read/write, and that the
+  grant is what makes the gate reachable for a non-manager user.  It has
+  never done so: the live matrix had two rows and no `All`, and a
+  comment that says the opposite of the code is worse than no comment.
+- **The v0.1 patch's docstring described the shipped rows as they were
+  then.**  It now says the site is left with the shipped matrix, which
+  is the gate.
+
+### Added
+
+- **`tests/test_access_matrix.py`** — holds the shipped matrix to one
+  role, and reads the DocType's JSON rather than the database: the
+  database holds what the last migrate put there, the file holds what
+  the next migrate will put there.  A Desk edit of the live rows
+  survives a migrate only until the next release that touches the JSON.
+
+### Removed
+
+- **The inert `Albanna Chat User` role is deleted from production.**  It
+  was created by hand on 2026-10-22, before the app was installed, and
+  it holds no permission rows at all — assigning it granted Desk access
+  and nothing else.  The app never shipped it, so no patch recreates it.
+
 ## [0.2.3] — 2026-10-29
 
 The access release.  The question it answers is an ordinary one — *who
