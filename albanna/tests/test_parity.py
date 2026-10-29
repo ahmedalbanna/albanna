@@ -295,6 +295,37 @@ class TestPermissionParity(AlbannaTestCase):
         names = [row.get("name") for row in (result.data or [])]
         self.assertNotIn(thread, names, "a mailbox was read by a reader who is not linked to it")
 
+    def test_the_list_says_why_the_email_threads_are_not_there(self):
+        """A list that is silently short says so in the tool's own answer.
+
+        A list of Communications that quietly omits the email threads is
+        the one answer the reader cannot trust: the model cannot tell
+        "there are no email threads" from "the thread exists and I
+        cannot see it".  So the tool states the limitation — and it
+        states *which* limitation, because there are two, and a reader
+        who is told the wrong one will go and fix the wrong thing.
+        """
+        mailbox = self._mailbox()
+
+        # No link at all.
+        self._unlink_mailbox(self.sales_user)
+        result = self._call("list_docs", {"doctype": "Communication"}, self.sales_user)
+        self.assertTrue(result.ok, result.content)
+        self.assertIn("no email account configured", result.content)
+
+        # Linked, but the account may only read the threads it owns.
+        self._link_mailbox(self.sales_user, mailbox)
+        result = self._call("list_docs", {"doctype": "Communication"}, self.sales_user)
+        self.assertTrue(result.ok, result.content)
+        self.assertIn("limit it to the Communications it owns", result.content)
+
+        # Linked, and holding the role that may read any thread: nothing
+        # to say.
+        self._grant(self.sales_user, "Inbox User")
+        result = self._call("list_docs", {"doctype": "Communication"}, self.sales_user)
+        self.assertTrue(result.ok, result.content)
+        self.assertNotIn("email thread could not be read", result.content)
+
     def _mailbox(self) -> str:
         """An email account of this test's own."""
         name = "Albanna Parity Mailbox"

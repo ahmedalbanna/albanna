@@ -150,7 +150,7 @@ it has already been done, what shipped.
 | 4 | **"My open tickets"** — one click from the launcher to the agent's queue, filtered by assignee and status | an agent's first question is always "what is on my desk?" | S | with item 2 | **half shipped, and the half that shipped does not yet do what it says** — the suggestion "Show my open tickets" is on the Issue list, but the assistant has no way to know who "my" is: the model is told the page, not the reader, so it answers with *every* open ticket and calls them the reader's.  Two ways to fix it, both needing the owner's yes: tell the model who the reader is (the reader's account then leaves the site), or have the tool resolve "mine" itself.  §4 rules out the two obvious shapes for the *launcher* half — a workspace and a command-palette entry |
 | 5 | **A ticket summary that fits the ticket** — the system prompt tells the model the shape of a triage answer (want / done / outstanding / next) | the model will summarise a ticket well only if it is told what a good triage summary is | S | immediately — a prompt change, not a feature | **shipped** — the system prompt names the four parts |
 | 6 | **Per-ticket conversation memory** — the thread is per page today; an agent moving between the Issue and the Customer gets two threads | the agent reads the same customer across records | M | an agent actually asks about a customer in two threads in one sitting | **not started** |
-| 7 | **The assistant says what it could not read** — when a tool is refused for a missing right, the answer says so, instead of leaving the reader to believe the silence was the whole truth | on a support seat the customer thread was invisible (no Communication read) and the answer paraphrased a date field instead of the customer's words | S | immediately — the refusals are already counted, they are only not said out loud | **shipped** — the prompt tells the model to say what it could not read, and the refusals are counted in the tool's own answer |
+| 7 | **The assistant says what it could not read** — when a tool is refused for a missing right, the answer says so, instead of leaving the reader to believe the silence was the whole truth | on a support seat the customer thread was invisible (no Communication read) and the answer paraphrased a date field instead of the customer's words | S | immediately — the refusals are already counted, they are only not said out loud | **shipped** — the prompt tells the model to say what it could not read, and the tool's own answer now carries the limitation, in the tool's hints, where the model hears it.  It names *which* limitation: an account not linked to a mailbox, and an account linked but limited to the threads it owns, hide the mail in two different ways, and a reader told the wrong one fixes the wrong thing |
 | 8 | **An approval always ends in a sentence** — after the reader approves, the panel says what happened to the write: it ran, it was refused, or the turn died before it could run.  The audit row is written before the turn can die | found live: a turn that needed an approval hit the ten-minute wall, and the reader was left with the one question that matters — "did it happen?" — and no answer | S | immediately — this is a trust hole, not a feature | **shipped** in 0.2.1 and 0.2.5 |
 | 9 | **A long thread remembers** — the model sees only the last `history_limit` messages of a thread (50 by default), so a ticket that has been worked on for days loses its earlier decisions, and it loses them silently | the thread belongs to the page, and a support ticket stays open for longer than fifty messages | M | an agent's thread passes the history limit and the answer forgets what was already decided | **not started** — one idea from the reviewed drafts survived as this item (COMPACT.md, §11) |
 
@@ -241,8 +241,10 @@ log were read against the permission question, and every hole was closed.
 - Item 3 (drafted reply copyable) — shipped as a fenced code block in the answer.
 - Item 4 ("My open tickets") — shipped as an empty-state suggestion.
 - Item 5 (triage-shaped summary) — shipped as a prompt instruction.
-- Item 7 (say what could not be read) — shipped: deterministic note in
-  `list_docs` for Communications, plus a prompt instruction.
+- Item 7 (say what could not be read) — shipped: a deterministic note in
+  `list_docs` for Communications, plus a prompt instruction.  (The note
+  itself was carried in a place nothing read until 2026-10-29; it is now
+  carried in the tool's hints, and it names both the causes — see below.)
 - Item 8 (approval ends in a sentence + audit row before the turn can die)
   — shipped: a `running` audit row is written and committed at turn start
   and updated in place at the turn's end; writes are committed as they run;
@@ -604,8 +606,8 @@ Three more defects came out of that, all of them invisible to the bench:
 The outcome, measured: **the whole workflow is green** as of
 2026-10-29 — pre-commit, the linters and the seventeen front-end
 suites, and the server job: 203 domain tests and 174 site tests, with
-the three site tests that need a submitted Sales Invoice skipping
-themselves and saying so.  What the CI says is *the app works against
+the three site tests that needed a prepared site skipping themselves
+and saying so.  What the CI says is *the app works against
 the released v16 line*; what the bench says is *the app works against
 what is deployed*, and that is the site suite run against the deployed
 fork, before a deploy (CONTEXT 81).
@@ -618,7 +620,7 @@ one needed a provider key to redact.  The site's preparation now makes
 all three, and the read-only field it makes is a *custom* field — the
 test should not depend on which fields ERPNext happens to lock, which
 is ERPNext's business and may change under the suite.  The CI's site
-suite now runs **174 tests with no skips**, and so does the bench's.
+suite now runs **176 tests with no skips**, and so does the bench's.
 
 **And the site the suite runs on is now made, not inherited.**  The
 bench's gate ran against a database dump of production taken by hand,
@@ -630,8 +632,8 @@ ERPNext, the app, the data the suite reads, the suite itself — and the
 CI uses it now, so the CI's site and the bench's are made the same
 way.  It refuses to drop a site that already exists without
 `--replace`: a site is somebody's work.  It was proved by building a
-site from nothing on this host and running the suite on it: 174 tests,
-no skips.
+site from nothing on this host and running the suite on it — no skips,
+and the same suite, the same result, on the bench's own gate site.
 
 One thing this did **not** do, on purpose: it did not rebuild
 `test.localhost` itself.  The ERP-Next MCP backend's own test suite
@@ -846,8 +848,9 @@ a day later, and after a deploy?**
 | Frappe deletes a site's own backups after **24 hours** by default, which would have deleted the safety net taken before a migration a day later | the dump taken before *that* migration is not the same thing as yesterday's scheduled dump | `keep_backups_for_hours` is 336 (a fortnight) on both covered sites |
 | **The restore runbook asked the operator for credentials this host already had** — the MariaDB root password was described as "not in a usable state", and it was: the password in `/home/frappe/.mariadb-root.credentials` authenticates, and nobody had tried it | a runbook that asks for something that is on the shelf is a runbook nobody follows | the runbook says where the credentials are, and **the restore was then run** — the daily dump of `albanna.localhost` restored into a scratch site on this host, and the restored database compared with the live one: 12 customers, 6 sales invoices, 111 items and 12 users on both sides.  A restore that has never been run is a plan, not a backup |
 | The deployment knowledge was in one operator's head — which units to restart, that `bench restart` does nothing here, that the migrate locks the site | the next deploy is inevitable, and the discovery work is not something to repeat | `docs/DEPLOYMENT.md`, written from what the 0.2.1 deployment needed |
-| **The repository's own gates were red on every commit** — the CI installed `ruff` without a version and judged the code against rules this app never agreed to, the pre-commit configuration listed the same hook twice (so pre-commit refused to run at all), and the server job installed Frappe v15 while the app targets v16 | a gate that is red is not a gate; the local suites were the only ones that had been running, so "CI is green" was a claim nobody had checked | the tools are pinned (ruff 0.16.1, pytest, `frappe-bench`, Node 24), the duplicate hook is gone, the formatter is part of the CI job, the complexity bar is explicit, and the server job installs the tag `v16.0.0` — **and runs**: as of 2026-10-29 the whole workflow is green (pre-commit, the linters and the seventeen front-end suites, 203 domain tests and 174 site tests) |
+| **The repository's own gates were red on every commit** — the CI installed `ruff` without a version and judged the code against rules this app never agreed to, the pre-commit configuration listed the same hook twice (so pre-commit refused to run at all), and the server job installed Frappe v15 while the app targets v16 | a gate that is red is not a gate; the local suites were the only ones that had been running, so "CI is green" was a claim nobody had checked | the tools are pinned (ruff 0.16.1, pytest, `frappe-bench`, Node 24), the duplicate hook is gone, the formatter is part of the CI job, the complexity bar is explicit, and the server job installs the tag `v16.0.0` — **and runs**: as of 2026-10-29 the whole workflow is green (pre-commit, the linters and the seventeen front-end suites, 203 domain tests and 176 site tests) |
 | **The support agent's account was not linked to the site's support mailbox**, so the assistant could not read a single customer email — and the reason was invisible from inside the app: the framework hides email Communications from any reader without a `User Email` row, and the site had none | the customer wrote in; the agent asked the assistant; the assistant said what it could read, and the customer's own words were not in it | the `User Email` row now exists, linking the support agent's account to the site's "Support" email account, and the account holds the "Inbox User" role it needs as well.  What remains is the operator's half: a real mailbox behind that account, and incoming enabled |
+| **And the app's own answer about it never reached the model.**  The tool wrote the limitation into the envelope under a key nothing read, so the promise made in 0.2.1 — *say what you could not read* — was kept in the code and not in the conversation | the reader is told the thread could not be read; the model is not, so it writes about the silence as if the silence were the whole truth | the limitation is carried in the tool's hints, the channel the tool's answer actually reaches the model through, and it names *which* limitation applies: an account not linked to a mailbox, and an account linked but limited to the threads it owns, hide the mail in two different ways.  A test pins both (CONTEXT 85) |
 
 Two of these were found by *running* the thing rather than reading it: the
 backup script's first run against both live sites caught a missing

@@ -230,9 +230,10 @@ bench --site albanna.localhost migrate
 **The data:** if the migrate damaged the site, restore the dump taken in
 step 1.  The runbook is `docs/BACKUP.md` (a copy of it sits next to the
 artifacts as `/home/frappe/backups/sites/RESTORE.md`).  Two things to know
-before you start: a restore needs **MariaDB root credentials**, which do not
-authenticate on this host — ask the operator — and it replaces everything
-written since the dump was taken.
+before you start: a restore needs **MariaDB root credentials**, which on
+this host are in `/home/frappe/.mariadb-root.credentials` (mode 600 — the
+password in that file was checked on 2026-10-29, and the restore was run
+with it), and it replaces everything written since the dump was taken.
 
 ## The release checklist
 

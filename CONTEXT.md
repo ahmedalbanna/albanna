@@ -1385,8 +1385,8 @@ with the next contributor.
 
 The assistant cannot list the customer email threads on this site, and the
 reason is not a permission the app forgot to ask for: Frappe scopes
-`Communication` to the reader's own `User Email` accounts, and the site's
-support mailbox has no `User Email` row.  The role already holds read on
+`Communication` to the reader's own `User Email` accounts, and to the
+Communications the reader owns.  The role already holds read on
 `Communication`; granting it again would change nothing.
 
 The app cannot fix that — it is the framework's rule and the site's setup —
@@ -1400,6 +1400,10 @@ The same reasoning is why the note names the way out rather than only the
 problem: a reader who is told that the mailbox is not attached to the site
 can ask somebody to attach it, and a reader who is told only "no
 communications" can do nothing at all.
+
+(Which limitation applies, and where the note is carried, are settled in
+85 — the first version of this note was written but never reached the
+model.)
 
 ### 73. The answer keeps the document an undone change was made to
 
@@ -1725,7 +1729,7 @@ So the claim is kept narrow and said plainly:
 * the CI says *the app works against the released v16 line*;
 * the bench says *the app works against what is deployed* — the site
   suite run against the deployed fork, `bench --site test.localhost
-  run-tests --app albanna`, 174 tests.
+  run-tests --app albanna`, 176 tests.
 
 Both are run: the first on every push, the second before a deploy, and
 the second is the one that speaks for production.
@@ -1753,13 +1757,101 @@ wizard's standard masters, its company and fiscal year, its price lists
 and defaults — and then one service item and one customer, because those
 two are data rather than configuration.
 
-**What that costs, said plainly.**  Three of the suite's tests need a
-*submitted* Sales Invoice, and they skip themselves on a site that has
-none, saying so in the log.  On the bench site, which carries ERPNext's
-demo data, they run.  So the CI runs 174 tests with 3 skips and the
-bench runs 174 with none.  A gate that hid those skips would be lying
-about what it covers, and a gate that ran the demo setup would be
-testing ERPNext's demo fixtures as much as this app.
+**What that costs, said plainly.**  Making the site's data is this app's
+work, and it is not the same thing as making a site with ERPNext's demo
+fixtures: the demo setup would be testing ERPNext's fixtures as much as
+this app.  It cannot be used at all, because it clones the first company
+it finds and a fresh site has none.
+
+The site the suite reads is made by the preparation script, and it is made
+so that nothing skips (84): the CI runs 176 site tests with no skips, and
+so does the bench.  A gate that hid a skip would be lying about what it
+covers, and a gate that ran the demo setup would be testing ERPNext's
+demo data as much as this app.
+
+### 83. The site the gate runs on is made, not inherited
+
+The bench's gate ran against a database dump of production: taken by hand,
+on a day, and then left to drift.  The CI built its own site, a second way.
+A clone nobody can rebuild is a clone that quietly stops being what it was
+— it gathers the site's own test records, it drifts away from the app's
+schema, and when it breaks nobody can say why.  And two ways to build a
+site are two ways to disagree about one.
+
+So `scripts/rebuild_test_site.sh` makes the site instead: a new site,
+ERPNext, the app, the data the suite reads, the suite itself.  The CI uses
+it now, so the CI's site and the bench's are made the same way and the
+same script is the one thing that has to change when the site needs to
+change.
+
+Two things it does not do.  It refuses to drop a site that already exists
+without `--replace`: a site is somebody's work, and a script that can
+delete one by accident will.  And it takes the database root password from
+the environment or from the host's credentials file, never from its own
+text and never printed.
+
+What it did **not** do is rebuild `test.localhost` itself.  The ERP-Next
+MCP backend's own test suite runs against that site, and what it needs
+from it is not written down anywhere; replacing a site's data on the
+strength of a guess breaks somebody else's gate.  The script is there for
+when that is decided.
+
+### 84. A skipped test is a test that stopped testing
+
+Three of the CI's site tests skipped themselves: one needed a submitted
+Sales Invoice, one needed a field on Customer the form will not let a
+person change, and one needed a provider key to redact.  A skip is quiet.
+The suite passes, the log says "skipped", and the coverage is gone — the
+gate reports less than it looks like it is reporting, and nobody is told.
+
+So the site is prepared rather than the test skipping.  The preparation
+makes the three things the suite cannot make for itself, and the read-only
+field it makes is a **custom** field: a test that depends on which fields
+ERPNext happens to lock is a test that skips itself the day ERPNext moves
+them, and a third party's schema is the third party's business.
+
+The same pass found a skip it could not explain.  The read-only test
+skipped itself in the CI with "this site has no read-only field on
+Customer", and the CI's own log shows the Customer *was* fine: 81
+fields, five of them read-only, before and after the preparation's
+report.  So the skip was not about the site's schema, and the cause was
+not established.  What is done about it is what can be done honestly:
+the preparation clears the doctype meta cache before the suite reads
+it, and it reports the Customer's fields before and after, so the next
+skip of that test arrives with the site's own numbers attached to it
+instead of a bare assertion.  The test itself no longer depends on the
+question either way, because the field it refuses to write is one the
+site made for it.
+
+The site suite now runs 176 tests with no skips, in the CI and on the bench.
+
+### 85. The app names which limitation hid the threads, and says it where the model can hear it
+
+The limitation on the customer email threads is the framework's rule and the
+site's setup, so the app cannot fix it; it can say it.  That was the
+decision (72), and it was carried out with a key in the tool's envelope
+that nothing read — so the note never reached the model, and the promise
+was not kept.  A statement in a place nobody looks at is not a statement.
+
+Two things changed, and both were found by asking the question the tool
+should have been answering.
+
+The limitation has **two** causes, not one.  An account that is not linked
+to a mailbox has no `User Email` row, and the framework hides email
+Communications from it.  An account that *is* linked but does not hold a
+role that may read any thread is limited to the Communications it owns —
+and an incoming customer's mail is owned by the account that fetched it,
+not by the agent who should read it.  The first cause is the one that was
+known; the second is the one that hides, because the account looks
+correctly set up.  A reader told the wrong cause goes and fixes the wrong
+thing, so the app names which one applies, and it uses Frappe's own rule
+to decide rather than a copy of it: if the framework changes what it
+restricts, the app follows.
+
+And it says it in the tool's **hints**, because that is the channel the
+tool's answer carries to the model.  The hints are how the other tools
+speak to the reader — "say this as a fact about the account, and do not
+apologise for it" — and a limitation belongs with them.
 
 ## What is deliberately not here
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.

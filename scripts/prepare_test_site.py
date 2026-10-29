@@ -203,12 +203,18 @@ def report_customer_meta(label: str) -> None:
     worse than a gate that fails.
 
     The label says *when* the report was taken, because the two
-    reports are not the same: a site that has just had ERPNext
-    installed has a cached Customer meta from before ERPNext's fields
-    were synced, and the cache is not invalidated by the sync.  So the
-    first report may show a Customer with no fields at all — which is
-    a stale cache, not a site — and the second, taken after the cache
-    is cleared, shows the real one.
+    reports are not necessarily the same: the framework caches a
+    doctype's meta, and a site that has just had ERPNext installed
+    has been through a great deal of schema work.  If the two reports
+    disagree, the log says so.
+
+    What the CI showed on 2026-10-29: the two reports agreed — 81
+    fields, five of them read-only, before and after — so on that site
+    the Customer was fine and the skip was not about the site's
+    schema.  What the skip *was* about was not established, and this
+    function is here so that the next person does not have to guess:
+    the log now says what the site looked like at the moment the suite
+    was about to run.
     """
     meta = frappe.get_meta("Customer")
     read_only = [df.fieldname for df in meta.fields if getattr(df, "read_only", 0)]
@@ -222,15 +228,17 @@ def report_customer_meta(label: str) -> None:
 def clear_customer_meta_cache() -> None:
     """Throw away the site's cached Customer meta.
 
-    A fresh site has one stale entry: the Customer meta as it was
-    before ERPNext synced its fields.  The framework caches a doctype's
-    meta when the doctype is created and does not invalidate that entry
-    when the fields arrive, so a read that happens before the cache is
-    cleared sees a Customer with no fields — and the read-only test,
-    which reads the Customer's fields, skips itself and says so.
+    A doctype's meta is cached when it is read, and a site that has
+    just had ERPNext installed has been through a great deal of schema
+    work since.  Clearing the entry before the suite reads it costs
+    nothing and removes one more thing between the site's schema and
+    what the suite sees.
 
-    That is what happened in the CI, and it was the whole of the skip:
-    the site's Customer was fine, and the cache was not.
+    Whether this is what the CI's skip was about is not established —
+    the CI's own log showed the Customer intact before and after
+    (2026-10-29).  So the clear is a precaution, and the *report* is
+    the part that pays: the next skip of that test comes with the
+    site's own numbers attached to it.
     """
     frappe.clear_cache(doctype="Customer")
 

@@ -16,6 +16,18 @@ the live site.
 
 ### Fixed
 
+- **The app's own answer about what it could not read never reached the
+  model.**  When a listing of Communications came back short, the tool
+  wrote the reason — the account is not linked to a mailbox — into the
+  envelope under a key nothing read.  The promise made in 0.2.1, *say
+  what you could not read*, was kept in the code and not in the
+  conversation: the model saw an empty list and no reason for it.  The
+  limitation is now carried in the tool's hints, the channel the tool's
+  answer reaches the model through, and it names *which* limitation
+  applies: an account that is not linked to a mailbox, and an account
+  that is linked but may only read the threads it owns, hide the mail in
+  two different ways — and the second one looks like a correctly set-up
+  account.  A reader told the wrong one fixes the wrong thing.
 - **Three of the CI's site tests skipped themselves, and a skipped test
   is a test that quietly stopped testing anything.**  One needed a
   submitted Sales Invoice, one needed a field on Customer the form will
@@ -25,15 +37,16 @@ the live site.
   field — so the test no longer depends on which fields ERPNext
   happens to lock, which is ERPNext's business and may change — and
   the key is one that is not a real key.  The CI's site suite now runs
-  **174 tests with no skips**, and so does the bench's.
+  **176 tests with no skips**, and so does the bench's.
 - **The read-only test skipped itself on a site whose Customer was
-  fine.**  The framework caches a doctype's meta when the doctype is
-  created and does not invalidate that entry when the fields arrive, so
-  a fresh site holds a Customer meta from before ERPNext synced its
-  fields — and the test, which reads the Customer's fields, saw none.
-  The site's preparation now clears that cache on purpose and says out
-  loud what the Customer looks like before and after, so the next
-  person is not left with the same question.
+  fine.**  It skipped in the CI with "this site has no read-only field
+  on Customer", and the CI's own log shows the Customer was intact —
+  81 fields, five of them read-only.  What the skip was about was not
+  established, and the record says so rather than inventing a cause.
+  What can be done is done: the site's preparation clears the doctype
+  meta cache before the suite reads it, and reports the Customer's
+  fields before and after, so the next skip of that test comes with the
+  site's own numbers attached to it instead of a bare assertion.
 - **The repository's CI had been red on every commit since 0.2.1**, for
   three separate reasons: the linter was installed without a version and
   judged the code against rules the app never agreed to; the pre-commit
@@ -45,7 +58,7 @@ the live site.
   **The whole workflow is green** as of 2026-10-29: pre-commit, the
   linters and the seventeen front-end suites, and the server job —
   203 domain tests and 174 site tests, with the three site tests that
-  need a submitted Sales Invoice skipping themselves and saying so.
+  needed a prepared site skipping themselves and saying so.
   (Those three no longer skip: see above.)
 - **The site suite only passed in one order.**  A test that acts as
   somebody left the session as that person, and the framework does not

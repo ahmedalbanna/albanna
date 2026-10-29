@@ -383,34 +383,88 @@ def list_docs(
     # non-email Communications, and the result is a successful list with
     # no error.  The model cannot tell "there are no email threads" from
     # "the thread exists and I cannot see it", so the limitation is
-    # stated in the envelope rather than left for the model to guess.
-    note = ""
+    # stated in the tool's own answer rather than left for the model to
+    # guess.
+    #
+    # It goes in the hints, because that is the channel the tool's
+    # answer carries to the model: a key the envelope does not read is
+    # a statement nobody hears.
+    hints: list[str] = []
     if doctype == "Communication":
-        try:
-            has_email = bool(
-                frappe.get_all(
-                    "User Email",
-                    filters={"parent": frappe.session.user},
-                    limit=1,
-                )
-            )
-        except Exception:
-            has_email = True
-        if not has_email:
-            note = (
-                "This account has no email account configured, so email "
-                "Communications are not included in this list: only "
-                "non-email Communications are shown. Say in the answer that "
-                "the email thread could not be read and why, rather than "
-                "treating the silence as the whole truth."
+        limitation = _communication_limitation(frappe.session.user)
+        if limitation:
+            hints.append(
+                f"{limitation} Say in the answer that the email thread could "
+                "not be read and why, rather than treating the silence as the "
+                "whole truth."
             )
 
     return ok(
         f"Found {len(documents)} {doctype}",
         data=documents,
         doctype=doctype,
-        **({"note": note} if note else {}),
+        hints=hints,
     )
+
+
+def _communication_limitation(user: str) -> str:
+    """Why this account cannot read the email threads, if it cannot.
+
+    There are two reasons, and the second is the one that hides.
+
+    The first is the link: Frappe hides email Communications from any
+    reader whose account has no ``User Email`` row, so an agent who is
+    not linked to the mailbox sees none of the customer's mail.
+
+    The second is the owner constraint: Frappe limits a reader to the
+    Communications they own, unless they hold a role that may read any
+    ("Inbox User" is that role).  An incoming customer's mail is owned
+    by the account that fetched it, not by the agent who should read
+    it.  So an agent who *is* linked but does not hold that role sees no
+    customer mail either — and the first reason does not apply, so a
+    note that only knew about the link would stay silent exactly when
+    it should have spoken.
+
+    Frappe's own rule decides this rather than a copy of it: if the
+    framework changes what it restricts, the app follows.  And when the
+    app cannot tell, it says nothing: a wrong limitation is worse than
+    no limitation.
+    """
+    try:
+        linked = bool(
+            frappe.get_all(
+                "User Email",
+                filters={"parent": user},
+                limit=1,
+            )
+        )
+    except Exception:
+        return ""
+
+    if not linked:
+        return (
+            "This account has no email account configured, so email "
+            "Communications are not included in this list: only "
+            "non-email Communications are shown."
+        )
+
+    try:
+        from frappe.model.db_query import requires_owner_constraint
+        from frappe.permissions import get_role_permissions
+
+        permissions = get_role_permissions(frappe.get_meta("Communication"), user=user)
+        if requires_owner_constraint(permissions):
+            return (
+                "This account is linked to an email account, but its "
+                "permissions limit it to the Communications it owns, so "
+                "email threads that arrived from a customer are not "
+                "included in this list: only the threads it owns and the "
+                "non-email Communications are shown."
+            )
+    except Exception:
+        return ""
+
+    return ""
 
 
 def _hidden_fields(document) -> set[str]:
