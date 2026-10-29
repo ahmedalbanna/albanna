@@ -1,7 +1,7 @@
 # Context: Albanna
 
 Status: **Accepted**
-Last reviewed: 2026-10-28
+Last reviewed: 2026-10-29
 
 > This file is the vocabulary and the invariants.  A word that appears here
 > means one thing, everywhere in the app.  A word that does not appear here
@@ -156,6 +156,31 @@ was never made, which is worse than being told nothing.
 A write that survives a dead turn has no undo handle in the panel: the
 transcript is written at the turn's end, and there was no end.  The
 document itself is the way back.
+
+The row is kept up to date **while the turn runs**, not only when it ends.
+Its calls used to be written at the end, so a worker killed half-way
+through left a row that named nothing — and a turn that wrote a document
+and then died was a change the reader was never told about.  The write now
+records itself in the same transaction as the change it made.  See
+invariant 4e and decision 79.
+
+### 4e. A change the reader confirmed and that never ran is named
+
+The reader's *yes* and the write behind it are two facts, and both have to
+outlive the turn that collected them.  The panel's answer to *did it
+happen?* has to cover the case where the reader said yes and the change
+never happened — a reader who confirmed a change and is told only that the
+turn did not finish has no way to know the change is not in the database.
+
+So the approval is written into the turn's audit row **before the reader is
+asked**, the reader's answer is written into it **when they answer**, and
+the write records itself **in the same transaction as the change it made**.
+The row can then say both things — that a change was confirmed, and
+whether it ran — and the panel names the confirmed change that did not.
+
+The record holds the document's identity and not the values the model
+wanted to write: the ledger is read by operators, and a value the reader
+alone may see has no business there.
 
 ### 4a. The two writes are different rights
 
@@ -1586,6 +1611,46 @@ of the app disagreed — the direct-SQL path said no, the list view said
 yes.  The hooks now say no as well.  An operator who needs to know what
 the chat cost and what was asked for has `Albanna Chat Log`, which is the
 audit trail and is not the transcript.
+
+### 79. A confirmation is a durable fact, and it is kept beside the write it answers
+
+The gate holds the write in the cache while the reader decides: a
+`pending` record with a two-minute life, polled every tenth of a second.
+That is the right place for a **wait** — it is short, it is hot, and it is
+nobody else's business.
+
+It is the wrong place for a **fact**.  The reader's answer to "shall this
+change happen?" is not a wait; it is the fact that a change was approved,
+and it has to outlive the wait that collected it.  The wait ends when the
+worker dies — which is exactly when the reader needs the answer most.  A
+reader who confirmed a change, and whose worker was killed before the
+write ran, was told by the old panel only that the turn did not finish:
+true, and useless, because the change they confirmed is not there and
+nothing says so.
+
+So the approval and the answer live in the turn's audit row, in the
+database, and the cache keeps only the handshake it is good at.  The
+worker records what it asked for before the reader is asked; the endpoint
+records what the reader said when they answer; the write records itself
+in the same transaction as the change it made.
+
+**One writer per fact.**  The endpoint owns the decision — it is what
+refuses a second answer — and the worker owns the write.  Neither writes
+the other's fact, and the row is *merged* rather than overwritten, so an
+answer recorded while the worker was running is not lost by the worker's
+next update.
+
+**The merge happens under a lock on the row.**  Without it the worker can
+read the row, the endpoint can write the answer into it, and the worker
+can then write its own version over the top — and what is lost is the
+reader's answer, silently, in the one case where the reader needs it
+most.  A lock is cheap here: the row is written by a turn, not by a
+request that has to be fast.
+
+**The panel names what never ran.**  A change the reader confirmed and
+that never ran is the worst of both — the reader believes it happened, and
+it did not — so it is named as exactly that, by document, rather than left
+to the reader's imagination.
 
 ## What is deliberately not here
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.

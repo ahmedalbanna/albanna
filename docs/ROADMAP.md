@@ -432,6 +432,48 @@ deploy — Frappe's own *"Session Stopped"* for the request that was in
 flight when maintenance mode went on — and nothing else; the worker error
 log is empty and the journal holds no traceback.
 
+### Shipped in this pass (v0.2.5, the confirmed change that never ran)
+
+§8's third finding was the last open hole in the trust layer: the panel
+could name the documents a dead turn **changed**, and could not name the
+change a reader **confirmed** that never ran.
+
+The reason was where the answer lived.  The approval gate keeps the
+pending write and the reader's answer in a cache record with a two-minute
+life — the right place for a *wait*, and the wrong place for a *fact*.
+The wait ends when the worker dies, which is exactly when the reader
+needs the answer most.
+
+- **The approval is recorded before the reader is asked.**  It goes into
+  the turn's `Albanna Chat Log` row and is committed there.  The row
+  outlives the turn; the cache record does not.
+- **The reader's answer is recorded in the row too.**  The endpoint that
+  takes the decision writes it there, so a worker that dies between the
+  answer and the write still leaves a row that knows the reader said yes.
+- **The write records itself in the same transaction as the change it
+  made.**  The row cannot say a change was confirmed and never ran while
+  the database says it is there.  This also closed a second hole: the
+  row's calls used to be written only when the turn *ended*, so a worker
+  killed half-way through left a row that named nothing — a turn that
+  wrote a document and then died was a change nobody was told about.
+- **One writer per fact, and the row is merged under a lock.**  The
+  endpoint owns the decision (it is what refuses a second answer) and the
+  worker owns the write.  Without the lock, the worker can read the row,
+  the endpoint can write the answer, and the worker can write its own
+  version over the top — losing the reader's answer silently.
+- **The panel names it.**  A change the reader confirmed and that never
+  ran is named as exactly that: *"The change you confirmed did not run:
+  Customer CUST-0001."*  A change that ran is not named as one that did
+  not, and a change the reader turned down is not named at all — they
+  know they turned it down.
+- **No DDL.**  The approvals ride the existing `tools` Long Text, beside
+  the calls and the per-round timings.
+
+What the record does **not** hold is the values the model wanted to write.
+The ledger is read by operators, and a value the reader alone may see has
+no business there; the document's identity is enough to answer *did my
+change happen?*.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
@@ -541,12 +583,13 @@ Three findings are *product* findings, not bugs:
    reader sent after the wrong turn's writes is worse off than one told
    nothing.
 
-   *What is still open:* the panel cannot name an *approved* write that
-   never ran.  A write that never ran leaves no trace in the row, and the
-   approval record lives only as long as the approval window — two minutes
-   by default — so it cannot answer a question asked ten minutes later.
-   The reader is told the turn did not finish, which is true, and the
-   ledger says what the turn did do.
+   **Shipped in v0.2.5.**  The approval and the reader's answer now live in
+   the turn's audit row — in the database, not in the cache record the
+   worker polls — and the write records itself in the same transaction as
+   the change it made.  So the row can say both things: that a change was
+   confirmed, and whether it ran.  The panel reads that and names the
+   confirmed change that never ran, by document, instead of saying only
+   that the turn did not finish.  See §5 and decision 79.
 
 A fourth thing was found but is not yet a defect: after an undo, the
 answer still reads "Priority changed from Medium to High" — the answer
@@ -623,7 +666,40 @@ What this pass did **not** do, on purpose:
   test suite overwrites; backing it up would fill the disk to protect
   nothing.
 * It did not choose the model.  The evidence is in §8's finding 2 — and the
-  ledger's own timings now say it precisely: over a hundred turns, `auto`
-  picked fourteen models, from 7.2 to 149 seconds per round, a twenty-fold
-  spread.  The choice belongs to the operator, and the ledger's `round_ms`
-  is the instrument to judge it with.
+  ledger's own timings now say it precisely.  Measured on production's
+  ledger (164 turns, 2026-10-21 → 2026-10-29, `model = auto`):
+
+  | Model | Turns | Answered | Median turn | Slowest turn |
+  |---|---:|---:|---:|---:|
+  | `minimax-m3.1-flash-free` | 51 | 49 | 30 s | 335 s |
+  | `longcat-2.5-preview-free` | 24 | 19 | 81 s | 156 s |
+  | `stepfun-ai/step-5-preview` | 18 | 11 | 83 s | 473 s |
+  | *(no model answered)* | 14 | 0 | — | — |
+  | `Gemma-4-31B-IT` | 9 | 9 | 18 s | 63 s |
+  | `sensenova-6.8-flash-lite` | 8 | 8 | 17 s | 262 s |
+  | `Qwen3.8-Flash-Next` | 8 | 8 | 199 s | 487 s |
+  | `step-5-preview` (the fallback) | 7 | 7 | 75 s | 356 s |
+  | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | 7 | 7 | 199 s | 390 s |
+  | `MiMo-V2.6-Flash` | 4 | 3 | 404 s | 599 s |
+  | `nvidia/nemotron-3.5-lightning-30b-a3b` | 4 | 2 | 62 s | 133 s |
+
+  The per-round timings — the model's own latency, without the reader's
+  thinking time in it — say the same thing more sharply.  Only nine rows
+  carry them (the feature is new), all from 2026-10-29:
+  `sensenova-6.8-flash-lite` ran 12 rounds at a median of **5.5 s**
+  (slowest 13.6 s), `minimaxai/minimax-m3.1-flash` ran 6 at a median of
+  13 s (slowest 42 s), and `DeepSeek-V4-Flash` ran 3 at 6–10 s.
+
+  So the spread is not a matter of taste: the reasoning-heavy models take
+  two to seven minutes for a turn, which is the "the model is the
+  experience" finding of §8 again, and `auto` picks them often enough to
+  matter.  **The shortlist is `sensenova-6.8-flash-lite` first** (the
+  fastest and the most consistent on the only per-round evidence there
+  is) and `minimax-m3.1-flash-free` second (the most-used model, 49 of 51
+  turns answered, and free).  The choice belongs to the operator; setting
+  `model` in `Albanna Settings` is the whole of it.
+
+  One thing to change with it: `max_tokens` is **1200** on production,
+  while the DocType ships 8192.  Eight turns came back *truncated*, six of
+  them on `stepfun-ai/step-5-preview` — a model that spends its budget
+  thinking.  The setting was lowered at some point and nothing says why.
