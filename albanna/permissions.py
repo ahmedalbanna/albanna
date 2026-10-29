@@ -15,6 +15,13 @@ The chat gate is not a rule of this app's.  It is a permission row on
 ``Albanna Conversation``, read through the framework — so the operator
 grants the chat the same way they grant anything else on the site, and the
 answer cannot drift from what the permission matrix says.
+
+The one thing this app adds is a *per-account* exception to that matrix:
+a row in ``Albanna User Policy`` may switch the chat off for one person
+(or on, for one person whose roles would not carry it).  It is an
+exception to a rule, written down where the operator can see it, and it
+is applied in the same place the matrix is read — so the widget and the
+API cannot disagree about who may chat.
 """
 
 from __future__ import annotations
@@ -82,18 +89,49 @@ def can_use_chat() -> bool:
     answer already covers them.  A special case would be a second rule
     that could disagree with the matrix, and the matrix is the one the
     operator can see.
+
+    The one exception is a per-user policy row (see
+    :func:`albanna.user_policy.chat_access_override`), which the operator
+    writes by hand for one account: it decides that account and no
+    other.  It is an exception to the matrix, not a second matrix.
+    """
+    allowed, _reason = chat_access()
+    return allowed
+
+
+def chat_access() -> tuple[bool, str]:
+    """Whether the session user may chat, and why not.
+
+    Returns ``(allowed, reason)``.  The reason is empty when access is
+    allowed, ``"policy"`` when a per-user policy switched it off, and
+    ``"permission"`` when the permission matrix does not grant it.
+
+    The two reasons are kept apart because the refusal says them
+    differently: a person who is switched off by policy needs to be told
+    *that*, not told which roles to ask for — the roles would not help
+    them, because the policy outranks the roles.
     """
     user = frappe.session.user
     if not user or user == GUEST_USER:
-        return False
+        return False, "guest"
+
+    from albanna.user_policy import chat_access_override
+
+    override = chat_access_override(user)
+    if override == "off":
+        return False, "policy"
+    if override == "on":
+        return True, ""
 
     try:
         from frappe.permissions import has_permission as _has_permission
 
-        return bool(_has_permission(CHAT_DOCTYPE, "read", print_logs=False))
+        allowed = bool(_has_permission(CHAT_DOCTYPE, "read", print_logs=False))
     except Exception:
         logger.exception("Could not establish chat access for %s", user)
-        return False
+        return False, "permission"
+
+    return allowed, "" if allowed else "permission"
 
 
 def require_chat_access() -> None:
@@ -108,9 +146,24 @@ def require_chat_access() -> None:
     done by the Albanna User role" is a fact about the organisation that
     the person can act on, and it is the same sentence shape the authority
     layer uses for a refused write.
+
+    A person switched off by a policy row is told *that*, because the
+    roles would not help them: the policy outranks the matrix, and a
+    refusal that pointed at the roles would send them to ask for a role
+    that would not open the chat.
     """
-    if can_use_chat():
+    allowed, reason = chat_access()
+    if allowed:
         return
+
+    if reason == "policy":
+        frappe.throw(
+            frappe._(
+                "You do not have access to the chat. Your account's Albanna "
+                "user policy switches it off."
+            ),
+            frappe.PermissionError,
+        )
 
     roles = FrappePermissionChecker().roles_for(CHAT_DOCTYPE, "read")
     if roles:

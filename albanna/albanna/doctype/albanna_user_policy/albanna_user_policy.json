@@ -8,6 +8,7 @@
  "field_order": [
   "user",
   "confirm_writes_override",
+  "chat_access_override",
   "column_break",
   "notes"
  ],
@@ -28,6 +29,14 @@
    "in_list_view": 1,
    "label": "Confirm writes override",
    "options": "\nSite default\nAlways\nNever"
+  },
+  {
+   "default": "Site default",
+   "fieldname": "chat_access_override",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Chat access override",
+   "options": "\nSite default\nOn\nOff"
   },
   {
    "fieldname": "column_break",

@@ -1,8 +1,10 @@
 """``Albanna User Policy`` — per-user overrides for the safety rails.
 
 A user who must not write anything gets "Never".  A user who must
-confirm every write gets "Always".  Everyone else inherits the site
-default, which is what a blank override means.
+confirm every write gets "Always".  A user the chat is switched off for
+gets "Off", and a user whose roles would not carry the chat but who
+should have it gets "On".  Everyone else inherits the site default,
+which is what a blank override means.
 """
 
 from __future__ import annotations

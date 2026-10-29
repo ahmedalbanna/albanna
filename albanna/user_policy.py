@@ -54,3 +54,32 @@ def confirm_writes_for(user: str | None = None) -> bool:
     if override == "never":
         return False
     return site_default
+
+
+def chat_access_override(user: str | None = None) -> str:
+    """The per-user override on chat access: ``"on"``, ``"off"`` or ``""``.
+
+    The empty string means "no opinion" — the permission matrix decides,
+    which is the ordinary case and the only one most accounts are in.
+
+    "Off" and "On" are the operator's last word about one account, in
+    either direction: "off" refuses a person the matrix would allow (the
+    chat comes with a shared role, and this account is the exception),
+    and "on" allows a person the matrix would refuse (the account has a
+    Desk role of its own, and the chat is wanted on top of it).
+
+    The permission matrix stays the rule for everyone else.  There is no
+    list of role names in this app, and a policy row is not one: it is a
+    visible, per-account exception to the matrix, kept by the same
+    people who own the matrix.
+    """
+    doc = get_user_policy_doc(user)
+    if doc is None:
+        return ""
+
+    override = str(getattr(doc, "chat_access_override", "") or "").strip().lower()
+    if override == "on":
+        return "on"
+    if override == "off":
+        return "off"
+    return ""

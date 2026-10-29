@@ -729,6 +729,9 @@ msgstr "ليس لديك صلاحية استخدام المحادثة. لا يو�
 msgid "You do not have access to the chat. Reading {0} is done by these roles: {1}."
 msgstr "ليس لديك صلاحية استخدام المحادثة. قراءة {0} متاحة لهذه الأدوار: {1}."
 
+msgid "You do not have access to the chat. Your account's Albanna user policy switches it off."
+msgstr "ليس لديك صلاحية استخدام المحادثة. سياسة مستخدم ألبانا الخاصة بحسابك توقفها."
+
 
 msgid " {0} turn(s)"
 msgstr " {0} دور"
@@ -738,6 +741,9 @@ msgstr "سياسة مستخدم ألبانا"
 
 msgid "Always"
 msgstr "دائماً"
+
+msgid "On"
+msgstr "مفعّل"
 
 msgid "Answer ready."
 msgstr "الإجابة جاهزة."
@@ -759,6 +765,9 @@ msgstr "تأكيد الكتابات"
 
 msgid "Confirm writes override"
 msgstr "تجاوز تأكيد الكتابات"
+
+msgid "Chat access override"
+msgstr "تجاوز صلاحية المحادثة"
 
 msgid "Could not regenerate."
 msgstr "تعذّر إعادة التوليد."
@@ -783,6 +792,9 @@ msgstr "الميزانية الشهرية"
 
 msgid "Never"
 msgstr "أبداً"
+
+msgid "Off"
+msgstr "معطّل"
 
 msgid "No matches"
 msgstr "لا تطابق"
