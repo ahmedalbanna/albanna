@@ -17,7 +17,8 @@ running are asserted here, so a later edit cannot quietly undo them:
 * no `… | grep -q` pipeline, which under `set -o pipefail` reports a
   *missing* pattern when the pattern is present;
 * the systemd unit runs the script in this repository, so there is one copy
-  of it and no installed copy to drift.
+  of it and no installed copy to drift — and, where the unit is installed,
+  the installed copy is the one in this repository.
 
 The script's own run is the test that matters for the rest: it was run
 against both live sites during development, and it caught two real defects
@@ -31,6 +32,8 @@ import json
 import pathlib
 import re
 import stat
+
+import pytest
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts" / "site_backup.sh"
@@ -123,13 +126,47 @@ def test_the_unit_runs_the_script_in_this_repository():
     unit = UNIT.read_text(encoding="utf-8")
     assert "ExecStart=" in unit
     exec_start = next(line for line in unit.splitlines() if line.startswith("ExecStart="))
-    assert str(SCRIPT) in exec_start, (
+    path = exec_start.split("=", 1)[1].split()[0]
+
+    # The unit must name the script inside the app's checkout.  A copy
+    # installed elsewhere — /usr/local/bin, say — is a second version of
+    # the same script, and the two drift apart.
+    assert path.endswith("apps/albanna/scripts/site_backup.sh"), (
         "the unit runs an installed copy of the script, so the version that "
-        "runs can drift from the version that is committed"
+        f"runs can drift from the version that is committed: {path}"
     )
+
+    # The path in the unit is this host's bench, and this repository is
+    # checked out in it — so the two must be the same file.  On a machine
+    # where the app is checked out somewhere else, a CI runner say, the
+    # unit names a path that is not there, and there is nothing to
+    # compare.
+    named = pathlib.Path(path)
+    if named.exists():
+        assert named.resolve() == SCRIPT.resolve(), (
+            f"the unit runs {named}, which is not this repository's script"
+        )
+
     timer = TIMER.read_text(encoding="utf-8")
     assert "OnCalendar=" in timer, "the timer has no schedule"
     assert "Persistent=true" in timer, (
         "the timer must fire after a missed run, or a host that was down at "
         "03:47 silently skips a day's backup"
+    )
+
+
+def test_the_installed_unit_is_the_one_in_this_repository():
+    """Where the unit is installed, it must be this repository's copy.
+
+    The unit is a deployment artifact: it is copied into
+    /etc/systemd/system so systemd can run it.  A copy there that is not
+    the committed one is the drift the test above is about, one step
+    further on — and a machine without systemd has nothing to compare.
+    """
+    installed = pathlib.Path("/etc/systemd/system/albanna-site-backup.service")
+    if not installed.exists():
+        pytest.skip("this machine has no installed unit")
+    assert installed.read_text(encoding="utf-8") == UNIT.read_text(encoding="utf-8"), (
+        "the installed unit is not the one in this repository, so the unit "
+        "that runs is not the unit that was committed"
     )
