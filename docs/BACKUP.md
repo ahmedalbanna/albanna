@@ -20,6 +20,15 @@ The MCP control-plane backup (`/home/frappe/backups/mcp/`) covers
 PostgreSQL, Redis and the file-based secrets.  It does **not** cover these
 databases, and it says so in its own header.
 
+**The restore has been exercised.**  On 2026-10-29 the daily dump of
+`albanna.localhost` was restored into a scratch site on this host, with
+the credentials below, and the restored database was compared with the
+live one: 12 customers, 6 sales invoices, 111 items and 12 users on
+both sides (the chat log was 159 rows in the restore and 175 live,
+which is the turns between the 03:47 dump and the comparison).  A
+restore that has never been run is a plan, not a backup, and this one
+has now been run.
+
 ## What a run checks before it is declared good
 
 A file that exists is not a backup.  Before a run is marked good, each
