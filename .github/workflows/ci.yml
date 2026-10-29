@@ -154,7 +154,15 @@ jobs:
         # needs a company, a customer and an item.  ERPNext's own demo
         # setup is the honest way to get them: it uses the framework's
         # paths, so it cannot drift from the data the tests expect.
+        #
+        # It needs a company to clone, and a site that has just had
+        # ERPNext installed has none — so the company comes first, made
+        # by ERPNext's own setup-wizard operation, with the fiscal year
+        # the demo's transactions are posted in.
         run: |
+          YEAR=$(date +%Y)
+          bench --site test_site execute erpnext.setup.setup_wizard.operations.company_setup.create_fiscal_year_and_company \
+            --kwargs "{\"company_name\": \"Albanna Test Company\", \"company_abbr\": \"ATC\", \"currency\": \"USD\", \"country\": \"United States\", \"fy_start_date\": \"$YEAR-01-01\", \"fy_end_date\": \"$YEAR-12-31\"}"
           bench --site test_site execute erpnext.setup.demo.setup_demo_data
           bench --site test_site set-config allow_tests true
           bench build
