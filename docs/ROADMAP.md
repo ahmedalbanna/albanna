@@ -139,19 +139,20 @@ one where "excellent" is worth more than "broad".
 
 ## 2. Next (v2) — support-shaped work, in order
 
-Each item names the trigger that would make it worth doing.
+Each item names the trigger that would make it worth doing — and, where
+it has already been done, what shipped.
 
-| # | Item | Why it matters for this persona | Effort | Trigger |
-|---|---|---|---|---|
-| 1 | **Escalation that fits support** — today "Ask a human" creates an Issue; for an agent who is *already* in a ticket, a handover should be a ToDo assigned to a person, or a Communication, not a new ticket | confirmed live: escalating a ticket opened a *second* ticket while the first was still open | S | the first live agent complains that escalating made more work |
-| 2 | **Ticket-shaped suggestions** — on an Issue the empty state should offer "What is the customer asking for?", "What have we already done?", "What is still open?" instead of the generic list | the generic suggestions are the first thing a new agent reads | S | immediately — it is a prompt + a context change |
-| 3 | **The drafted reply, copyable** — a Communication the assistant writes should be readable in the panel and copyable, because sending is the agent's job | the draft exists; the agent has nowhere to read it | S | immediately |
-| 4 | **"My open tickets"** — one click from the launcher to the agent's queue, filtered by assignee and status | an agent's first question is always "what is on my desk?" | S | with item 2 |
-| 5 | **A ticket summary that fits the ticket** — the system prompt tells the model the shape of a triage answer (want / done / outstanding / next) | the model will summarise a ticket well only if it is told what a good triage summary is | S | immediately — a prompt change, not a feature |
-| 6 | **Per-ticket conversation memory** — the thread is per page today; an agent moving between the Issue and the Customer gets two threads | the agent reads the same customer across records | M | an agent actually asks about a customer in two threads in one sitting |
-| 7 | **The assistant says what it could not read** — when a tool is refused for a missing right, the answer says so, instead of leaving the reader to believe the silence was the whole truth | on a support seat the customer thread was invisible (no Communication read) and the answer paraphrased a date field instead of the customer's words | S | immediately — the refusals are already counted, they are only not said out loud |
-| 8 | **An approval always ends in a sentence** — after the reader approves, the panel says what happened to the write: it ran, it was refused, or the turn died before it could run.  The audit row is written before the turn can die | found live: a turn that needed an approval hit the ten-minute wall, and the reader was left with the one question that matters — "did it happen?" — and no answer | S | immediately — this is a trust hole, not a feature |
-| 9 | **A long thread remembers** — the model sees only the last `history_limit` messages of a thread (50 by default), so a ticket that has been worked on for days loses its earlier decisions, and it loses them silently | the thread belongs to the page, and a support ticket stays open for longer than fifty messages | M | an agent's thread passes the history limit and the answer forgets what was already decided |
+| # | Item | Why it matters for this persona | Effort | Trigger | Status |
+|---|---|---|---|---|---|
+| 1 | **Escalation that fits support** — today "Ask a human" creates an Issue; for an agent who is *already* in a ticket, a handover should be a ToDo assigned to a person, or a Communication, not a new ticket | confirmed live: escalating a ticket opened a *second* ticket while the first was still open | S | the first live agent complains that escalating made more work | **not started** — the problem is confirmed live; the trigger is an agent's complaint, and there has been none |
+| 2 | **Ticket-shaped suggestions** — on an Issue the empty state should offer "What is the customer asking for?", "What have we already done?", "What is still open?" instead of the generic list | the generic suggestions are the first thing a new agent reads | S | immediately — it is a prompt + a context change | **shipped** — the Issue form and the Issue list offer exactly those three, and the list offers a fourth (see item 4) |
+| 3 | **The drafted reply, copyable** — a Communication the assistant writes should be readable in the panel and copyable, because sending is the agent's job | the draft exists; the agent has nowhere to read it | S | immediately | **shipped** — the system prompt has the model put a drafted reply in a fenced code block, and the panel renders markdown, so the draft is in the panel and can be copied out of it |
+| 4 | **"My open tickets"** — one click from the launcher to the agent's queue, filtered by assignee and status | an agent's first question is always "what is on my desk?" | S | with item 2 | **half shipped, and the half that shipped does not yet do what it says** — the suggestion "Show my open tickets" is on the Issue list, but the assistant has no way to know who "my" is: the model is told the page, not the reader, so it answers with *every* open ticket and calls them the reader's.  Two ways to fix it, both needing the owner's yes: tell the model who the reader is (the reader's account then leaves the site), or have the tool resolve "mine" itself.  §4 rules out the two obvious shapes for the *launcher* half — a workspace and a command-palette entry |
+| 5 | **A ticket summary that fits the ticket** — the system prompt tells the model the shape of a triage answer (want / done / outstanding / next) | the model will summarise a ticket well only if it is told what a good triage summary is | S | immediately — a prompt change, not a feature | **shipped** — the system prompt names the four parts |
+| 6 | **Per-ticket conversation memory** — the thread is per page today; an agent moving between the Issue and the Customer gets two threads | the agent reads the same customer across records | M | an agent actually asks about a customer in two threads in one sitting | **not started** |
+| 7 | **The assistant says what it could not read** — when a tool is refused for a missing right, the answer says so, instead of leaving the reader to believe the silence was the whole truth | on a support seat the customer thread was invisible (no Communication read) and the answer paraphrased a date field instead of the customer's words | S | immediately — the refusals are already counted, they are only not said out loud | **shipped** — the prompt tells the model to say what it could not read, and the refusals are counted in the tool's own answer |
+| 8 | **An approval always ends in a sentence** — after the reader approves, the panel says what happened to the write: it ran, it was refused, or the turn died before it could run.  The audit row is written before the turn can die | found live: a turn that needed an approval hit the ten-minute wall, and the reader was left with the one question that matters — "did it happen?" — and no answer | S | immediately — this is a trust hole, not a feature | **shipped** in 0.2.1 and 0.2.5 |
+| 9 | **A long thread remembers** — the model sees only the last `history_limit` messages of a thread (50 by default), so a ticket that has been worked on for days loses its earlier decisions, and it loses them silently | the thread belongs to the page, and a support ticket stays open for longer than fifty messages | M | an agent's thread passes the history limit and the answer forgets what was already decided | **not started** — one idea from the reviewed drafts survived as this item (COMPACT.md, §11) |
 
 ---
 
@@ -232,7 +233,7 @@ And the moat audit (§9): every tool, the counts, the confirmation card,
 the DocType catalogue, the page context, the approval binding and the chat
 log were read against the permission question, and every hole was closed.
 
-### Next (v2) — the eight items in §2, in that order
+### Next (v2) — the nine items in §2, in that order
 
 ### Shipped in this pass (v0.2.1, support-shaped)
 
@@ -845,7 +846,7 @@ a day later, and after a deploy?**
 | Frappe deletes a site's own backups after **24 hours** by default, which would have deleted the safety net taken before a migration a day later | the dump taken before *that* migration is not the same thing as yesterday's scheduled dump | `keep_backups_for_hours` is 336 (a fortnight) on both covered sites |
 | The deployment knowledge was in one operator's head — which units to restart, that `bench restart` does nothing here, that the migrate locks the site | the next deploy is inevitable, and the discovery work is not something to repeat | `docs/DEPLOYMENT.md`, written from what the 0.2.1 deployment needed |
 | **The repository's own gates were red on every commit** — the CI installed `ruff` without a version and judged the code against rules this app never agreed to, the pre-commit configuration listed the same hook twice (so pre-commit refused to run at all), and the server job installed Frappe v15 while the app targets v16 | a gate that is red is not a gate; the local suites were the only ones that had been running, so "CI is green" was a claim nobody had checked | the tools are pinned (ruff 0.16.1, pytest, `frappe-bench`, Node 24), the duplicate hook is gone, the formatter is part of the CI job, the complexity bar is explicit, and the server job installs the tag `v16.0.0` — **and runs**: as of 2026-10-29 the whole workflow is green (pre-commit, the linters and the seventeen front-end suites, 203 domain tests and 174 site tests) |
-| **The support agent's account was not linked to the site's support mailbox**, so the assistant could not read a single customer email — and the reason was invisible from inside the app: the framework hides email Communications from any reader without a `User Email` row, and the site had none | the customer wrote in; the agent asked the assistant; the assistant said what it could read, and the customer's own words were not in it | the `User Email` row now exists, linking the support agent's account to the site's "Support" email account.  What remains is the operator's half: a real mailbox behind that account, incoming enabled, and the agent account enabled |
+| **The support agent's account was not linked to the site's support mailbox**, so the assistant could not read a single customer email — and the reason was invisible from inside the app: the framework hides email Communications from any reader without a `User Email` row, and the site had none | the customer wrote in; the agent asked the assistant; the assistant said what it could read, and the customer's own words were not in it | the `User Email` row now exists, linking the support agent's account to the site's "Support" email account, and the account holds the "Inbox User" role it needs as well.  What remains is the operator's half: a real mailbox behind that account, and incoming enabled |
 
 Two of these were found by *running* the thing rather than reading it: the
 backup script's first run against both live sites caught a missing
@@ -924,22 +925,26 @@ What this pass did **not** do, on purpose:
   money.  The provider's own figure is kept in the same row, in its own
   currency, for whoever reconciles the two.
 
-* It did not connect a mailbox.  The `User Email` row exists now, so
-  the *permission* is right and the day mail arrives the agent sees it;
-  but the site's "Support" email account is ERPNext's demo placeholder
-  (`support@example.com`, incoming off), this host has no incoming mail
-  at all, and the support agent's account is still disabled — it is a
-  test account, and a test account with a known password is not
-  something to enable on a production site on the strength of a
-  visibility problem.  Connecting a real mailbox and enabling a real
-  agent's account is the operator's half, and it is named here rather
-  than half-done here.
+* It did not connect a mailbox.  The `User Email` row exists now, and so
+  does the role the reader needs, so the *permission* is right and the
+  day mail arrives the agent sees it; but the site's "Support" email
+  account is ERPNext's demo placeholder (`support@example.com`,
+  incoming off), this host has no incoming mail at all, and the support
+  agent's account is still disabled — it is a test account, and a test
+  account with a known password is not something to enable on a
+  production site on the strength of a visibility problem.  Connecting a
+  real mailbox and enabling a real agent's account is the operator's
+  half, and it is named here rather than half-done here.
 
   The mechanism was proved on a scratch site before it was touched on
-  production: a reader linked to an email account sees that account's
-  Communications and nobody else's; a reader with no such row sees no
-  email Communications at all; and a System Manager sees everything,
-  which is Frappe's own rule and not this app's.
+  production, and it turned out to have **two** halves, not one.  A
+  reader linked to a mailbox sees that mailbox's threads — but only if
+  they also hold a role that may read any thread ("Inbox User"); the
+  framework otherwise limits a reader to the Communications they own,
+  and an incoming customer's mail is not theirs.  So an agent needs the
+  link *and* the role.  Both are site setup; the account on production
+  now has both; and a test in the suite pins the whole shape, so the
+  next person is not left guessing which half was missing.
 * It did not make the CI test the framework production runs.  Production
   runs Albanna's own fork of Frappe — `16.0.0-dev`, on Python 3.12 — and
   that fork is not public, so the CI installs upstream Frappe `v16.0.0` on
@@ -993,4 +998,8 @@ the product's.
 verdict on it.  The branch with the four-week plan was deleted; its one
 surviving idea is §2 item 9.  The stale local branch was deleted: it
 was the per-user policy as it stood before 0.2.3 and 0.2.4 reworked
-it, and nothing in it was left to keep.
+it, and nothing in it was left to keep.  And PR #1's own branch was
+deleted from the origin on 2026-10-29, once the verdict was recorded:
+nothing in it had been merged, nothing in it was going to be, and a
+branch that nobody can merge is a branch that only invites somebody to
+try.

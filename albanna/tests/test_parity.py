@@ -248,6 +248,127 @@ class TestPermissionParity(AlbannaTestCase):
             "a conversation belonging to somebody else was changed",
         )
 
+    # -- the reader's own mailbox ------------------------------------------
+
+    def test_the_readers_own_mailbox_is_readable_when_the_reader_may_read_those_threads(self):
+        """A reader linked to a mailbox sees that mailbox's threads — and only those.
+
+        The framework hides email Communications from any reader without a
+        ``User Email`` row, so an agent who is not linked to the mailbox
+        sees no customer mail at all.  That half is the framework's rule
+        and the app says so out loud rather than pretending the silence
+        was the whole truth (the note in ``list_docs``).
+
+        The other half matters as much, and it is the half a live run
+        found.  Being linked is not enough on its own: the framework
+        also limits a reader to the Communications they own, unless they
+        hold a role that may read any — "Inbox User" is that role.  So
+        an agent needs the link *and* the role, and the site setup that
+        gives them both is site setup, not app code.  This test is what
+        says the app's half works.
+        """
+        mailbox = self._mailbox()
+        thread = self._email_communication(mailbox)
+
+        # Linked, and holding the role that may read any thread.
+        self._link_mailbox(self.sales_user, mailbox)
+        self._grant(self.sales_user, "Inbox User")
+        result = self._call("list_docs", {"doctype": "Communication"}, self.sales_user)
+        self.assertTrue(result.ok, result.content)
+        names = [row.get("name") for row in (result.data or [])]
+        self.assertIn(thread, names, f"the reader's own mailbox was not read: {result.content}")
+
+        # Linked, but not holding it: the framework limits the reader to
+        # the threads they own, and an incoming customer's mail is not
+        # theirs.
+        self._link_mailbox(self.other_user, mailbox)
+        result = self._call("list_docs", {"doctype": "Communication"}, self.other_user)
+        self.assertTrue(result.ok, result.content)
+        names = [row.get("name") for row in (result.data or [])]
+        self.assertNotIn(thread, names, "a mailbox was read by a reader who may not read it")
+
+        # Not linked at all.
+        self._unlink_mailbox(self.other_user)
+        self._grant(self.other_user, "Inbox User")
+        result = self._call("list_docs", {"doctype": "Communication"}, self.other_user)
+        self.assertTrue(result.ok, result.content)
+        names = [row.get("name") for row in (result.data or [])]
+        self.assertNotIn(thread, names, "a mailbox was read by a reader who is not linked to it")
+
+    def _mailbox(self) -> str:
+        """An email account of this test's own."""
+        name = "Albanna Parity Mailbox"
+        if not frappe.db.exists("Email Account", name):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                account = frappe.new_doc("Email Account")
+                account.email_account_name = name
+                account.email_id = "albanna-parity@example.com"
+                account.flags.ignore_permissions = True
+                account.insert()
+            finally:
+                frappe.set_user(former)
+        return name
+
+    def _email_communication(self, mailbox: str) -> str:
+        """A customer's email, in the mailbox."""
+        former = frappe.session.user
+        frappe.set_user("Administrator")
+        try:
+            communication = frappe.new_doc("Communication")
+            communication.communication_type = "Communication"
+            communication.communication_medium = "Email"
+            communication.email_account = mailbox
+            communication.sender = "customer@example.com"
+            communication.recipient = self.sales_user
+            communication.content = "Where is my order?"
+            communication.status = "Open"
+            communication.flags.ignore_permissions = True
+            communication.insert()
+        finally:
+            frappe.set_user(former)
+        return communication.name
+
+    def _link_mailbox(self, email: str, mailbox: str) -> None:
+        former = frappe.session.user
+        frappe.set_user("Administrator")
+        try:
+            user = frappe.get_doc("User", email)
+            if not any(row.email_account == mailbox for row in user.user_emails):
+                user.append(
+                    "user_emails",
+                    {"email_account": mailbox, "email_id": "albanna-parity@example.com"},
+                )
+            user.flags.ignore_permissions = True
+            user.save()
+        finally:
+            frappe.set_user(former)
+
+    def _unlink_mailbox(self, email: str) -> None:
+        former = frappe.session.user
+        frappe.set_user("Administrator")
+        try:
+            user = frappe.get_doc("User", email)
+            if user.user_emails:
+                user.user_emails = []
+                user.flags.ignore_permissions = True
+                user.save()
+        finally:
+            frappe.set_user(former)
+
+    def _grant(self, email: str, role: str) -> None:
+        former = frappe.session.user
+        frappe.set_user("Administrator")
+        try:
+            user = frappe.get_doc("User", email)
+            if not any(row.role == role for row in user.roles):
+                user.add_roles(role)
+                user.flags.ignore_permissions = True
+                user.save()
+        finally:
+            frappe.set_user(former)
+
     # -- a read returns what the person may read ---------------------------
 
     def test_a_count_is_the_count_of_what_the_caller_may_read(self):

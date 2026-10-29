@@ -87,6 +87,16 @@ the live site.
   own text.  The CI uses it now, so the CI's site and the bench's are
   made the same way.
 
+### Added
+
+- **A test that pins how a reader reads a mailbox.**  The framework
+  hides email Communications from a reader without a `User Email` row,
+  and limits a reader to the Communications they own unless they hold a
+  role that may read any.  So an agent needs *both* a link to the
+  mailbox and the "Inbox User" role — a fact a live run found the hard
+  way, and one the site setup on production now has.  The test says
+  which is which, so the next person is not left guessing.
+
 ### Changed
 
 - **The site answers with one model now.**  This is configuration, not

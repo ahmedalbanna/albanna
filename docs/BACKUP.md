@@ -91,18 +91,26 @@ sha256sum -c <(awk '/^[0-9a-f]{64}/ {print $1"  "$3}' MANIFEST.txt)
 3. Restore the database.  `bench restore` drops the site's database and
    rebuilds it from the dump, and re-applies the framework's patches so the
    schema matches the apps that are on disk.  It needs **MariaDB root
-   credentials** — `--db-root-username` and `--db-root-password` — and on
-   this host the root password is not in a usable state; ask the operator
-   for it rather than guessing.  The file archives are passed by path:
+   credentials** — `--db-root-username` and `--db-root-password`.  On this
+   host they are in `/home/frappe/.mariadb-root.credentials` (mode 600,
+   owned by `frappe`), and the password in that file was checked against
+   the server on 2026-10-29: it authenticates ✓.  Read it into the
+   command rather than typing it, so it does not end up in a shell
+   history:
 
    ```bash
    cd /home/frappe/backups/sites/albanna.localhost/daily/2026-10-29
+   DB_ROOT_PASSWORD="$(sed -n 's/^password=//p' /home/frappe/.mariadb-root.credentials | head -1)"
    bench --site albanna.localhost restore \
       20261029_034700-albanna_localhost-database.sql.gz \
       --with-public-files  20261029_034700-albanna_localhost-files.tar.gz \
       --with-private-files 20261029_034700-albanna_localhost-private-files.tar.gz \
-      --db-root-username root --db-root-password '<from the operator>'
+      --db-root-username root --db-root-password "$DB_ROOT_PASSWORD"
    ```
+
+   The password is on the command line while the restore runs, where a
+   process on this host could read it.  There is one operator here; on a
+   host with more, give the restore its own database user instead.
 
    The restore is interactive and asks before it overwrites the database.
    That prompt is the last checkpoint — read it.
