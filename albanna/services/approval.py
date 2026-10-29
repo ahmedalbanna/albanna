@@ -285,6 +285,7 @@ def record_pending(
     name: str,
     arguments: dict,
     ttl: float = DEFAULT_TIMEOUT,
+    row: str = "",
 ) -> None:
     """Remember that a write is waiting for the reader's decision.
 
@@ -292,6 +293,13 @@ def record_pending(
     by the worker, before the reader is asked, and it is the only place a
     decision may be recorded: an endpoint that named a request nobody is
     waiting on would be answering a question that was not asked.
+
+    ``row`` is the audit row of the turn that proposed the write.  It is
+    kept here so that the decision can be written into that row: the
+    cache record expires with the wait it answers, and the row does
+    not.  A reader's approval that is only in the cache is an approval
+    that vanishes if the worker dies, and the panel then cannot say
+    that the change they confirmed did not happen.
     """
     frappe.cache().set_value(
         pending_key(request_id),
@@ -299,6 +307,7 @@ def record_pending(
             "name": name,
             "digest": arguments_digest(arguments),
             "decision": "",
+            "row": row or "",
         },
         user=user,
         expires_in_sec=int(ttl),

@@ -799,9 +799,11 @@ class ChatService:
         gated = spec.mutating and confirm_writes_for(principal.user)
 
         if gated:
-            refusal = self._ask_for_approval(call, principal, emit, settings)
+            request_id, refusal = self._ask_for_approval(call, principal, emit, settings)
             if refusal is not None:
                 return refusal
+        else:
+            request_id = ""
 
         emit({"event": "tool_start", "name": call.name, "arguments": call.arguments})
 
@@ -826,11 +828,17 @@ class ChatService:
                     pass
                 result = replace(result, dry_run=True, content=result.content + "\n(dry run — not saved)")
             elif spec.mutating and result.ok:
+                # The audit row records the write in the same transaction
+                # as the change it made, so the two cannot disagree: a
+                # row that says a change was approved and a database
+                # that says it was never written are not both possible.
+                #
                 # A write that ran is committed now, not at the end of the
                 # turn: the turn's own writes survive a turn that dies
                 # afterwards, and the audit row is not the only thing that
                 # does.  The user asked for the document; the assistant's
                 # ability to describe it is a separate concern.
+                self._record_write(call, result, request_id)
                 try:
                     frappe.db.commit()
                 except Exception:
@@ -866,11 +874,11 @@ class ChatService:
         principal,
         emit: Emit,
         settings,
-    ) -> ToolResult | None:
+    ) -> tuple[str, ToolResult | None]:
         """Ask the reader to approve a write, and say whether it may run.
 
-        Returns ``None`` when the write may run, and the refusal to
-        report when it may not.
+        Returns the request id and the refusal to report.  The refusal
+        is ``None`` when the write may run.
         """
         import uuid
 
@@ -894,6 +902,14 @@ class ChatService:
         # decides how long to take by it.
         seconds = wait_seconds(settings.confirm_timeout)
 
+        # The approval is recorded in the turn's own audit row before the
+        # reader is asked, and committed there.  The row outlives the
+        # turn; the cache record does not.  So the row is what can still
+        # answer *did the change I confirmed happen?* when the worker
+        # dies between the approval and the write — which is exactly
+        # when the reader cannot be told anything else.
+        self._record_approval(request_id, call)
+
         # The pending write is recorded before the reader is asked,
         # because it is what the answer is recorded against: the endpoint
         # that takes the decision refuses one that names no write, and
@@ -905,6 +921,7 @@ class ChatService:
             call.name,
             call.arguments,
             ttl=seconds + 60,
+            row=getattr(self, "_audit_name", "") or "",
         )
 
         # The document the write is about, and the stamp it had when the
@@ -930,11 +947,13 @@ class ChatService:
         if decision != "approve":
             message = denial_message(decision)
             emit_tool_done(emit, call, ok=False, error=message, summary=message)
-            return ToolResult(ok=False, content=message, error=message, denied=True, approved=False)
+            return request_id, ToolResult(
+                ok=False, content=message, error=message, denied=True, approved=False
+            )
 
         if not still_unchanged(target):
             emit_tool_done(emit, call, ok=False, error=CHANGED_MESSAGE, summary=CHANGED_MESSAGE)
-            return ToolResult(
+            return request_id, ToolResult(
                 ok=False,
                 content=CHANGED_MESSAGE,
                 error=CHANGED_MESSAGE,
@@ -942,7 +961,83 @@ class ChatService:
                 approved=False,
             )
 
-        return None
+        return request_id, None
+
+    def _record_approval(self, request_id: str, call: ToolCall) -> None:
+        """Write the approval into the turn's audit row, and commit it.
+
+        The row is the record that outlives the turn, so it is where the
+        approval belongs: a reader's *yes* that lives only in the cache
+        is a yes that disappears when the worker is killed, and the panel
+        then says the turn did not finish without saying that a change
+        was confirmed and never made.
+
+        Only the document's identity goes in — its type and, when the
+        reader may read it, its name.  The values the model wanted to
+        write are not recorded: the ledger is read by operators, and a
+        value the reader alone may see has no business there.
+        """
+        row = getattr(self, "_audit_name", "") or ""
+        if not row:
+            return
+
+        from albanna.services.approval import write_target
+        from albanna.services.audit_rows import merge_payload
+
+        arguments = call.arguments or {}
+        doctype = str(arguments.get("doctype") or "").strip()
+
+        # The card names a document the reader may read and does not
+        # name one they may not, and the panel's message about an
+        # approval must not name it either.
+        target = write_target(call.name, arguments)
+        name = str(target.get("name") or "").strip()
+        if not name and call.name != "update_doc":
+            # The tools that change a document carry its name in their
+            # arguments, and the ledger already records the names they
+            # touched.
+            name = str(arguments.get("name") or "").strip()
+
+        merge_payload(
+            row,
+            {
+                "approvals": [
+                    {
+                        "request_id": request_id,
+                        "tool": call.name,
+                        "doctype": doctype,
+                        "name": name,
+                    }
+                ]
+            },
+        )
+
+        try:
+            frappe.db.commit()
+        except Exception:
+            logger.exception("Could not commit the approval to the chat log row")
+
+    def _record_write(self, call: ToolCall, result: ToolResult, request_id: str) -> None:
+        """Write the call into the turn's audit row, and mark its approval.
+
+        The record is written **before** the transaction that carries the
+        change is committed, so the two commit together: a row that says
+        "approved" and a database that says "written" can never disagree.
+        A turn that dies between the write and the end of its answer
+        still says what it changed, and an approval that the write
+        answered is marked as answered.
+        """
+        row = getattr(self, "_audit_name", "") or ""
+        if not row:
+            return
+
+        from albanna.services.audit_rows import merge_payload
+
+        changes: dict[str, Any] = {"calls": [tool_entry(call, result)]}
+        if request_id:
+            changes["approvals"] = [{"request_id": request_id, "ran": True}]
+
+        merge_payload(row, changes)
 
     def _explain_failure(
         self,
@@ -1110,7 +1205,17 @@ class ChatService:
             payload: dict[str, Any] = {"calls": audit.tool_calls or []}
             if getattr(audit, "round_ms", None):
                 payload["round_ms"] = list(audit.round_ms)
-            if audit.tool_calls or getattr(audit, "round_ms", None):
+            # The approvals were written while the turn ran — the reader
+            # was asked, and answered — and the turn's own payload must
+            # not drop them.  They are the record of what was confirmed,
+            # and a row that loses them is a row that cannot say whether
+            # the change happened.
+            from albanna.services.audit_rows import approvals_of
+
+            approvals = approvals_of({"tools": doc.tools})
+            if approvals:
+                payload["approvals"] = approvals
+            if payload.get("calls") or payload.get("round_ms") or payload.get("approvals"):
                 doc.tools = json.dumps(payload, default=str)
             doc.duration_ms = int((time.monotonic() - audit.started) * 1000) if audit.started else 0
             if audit.usage is not None:

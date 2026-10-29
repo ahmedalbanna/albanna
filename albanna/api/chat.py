@@ -306,45 +306,75 @@ def status(stream_id: str = "", conversation: str = "") -> dict[str, Any]:
 def _lost_turn(conversation: str = "") -> dict[str, Any]:
     """The answer for a turn that will never finish.
 
-    And, when the turn's audit row says it changed something before it
-    died, **what it changed**.  The reader's question when the panel
-    says the turn did not finish is *did it happen?*, and silence about
-    a write is the worst answer there is: the reader cannot tell
-    "nothing happened" from "everything happened and nobody said".  The
-    audit row is the truth — a write in it is a write that was
-    committed — so the row is read and its writes are named.
+    And, when the turn's audit row says what it did before it died,
+    **what it did**.  The reader's question when the panel says the
+    turn did not finish is *did it happen?*, and silence about a write
+    is the worst answer there is: the reader cannot tell "nothing
+    happened" from "everything happened and nobody said".  The audit row
+    is the truth — a write in it is a write that was committed — so the
+    row is read and its writes are named.
+
+    The row also says what the reader **confirmed**.  A change the
+    reader confirmed and that never ran is the worst of both: the
+    reader believes it happened, and it did not.  So it is named too,
+    and named as what it is — a change that was confirmed and did not
+    run — rather than left to the reader's imagination.
 
     Nothing is named when the row is not certainly the reader's turn:
     a reader told about the wrong turn's writes goes looking for a
     change that was never made.
     """
-    from albanna.services.audit_rows import unfinished_writes
+    from albanna.services.audit_rows import unfinished_facts
 
-    writes = unfinished_writes(frappe.session.user, conversation)
-    if not writes:
-        return {
-            "status": "error",
-            "error": _(
-                "The assistant did not finish this question — the background worker "
-                "did not complete the turn. It may have been restarted. Please try again."
-            ),
-        }
+    facts = unfinished_facts(frappe.session.user, conversation)
+    writes = facts["writes"]
+    approved = facts["approved"]
 
-    names = ", ".join(f"{write['doctype']} {write['name']}" for write in writes)
-    if len(writes) == 1:
-        error = _(
+    parts = [
+        _(
             "The assistant did not finish this question — the background worker "
-            "did not complete the turn. Before it stopped, it changed {documents}. "
-            "Please check it and try again."
-        ).format(documents=names)
+            "did not complete the turn."
+        )
+    ]
+
+    if writes:
+        names = ", ".join(f"{write['doctype']} {write['name']}" for write in writes)
+        parts.append(_("Before it stopped, it changed {documents}.").format(documents=names))
+
+    if approved:
+        changes = ", ".join(_approved_label(approval) for approval in approved)
+        if len(approved) == 1:
+            parts.append(
+                _("The change you confirmed did not run: {changes}.").format(changes=changes)
+            )
+        else:
+            parts.append(
+                _("The changes you confirmed did not run: {changes}.").format(changes=changes)
+            )
+
+    if writes:
+        if len(writes) == 1:
+            parts.append(_("Please check it and try again."))
+        else:
+            parts.append(_("Please check them and try again."))
     else:
-        error = _(
-            "The assistant did not finish this question — the background worker "
-            "did not complete the turn. Before it stopped, it changed {documents}. "
-            "Please check them and try again."
-        ).format(documents=names)
+        parts.append(_("It may have been restarted. Please try again."))
 
-    return {"status": "error", "error": error}
+    return {"status": "error", "error": " ".join(parts)}
+
+
+def _approved_label(approval: dict[str, Any]) -> str:
+    """What a confirmed change that never ran is called in the message.
+
+    The document's type and — when the reader may read it — its name.
+    The values the model wanted to write are not named: they were on the
+    card the reader answered, and the ledger is not where they belong.
+    """
+    doctype = str(approval.get("doctype") or "").strip()
+    name = str(approval.get("name") or "").strip()
+    if name:
+        return f"{doctype} {name}".strip()
+    return doctype
 
 
 def _turn_deadline() -> float:
@@ -400,10 +430,43 @@ def confirm_write(request_id: str = "", decision: str = "") -> dict[str, Any]:
     ttl = int(wait_seconds(get_settings().confirm_timeout)) + 60
 
     try:
-        record_decision(request_id, user, decision, ttl=ttl)
+        pending = record_decision(request_id, user, decision, ttl=ttl)
     except NoPendingWrite:
         frappe.throw(_("That request is not waiting for a decision."), frappe.ValidationError)
     except AlreadyAnswered:
         frappe.throw(_("That request has already been answered."), frappe.ValidationError)
 
+    # The decision is written into the turn's audit row as well as into
+    # the cache record the worker polls.  The cache record expires with
+    # the wait it answers; the row does not.  A confirmation that lives
+    # only in the cache is a confirmation nobody can be told about when
+    # the worker dies between the approval and the write — and a reader
+    # who confirmed a change must never be left believing it happened.
+    _record_decision_in_row(request_id, decision, pending)
+
     return {"status": "ok", "decision": decision}
+
+
+def _record_decision_in_row(request_id: str, decision: str, pending: dict[str, Any]) -> None:
+    """Write the reader's decision into the turn's audit row, and commit it.
+
+    A failure here is logged and not raised: the decision is already in
+    the cache, and the worker is already acting on it.  Refusing the
+    reader's answer because the ledger could not be written would be
+    worse than the ledger missing it — the reader would be told their
+    confirmation did not register, and it did.
+    """
+    row = str((pending or {}).get("row") or "")
+    if not row:
+        return
+
+    from albanna.services.audit_rows import merge_payload
+
+    try:
+        merge_payload(
+            row,
+            {"approvals": [{"request_id": request_id, "decision": decision}]},
+        )
+        frappe.db.commit()
+    except Exception:
+        logger.exception("Could not record the decision in the chat log row")

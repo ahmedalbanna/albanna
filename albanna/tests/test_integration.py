@@ -2302,6 +2302,171 @@ class TestWriteApproval(TestToolPath):
             "the refusal must say why the write did not run",
         )
 
+    # -- what the row knows ------------------------------------------------
+
+    def _row_of(self, user: str) -> dict:
+        """The reader's own audit row, with its payload."""
+        rows = frappe.get_all(
+            "Albanna Chat Log",
+            filters={"user": user},
+            fields=["name", "status", "tools"],
+            order_by="creation desc",
+            limit=1,
+        )
+        self.assertTrue(rows, "the turn left no audit row behind")
+        row = dict(rows[0])
+        row["payload"] = json.loads(row.get("tools") or "{}")
+        return row
+
+    def _run_once(self, email: str, decision: str, capture: dict | None = None):
+        """A turn that proposes one write, and answers after it.
+
+        The fake provider asks for the write once and answers in plain
+        text after that — the shape of a real turn, and a fast one.  The
+        reader's decision is fed back through the emit callback, the way
+        the endpoint feeds it back in production.
+
+        *capture* is filled with the row's payload **at the moment the
+        reader is asked**, which is the moment the row has to know.
+        """
+        from albanna.core.messages import Message
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.approval import record_decision
+        from albanna.services.chat_service import ChatService, TurnRequest
+
+        self._make_policy(email, "always")
+        try:
+            self._as(email)
+
+            service = ChatService()
+            asked = {"n": 0}
+
+            def fake_complete(config, messages, tools, emit, stream):
+                asked["n"] += 1
+                if asked["n"] == 1:
+                    return self._completion()
+                return Completion(
+                    message=Message(role="assistant", content="Done."),
+                    provider="openai",
+                    model="a-model",
+                    usage=Usage(input_tokens=5, output_tokens=2),
+                )
+
+            service._complete = fake_complete
+
+            def make_emit():
+                def emit(event):
+                    if event.get("event") != "confirm":
+                        return
+                    if capture is not None:
+                        raw = frappe.db.get_value(
+                            "Albanna Chat Log", service._audit_name, "tools"
+                        )
+                        capture["payload"] = json.loads(raw or "{}")
+                        capture["request_id"] = event["request_id"]
+                    record_decision(event["request_id"], email, decision, ttl=60)
+
+                return emit
+
+            return service.run(
+                TurnRequest(question="create an invoice", page="test|approval|row|"),
+                emit=make_emit(),
+            )
+        finally:
+            self._restore_policy(email)
+
+    def test_the_approval_is_recorded_in_the_row_before_the_reader_is_asked(self):
+        """The row must know what the reader was asked, before they are asked.
+
+        The answer arrives in a later request, and the worker may die
+        between the two.  A row that learned about the approval only
+        after the answer would know nothing about a change the reader
+        confirmed — which is exactly the turn the panel has to explain.
+        """
+        seen: dict = {}
+
+        self._run_once(self.accounts_user, "reject", capture=seen)
+
+        approvals = (seen.get("payload") or {}).get("approvals") or []
+        self.assertTrue(approvals, "the row did not record the approval it asked about")
+        approval = approvals[0]
+        self.assertEqual(approval.get("request_id"), seen.get("request_id"))
+        self.assertEqual(approval.get("tool"), "create_doc")
+        self.assertEqual(approval.get("doctype"), "Sales Invoice")
+
+    def test_the_readers_decision_is_written_into_the_row(self):
+        """The reader's answer must outlive the cache it was recorded in.
+
+        The cache record expires with the wait it answers; the row does
+        not.  So the answer is written into the row as well — otherwise
+        a worker that dies after the answer leaves a row that never
+        learned the reader said yes.
+        """
+        from albanna.api.chat import confirm_write
+        from albanna.services.approval import record_pending
+
+        doc = frappe.new_doc("Albanna Chat Log")
+        doc.user = self.accounts_user
+        doc.status = "running"
+        doc.tools = json.dumps({"calls": []})
+        doc.flags.ignore_permissions = True
+        doc.insert()
+        frappe.db.commit()
+
+        self._as(self.accounts_user)
+        request_id = "decision-in-the-row"
+        record_pending(
+            request_id,
+            self.accounts_user,
+            "create_doc",
+            {"doctype": "Sales Invoice"},
+            ttl=60,
+            row=doc.name,
+        )
+
+        confirm_write(request_id=request_id, decision="approve")
+
+        payload = json.loads(frappe.db.get_value("Albanna Chat Log", doc.name, "tools") or "{}")
+        approvals = payload.get("approvals") or []
+        self.assertEqual(len(approvals), 1, "the decision was not written into the row")
+        self.assertEqual(approvals[0].get("request_id"), request_id)
+        self.assertEqual(approvals[0].get("decision"), "approve")
+
+    def test_an_approved_write_is_recorded_as_ran(self):
+        """The row must not say a change never ran when it did.
+
+        The approval and the write behind it are recorded in the same
+        transaction, so the row cannot claim the reader confirmed a
+        change that is in the database and never ran — which is what
+        would send the reader to make the same change twice.
+        """
+        self._run_once(self.accounts_user, "approve")
+
+        row = self._row_of(self.accounts_user)
+        approvals = row["payload"].get("approvals") or []
+        self.assertTrue(approvals, "the row did not record the approval")
+        self.assertTrue(
+            approvals[0].get("ran"),
+            "the row says the confirmed change never ran, and it did",
+        )
+
+    def test_the_turns_final_row_keeps_the_approvals(self):
+        """The turn's own payload must not drop what it recorded on the way.
+
+        The row is written twice: once as the turn runs, and once when
+        it ends.  The second write carries the turn's calls and its
+        timings — and must carry the approvals too, or the record of
+        what the reader confirmed is lost by the turn finishing.
+        """
+        self._run_once(self.accounts_user, "approve")
+
+        row = self._row_of(self.accounts_user)
+        self.assertEqual(row["status"], "ok", "the turn did not finish")
+        self.assertTrue(
+            row["payload"].get("approvals"),
+            "the finished turn's row dropped the approvals",
+        )
+
 
 @pytest.mark.integration
 class TestDisabledToolsAreHonoured(FrappeTestCase):
@@ -3104,15 +3269,36 @@ class TestTheAuditRowNamesTheWrites(FrappeTestCase):
 
         return ToolCall(id="call-1", name=name, arguments=arguments)
 
-    def _row(self, calls, status="running"):
+    def _row(self, calls, status="running", approvals=None):
         """An audit row of a turn that has not finished."""
         doc = frappe.new_doc("Albanna Chat Log")
         doc.user = "Administrator"
         doc.status = status
-        doc.tools = json.dumps({"calls": calls})
+        payload: dict = {"calls": calls}
+        if approvals is not None:
+            payload["approvals"] = approvals
+        doc.tools = json.dumps(payload)
         doc.flags.ignore_permissions = True
         doc.insert()
         return doc.name
+
+    def _approval(
+        self,
+        decision="approve",
+        ran=False,
+        doctype="Customer",
+        name="CUST-0001",
+        request_id="req-1",
+    ):
+        """An approval the row holds: what was asked, and what was said."""
+        return {
+            "request_id": request_id,
+            "tool": "update_doc",
+            "doctype": doctype,
+            "name": name,
+            "decision": decision,
+            "ran": ran,
+        }
 
     def _write_call(self, doctype="Customer", name="CUST-0001"):
         return {
@@ -3239,3 +3425,85 @@ class TestTheAuditRowNamesTheWrites(FrappeTestCase):
         result = self._status()
 
         self.assertNotIn("CUST-0001", result["error"])
+
+    # -- what the reader confirmed -----------------------------------------
+
+    def test_a_confirmed_change_that_never_ran_is_named(self):
+        """The reader confirmed a change, and it did not happen.
+
+        This is the worst of both: the reader believes a change was
+        made, and it was not.  The panel's answer to *did it happen?*
+        must say that it did not — otherwise the reader goes looking
+        for a change that was never made, and finds nothing, and cannot
+        tell that the assistant asked them to approve it first.
+        """
+        self._row([], approvals=[self._approval()])
+
+        result = self._status()
+
+        self.assertIn("Customer CUST-0001", result["error"])
+        self.assertIn("did not run", result["error"])
+
+    def test_a_confirmed_change_that_ran_is_not_named_as_one_that_did_not(self):
+        """A change that ran is a change the row names as made.
+
+        The row holds both facts — the reader confirmed it, and the
+        write behind it ran.  Saying it did not run would be a lie, and
+        a reader who is told their change did not happen will look for
+        it again, and make it twice.
+        """
+        self._row([self._write_call()], approvals=[self._approval(ran=True)])
+
+        result = self._status()
+
+        self.assertIn("Customer CUST-0001", result["error"])
+        self.assertNotIn("did not run", result["error"])
+
+    def test_a_declined_change_names_nothing(self):
+        """A change the reader turned down did not run — and they know it.
+
+        Naming it would send them looking for a change they themselves
+        refused, which is a worse sentence than silence.
+        """
+        self._row([], approvals=[self._approval(decision="reject")])
+
+        result = self._status()
+
+        self.assertNotIn("CUST-0001", result["error"])
+
+    def test_a_confirmed_change_and_a_change_that_ran_are_both_named(self):
+        """A turn can have written one thing and been about to write another.
+
+        The reader is told about both: what was changed is what is
+        there to check, and what was confirmed and did not run is what
+        has to be asked for again.
+        """
+        self._row(
+            [self._write_call(name="CUST-0001")],
+            approvals=[self._approval(name="CUST-0002")],
+        )
+
+        result = self._status()
+
+        self.assertIn("Customer CUST-0001", result["error"])
+        self.assertIn("Customer CUST-0002", result["error"])
+
+    def test_two_confirmed_changes_that_never_ran_are_named_together(self):
+        """Two approvals, one sentence — and both named.
+
+        Naming one of them would leave the other in the dark, and the
+        reader cannot tell which one it was.
+        """
+        self._row(
+            [],
+            approvals=[
+                self._approval(name="CUST-0001", request_id="req-1"),
+                self._approval(name="CUST-0002", request_id="req-2"),
+            ],
+        )
+
+        result = self._status()
+
+        self.assertIn("Customer CUST-0001", result["error"])
+        self.assertIn("Customer CUST-0002", result["error"])
+        self.assertIn("changes you confirmed", result["error"])
