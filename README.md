@@ -478,3 +478,9 @@ introduce a tag.
 
 * [CONTEXT.md](CONTEXT.md) — the domain vocabulary and the invariants.
 * [docs/adr/](docs/adr/) — the decisions that shaped the app, and why.
+* [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — putting a change on the
+  production site: the order, the worker sets, the verification.
+* [docs/BACKUP.md](docs/BACKUP.md) — what the scheduled site backup covers,
+  how to tell whether it is working, and how to restore.
+* [docs/ROADMAP.md](docs/ROADMAP.md) — what is shipped, what is next, and
+  what each audit found.

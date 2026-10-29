@@ -5,6 +5,59 @@ All notable changes to Albanna are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] — 2026-10-29
+
+The operations release.  Nothing here changes what the assistant can do;
+everything here makes the app's *claims* hold up when something goes wrong
+around it — a turn that dies, a disk that fills, a deploy at the wrong
+moment.
+
+### Fixed
+
+- **The ledger no longer says `running` about a turn that died.**  The
+  scheduled job that re-labels a dead turn's row ran once a day, while the
+  row it re-labels stops being true a quarter of an hour after the turn
+  died — so the ledger spent up to a day claiming a turn was still
+  working.  The reaper now runs every five minutes, and the gap between two
+  runs is tied to the cutoff it closes by a test
+  (`tests/test_scheduler.py`), so the two cannot drift apart again.  The
+  failure was quiet: the job ran, the job succeeded, and the numbers were
+  right throughout, because the ledger counts only the turns that
+  finished.
+
+### Added
+
+- **A scheduled, verified backup of the site databases.**  The MCP
+  control-plane backup covers PostgreSQL, Redis and the secrets, and says
+  plainly that the MariaDB site databases are not included — so the only
+  copy of production's data was a manual dump on the same disk as the
+  database it protected.  `scripts/site_backup.sh` now dumps
+  `albanna.localhost` and `frappe.localhost` daily (`albanna-site-backup.timer`,
+  03:47) and **verifies each dump before declaring the run good**: the gzip
+  stream is intact, mysqldump's completion footer is there, the site's own
+  tables are in it, and it holds no fewer tables than the last good dump.
+  A failed check exits non-zero and leaves `last_ok` alone — with no mail
+  on this host, a stale `last_ok` is the alert.  `test.localhost` is
+  deliberately not backed up: it is a disposable clone.
+- **`docs/BACKUP.md`** — what the backup covers, how to tell whether it is
+  working, and how to restore, including what a restore costs and what it
+  does not bring back.  The script copies it next to the artifacts, so the
+  runbook is where the data is.
+- **`docs/DEPLOYMENT.md`** — the runbook for putting a change on the
+  production site: the order (backup, build, migrate, restart every worker
+  set, verify), the two worker sets and why both must be restarted, the
+  metadata lock that hangs the site during a migrate, the job-type sync a
+  change to `scheduler_events` needs, the language trap, and the three
+  commands that look like health checks and are not.
+
+### Changed
+
+- Both covered sites keep `keep_backups_for_hours` at 336 (a fortnight)
+  instead of Frappe's 24 hours, so the dump taken before a migration is
+  not deleted a day later by the next backup.
+- The host's `AGENTS.md` no longer says the site databases have no
+  scheduled backup.
+
 ## [0.2.1] — 2026-10-28
 
 The truth release.  Everything here is about one thing the app did not do:

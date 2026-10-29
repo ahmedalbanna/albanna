@@ -268,6 +268,34 @@ schema change on production.
 
 Items 1 and 6 remain deferred per their triggers.
 
+### Shipped in this pass (v0.2.2, trust and operations)
+
+The product is at the point where the remaining work is not features.  §2's
+items are shipped or deferred on their own triggers, so this pass went after
+the two things that are *about* the app rather than *in* it: the truth of the
+ledger when a turn dies, and the survival of the data the app writes.
+
+- **The reaper's cadence** — the job that re-labels a dead turn's row ran
+  once a day, against a cutoff of fifteen minutes, so the ledger said
+  `running` about a turn that had finished by dying for up to a day.  It
+  now runs every five minutes, and the gap between two runs is tied to the
+  window it closes by a test.  §10 has the finding.
+- **A scheduled, verified backup of the site databases** — the MCP
+  control-plane backup says in its own header that the MariaDB site
+  databases are not covered, and the only copy of production's data was a
+  manual dump on the same disk as the database it protected.  There is now a
+  daily, verified backup of `albanna.localhost` and `frappe.localhost`, and
+  a runbook for restoring it.
+- **`docs/DEPLOYMENT.md`** — the runbook for a deploy, written from what the
+  0.2.1 deployment actually needed, so the next release is boring.
+
+Two things remain open, and neither is the app's to decide: the model is
+still picked per turn by `auto` (fourteen models in a hundred turns, a
+twenty-fold spread in seconds per round — the operator's call), and the
+customer email threads still cannot be read, because all four Email
+Accounts have `enable_incoming = 0` and the site has no `User Email` row
+for the support mailbox.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
@@ -429,3 +457,37 @@ read is **removed** from the payload, not returned with its default.  Frappe
 leaves `ignore_pricing_rule: 0` on a Sales Order, and `0` is a statement
 about a document that is not true.  The assistant is held to a stricter
 standard than the Desk on this one point, on purpose.
+
+## 10. The operations pass — what it found (2026-10-29)
+
+The 0.2.1 release made the app say what happened.  This pass asked a
+narrower question about those claims: **are they still true a minute later,
+a day later, and after a deploy?**
+
+| What | Why it matters | What was done |
+|---|---|---|
+| The job that re-labels a dead turn's row ran **once a day**, against a cutoff of **fifteen minutes** — so the ledger said `running` about a turn that had finished by dying for up to a day | the ledger's whole job is to say what happened; a stale `running` says the opposite | the reaper runs every five minutes, and the gap between two runs is tied to the window it closes by a test (`tests/test_scheduler.py`) |
+| The MCP control-plane backup covers PostgreSQL, Redis and the secrets, and says so — **the MariaDB site databases were not covered at all**; the only copy of production's data was a manual dump on the same disk as the database it protected | a backup on the same disk protects against a mistake, not against the disk | a daily, verified backup of `albanna.localhost` and `frappe.localhost`, with the runbook next to the artifacts |
+| Frappe deletes a site's own backups after **24 hours** by default, which would have deleted the safety net taken before a migration a day later | the dump taken before *that* migration is not the same thing as yesterday's scheduled dump | `keep_backups_for_hours` is 336 (a fortnight) on both covered sites |
+| The deployment knowledge was in one operator's head — which units to restart, that `bench restart` does nothing here, that the migrate locks the site | the next deploy is inevitable, and the discovery work is not something to repeat | `docs/DEPLOYMENT.md`, written from what the 0.2.1 deployment needed |
+
+Two of these were found by *running* the thing rather than reading it: the
+backup script's first run against both live sites caught a missing
+`--with-files` and the `zcat dump | grep -q` trap — under `set -o pipefail`
+that pipeline reports a **missing** pattern when the pattern is there,
+because grep exits early and the producer dies of SIGPIPE.  Both are fixed,
+and the second is now a test that refuses that shape anywhere in the script.
+
+What this pass did **not** do, on purpose:
+
+* It did not copy the artifacts off this host.  They are still on the same
+  disk as the databases they protect, and both the runbook and the host's
+  `AGENTS.md` say so in those words.
+* It did not back up `test.localhost`.  It is a disposable clone that the
+  test suite overwrites; backing it up would fill the disk to protect
+  nothing.
+* It did not choose the model.  The evidence is in §8's finding 2 — and the
+  ledger's own timings now say it precisely: over a hundred turns, `auto`
+  picked fourteen models, from 7.2 to 149 seconds per round, a twenty-fold
+  spread.  The choice belongs to the operator, and the ledger's `round_ms`
+  is the instrument to judge it with.
