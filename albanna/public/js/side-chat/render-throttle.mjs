@@ -43,19 +43,16 @@ export function createRenderThrottle(render, schedule, everyMs = RENDER_EVERY_MS
 		if (queued) return;
 		queued = true;
 
-		schedule(
-			() => {
-				// Read only at flush time: the content the message
-				// carries *now* is what the previous tokens made it,
-				// so no token was lost and no render was wasted.
-				queued = false;
-				if (latest) {
-					render(latest);
-					latest = null;
-				}
-			},
-			everyMs,
-		);
+		schedule(() => {
+			// Read only at flush time: the content the message
+			// carries *now* is what the previous tokens made it,
+			// so no token was lost and no render was wasted.
+			queued = false;
+			if (latest) {
+				render(latest);
+				latest = null;
+			}
+		}, everyMs);
 	};
 }
 

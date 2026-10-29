@@ -43,7 +43,16 @@
  *                         — recent asks, the retried question, route
  *                           watching, clocks.
  */
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowReactive, watch } from "vue";
+import {
+	computed,
+	nextTick,
+	onBeforeUnmount,
+	onMounted,
+	reactive,
+	ref,
+	shallowReactive,
+	watch,
+} from "vue";
 import Composer from "./Composer.vue";
 import ConversationDrawer from "./ConversationDrawer.vue";
 import { pageIdentity, resolveContext } from "./context.mjs";
@@ -174,34 +183,30 @@ const doctypeCount = ref(null);
 /** A non-intrusive nudge for the current list page, if any. */
 const nudgeMessage = ref("");
 
-watch(
-	currentPage,
-	async () => {
-		const context = resolveContext();
-		if (!context || !context.doctype || context.name) {
-			doctypeCount.value = null;
-			nudgeMessage.value = "";
-			return;
-		}
-		try {
-			const result = await call("albanna.api.context.count_doctype", {
-				doctype: context.doctype,
-			});
-			doctypeCount.value =
-				result && result.count != null ? result.count : null;
-		} catch (failure) {
-			doctypeCount.value = null;
-		}
-		try {
-			const result = await call("albanna.api.context.nudge_for_page", {
-				doctype: context.doctype,
-			});
-			nudgeMessage.value = (result && result.message) || "";
-		} catch (failure) {
-			nudgeMessage.value = "";
-		}
-	},
-);
+watch(currentPage, async () => {
+	const context = resolveContext();
+	if (!context || !context.doctype || context.name) {
+		doctypeCount.value = null;
+		nudgeMessage.value = "";
+		return;
+	}
+	try {
+		const result = await call("albanna.api.context.count_doctype", {
+			doctype: context.doctype,
+		});
+		doctypeCount.value = result && result.count != null ? result.count : null;
+	} catch (failure) {
+		doctypeCount.value = null;
+	}
+	try {
+		const result = await call("albanna.api.context.nudge_for_page", {
+			doctype: context.doctype,
+		});
+		nudgeMessage.value = (result && result.message) || "";
+	} catch (failure) {
+		nudgeMessage.value = "";
+	}
+});
 
 /**
  * Whether older messages are behind the window on the screen.
@@ -272,7 +277,9 @@ const locked = computed(() => props.config.locked === true);
 const canChat = computed(() => props.config.chat_access === true && !locked.value);
 
 /** The waits of the thread the reader is looking at, oldest last. */
-const visibleWaits = computed(() => waitsOfConversation([...turnWaits.entries()], conversationId.value));
+const visibleWaits = computed(() =>
+	waitsOfConversation([...turnWaits.entries()], conversationId.value),
+);
 
 /** The approvals waiting in the thread being read, oldest last.
  *
@@ -379,9 +386,7 @@ const examples = computed(() => {
 				__("What fields are required for this {0}?", [context.doctype]),
 			];
 		}
-		return [
-			__("What fields are required for this {0}?", [context.doctype]),
-		];
+		return [__("What fields are required for this {0}?", [context.doctype])];
 	}
 
 	if (set === "list" && context.doctype) {
@@ -802,7 +807,9 @@ function noticeText(notice) {
 		case "stopped":
 			return __("Stopped.");
 		case "moved":
-			return __("You moved to another page. The turn is still running — its answer will be in that page's conversation.");
+			return __(
+				"You moved to another page. The turn is still running — its answer will be in that page's conversation.",
+			);
 		case "no-table":
 			return __("There is no table to copy.");
 		case "copy-failed":
@@ -1693,9 +1700,11 @@ function downloadTable(message) {
 async function copyAnswer(message) {
 	let text = message.content || "";
 	if (message.documents && message.documents.length) {
-		text += "\n\n**Sources:**\n" + message.documents
-			.map((doc) => `- ${doc.doctype ? doc.doctype + " " : ""}${doc.name}`)
-			.join("\n");
+		text +=
+			"\n\n**Sources:**\n" +
+			message.documents
+				.map((doc) => `- ${doc.doctype ? doc.doctype + " " : ""}${doc.name}`)
+				.join("\n");
 	}
 	if (!text) return;
 	try {
@@ -2483,10 +2492,7 @@ onBeforeUnmount(() => {
 					<p v-if="pageContext" class="albanna-chat__empty-context">
 						{{ pageContext }}
 					</p>
-					<p
-						v-if="nudgeMessage"
-						class="albanna-chat__nudge"
-					>
+					<p v-if="nudgeMessage" class="albanna-chat__nudge">
 						{{ nudgeMessage }}
 						<button
 							type="button"
@@ -2496,11 +2502,12 @@ onBeforeUnmount(() => {
 							{{ __("Go") }}
 						</button>
 					</p>
-					<p
-						v-if="showTour"
-						class="albanna-chat__tour"
-					>
-						{{ __("Type a question in plain language — the assistant reads this page and answers from the site's own data. Dismiss any time.") }}
+					<p v-if="showTour" class="albanna-chat__tour">
+						{{
+							__(
+								"Type a question in plain language — the assistant reads this page and answers from the site's own data. Dismiss any time.",
+							)
+						}}
 						<button
 							type="button"
 							class="albanna-chat__tour-dismiss"
@@ -2576,10 +2583,7 @@ onBeforeUnmount(() => {
 							alt=""
 							class="albanna-chat__user-image"
 						/>
-						<span
-							v-else-if="message.image"
-							class="albanna-chat__user-file"
-						>
+						<span v-else-if="message.image" class="albanna-chat__user-file">
 							<!-- The paperclip is decoration: the words beside it
 							     say what the attachment is, so the icon is for the
 							     eye and not for a screen reader.  An emoji here
@@ -2614,20 +2618,21 @@ onBeforeUnmount(() => {
 					></div>
 
 					<div
-						v-if="message.role === 'assistant' && message.documents && message.documents.length"
+						v-if="
+							message.role === 'assistant' &&
+							message.documents &&
+							message.documents.length
+						"
 						class="albanna-chat__sources"
 					>
 						<span class="albanna-chat__sources-label">{{ __("Sources") }}:</span>
-						<template
-							v-for="(doc, index) in sourcesToShow(message)"
-							:key="index"
-						>
+						<template v-for="(doc, index) in sourcesToShow(message)" :key="index">
 							<button
 								type="button"
 								class="albanna-chat__source"
 								@click="openSource(doc)"
 							>
-								{{ doc.doctype ? doc.doctype + ' ' + doc.name : doc.name }}
+								{{ doc.doctype ? doc.doctype + " " + doc.name : doc.name }}
 							</button>
 						</template>
 						<button
@@ -2646,7 +2651,11 @@ onBeforeUnmount(() => {
 
 					<div class="albanna-chat__footer">
 						<span
-							v-if="message.role === 'assistant' && message.cost != null && message.cost > 0"
+							v-if="
+								message.role === 'assistant' &&
+								message.cost != null &&
+								message.cost > 0
+							"
 							class="albanna-chat__cost"
 						>
 							{{ __("This turn cost {0}.", [Number(message.cost).toFixed(4)]) }}
@@ -2728,7 +2737,9 @@ onBeforeUnmount(() => {
 								aria-hidden="true"
 							>
 								<path d="M7 10v12" />
-								<path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" />
+								<path
+									d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"
+								/>
 							</svg>
 						</button>
 						<button
@@ -2753,7 +2764,9 @@ onBeforeUnmount(() => {
 								aria-hidden="true"
 							>
 								<path d="M17 14V2" />
-								<path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" />
+								<path
+									d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"
+								/>
 							</svg>
 						</button>
 						<button
@@ -2920,7 +2933,11 @@ onBeforeUnmount(() => {
 				<button
 					type="button"
 					class="albanna-chat__confirm-button albanna-chat__confirm-button--confirm"
-					:class="{ 'albanna-chat__confirm-button--danger': isDestructiveTool(wait.approval.name) }"
+					:class="{
+						'albanna-chat__confirm-button--danger': isDestructiveTool(
+							wait.approval.name,
+						),
+					}"
 					:disabled="!canDecide(wait.approval, now)"
 					@click="decideWrite(wait.streamId, 'approve')"
 				>

@@ -32,8 +32,16 @@ import { APPROVAL_WINDOW_MS, canDecide, remainingSeconds, windowMs } from "./app
 	assert.equal(windowMs({ request_id: "a", window_seconds: 0 }), APPROVAL_WINDOW_MS);
 	assert.equal(windowMs({ request_id: "a", window_seconds: -5 }), APPROVAL_WINDOW_MS);
 	assert.equal(windowMs({ request_id: "a", window_seconds: 1 }), 30000, "the floor holds");
-	assert.equal(windowMs({ request_id: "a", window_seconds: 99999 }), 600000, "and so does the ceiling");
-	assert.equal(windowMs({ request_id: "a", window_seconds: "45" }), 45000, "a string is still a number");
+	assert.equal(
+		windowMs({ request_id: "a", window_seconds: 99999 }),
+		600000,
+		"and so does the ceiling",
+	);
+	assert.equal(
+		windowMs({ request_id: "a", window_seconds: "45" }),
+		45000,
+		"a string is still a number",
+	);
 	assert.equal(windowMs(null), APPROVAL_WINDOW_MS);
 }
 

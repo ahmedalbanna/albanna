@@ -96,7 +96,9 @@ export function voiceErrorText(code, translate) {
 	switch (String(code || "")) {
 		case "not-allowed":
 		case "service-not-allowed":
-			return say("Microphone access was denied. Allow it in your browser to use voice input.");
+			return say(
+				"Microphone access was denied. Allow it in your browser to use voice input.",
+			);
 		case "no-speech":
 			return say("No speech was heard.");
 		case "audio-capture":

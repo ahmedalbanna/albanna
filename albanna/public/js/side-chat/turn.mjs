@@ -386,7 +386,10 @@ export function waitForTurn(streamId, { onEvent, signal, conversation = "" } = {
 					// The delay is read *now*: a socket event that arrived
 					// while the request was in flight is included in the
 					// judgment, so a working socket slows the next poll.
-					pollTimer = window.setTimeout(poll, nextPollDelay({ lastEventAt, idlePolls }, Date.now()));
+					pollTimer = window.setTimeout(
+						poll,
+						nextPollDelay({ lastEventAt, idlePolls }, Date.now()),
+					);
 				}
 			}
 		}

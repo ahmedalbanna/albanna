@@ -16,8 +16,7 @@ const speakers = { reader: "You", assistant: "Albanna" };
 	);
 	assert.equal(
 		text,
-		"**You:** What is open?\n\n" +
-			"**Albanna:**\n\nThe two orders.\n",
+		"**You:** What is open?\n\n" + "**Albanna:**\n\nThe two orders.\n",
 		"a turn is the question, a blank line, and the answer",
 	);
 }

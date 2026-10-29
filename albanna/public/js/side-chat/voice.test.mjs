@@ -42,7 +42,7 @@ describe("readResults", () => {
 
 	it("takes a final that arrives after an interim", () => {
 		const list = results([
-			{ transcript: "show me the", },
+			{ transcript: "show me the" },
 			{ transcript: "invoice", isFinal: true },
 		]);
 		const read = readResults(list, 0, 0);
@@ -74,7 +74,10 @@ describe("readResults", () => {
 
 describe("mergeTranscript", () => {
 	it("shows the spoken words", () => {
-		assert.equal(mergeTranscript({ spoken: "show me the invoice", current: "", lastEmitted: "" }), "show me the invoice");
+		assert.equal(
+			mergeTranscript({ spoken: "show me the invoice", current: "", lastEmitted: "" }),
+			"show me the invoice",
+		);
 	});
 
 	it("keeps what the reader typed while the microphone was open", () => {
@@ -97,7 +100,10 @@ describe("mergeTranscript", () => {
 	});
 
 	it("leaves typed text alone when nothing was spoken", () => {
-		assert.equal(mergeTranscript({ spoken: "", current: "typed by hand", lastEmitted: "" }), "typed by hand");
+		assert.equal(
+			mergeTranscript({ spoken: "", current: "typed by hand", lastEmitted: "" }),
+			"typed by hand",
+		);
 	});
 
 	it("returns nothing when nothing was said and nothing is there", () => {
@@ -116,15 +122,27 @@ describe("mergeTranscript", () => {
 
 describe("voiceErrorText", () => {
 	it("names the permission that was refused", () => {
-		assert.match(voiceErrorText("not-allowed", (t) => t), /Microphone/);
+		assert.match(
+			voiceErrorText("not-allowed", (t) => t),
+			/Microphone/,
+		);
 	});
 
 	it("says nothing for a deliberate stop", () => {
-		assert.equal(voiceErrorText("aborted", (t) => t), "");
+		assert.equal(
+			voiceErrorText("aborted", (t) => t),
+			"",
+		);
 	});
 
 	it("has a sentence for every browser code it knows", () => {
-		for (const code of ["service-not-allowed", "no-speech", "audio-capture", "network", "language-not-supported"]) {
+		for (const code of [
+			"service-not-allowed",
+			"no-speech",
+			"audio-capture",
+			"network",
+			"language-not-supported",
+		]) {
 			assert.ok(voiceErrorText(code, (t) => t).length > 0, code);
 		}
 	});
@@ -134,7 +152,10 @@ describe("voiceErrorText", () => {
 	});
 
 	it("translates through the callback it is given", () => {
-		assert.equal(voiceErrorText("network", (t) => `[${t}]`), "[Voice input needs a network connection.]");
+		assert.equal(
+			voiceErrorText("network", (t) => `[${t}]`),
+			"[Voice input needs a network connection.]",
+		);
 	});
 });
 

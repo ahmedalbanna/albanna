@@ -49,12 +49,19 @@ function fakeClock() {
 	request({ content: "a" });
 	request({ content: "ab" });
 	clock.flush();
-	assert.deepEqual(renders.map((m) => m.content), ["ab"], "the batch ends with the newest content");
+	assert.deepEqual(
+		renders.map((m) => m.content),
+		["ab"],
+		"the batch ends with the newest content",
+	);
 
 	request({ content: "abc" });
 	assert.equal(clock.pending.length, 1, "a request after the flush schedules a fresh render");
 	clock.flush();
-	assert.deepEqual(renders.map((m) => m.content), ["ab", "abc"]);
+	assert.deepEqual(
+		renders.map((m) => m.content),
+		["ab", "abc"],
+	);
 }
 
 // A custom gap is honoured, so the panel could slow a heavy answer down

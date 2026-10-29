@@ -54,7 +54,12 @@ const turn = {
 	const storage = memoryStorage();
 	saveInflight(turn, storage);
 	saveInflight(
-		{ ...turn, stream_id: "def456", conversation_id: "other-thread", question: "the second question" },
+		{
+			...turn,
+			stream_id: "def456",
+			conversation_id: "other-thread",
+			question: "the second question",
+		},
 		storage,
 	);
 
@@ -167,10 +172,7 @@ const turn = {
 		turnsForConversation("", storage).map((entry) => entry.stream_id),
 		["def456"],
 	);
-	assert.deepEqual(
-		turnsForConversation("nobody", storage),
-		[],
-	);
+	assert.deepEqual(turnsForConversation("nobody", storage), []);
 }
 
 // The turns of one page: a turn belongs to the thread of the page it was

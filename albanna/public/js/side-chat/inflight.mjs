@@ -72,7 +72,13 @@ export function loadInflightTurns(storage) {
 		// The single-slot format this module used before a reader could
 		// ask a second question before the first turn finished.  A
 		// storage entry written by that version is still a turn.
-		const turns = Array.isArray(parsed) ? parsed : parsed && parsed.turns ? parsed.turns : parsed ? [parsed] : [];
+		const turns = Array.isArray(parsed)
+			? parsed
+			: parsed && parsed.turns
+			? parsed.turns
+			: parsed
+			? [parsed]
+			: [];
 
 		const now = Date.now();
 		return turns

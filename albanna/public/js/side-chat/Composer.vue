@@ -22,8 +22,7 @@ const inputEl = ref(null);
 const fileInput = ref(null);
 
 const speechSupported = ref(
-	typeof window !== "undefined" &&
-		!!(window.SpeechRecognition || window.webkitSpeechRecognition),
+	typeof window !== "undefined" && !!(window.SpeechRecognition || window.webkitSpeechRecognition),
 );
 const listening = ref(false);
 let recognition = null;
@@ -151,7 +150,10 @@ function resize() {
 	el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
 }
 
-watch(() => props.modelValue, () => nextTick(resize));
+watch(
+	() => props.modelValue,
+	() => nextTick(resize),
+);
 onMounted(resize);
 
 function onKeydown(event) {
@@ -292,11 +294,7 @@ function openFilePicker() {
 				×
 			</button>
 		</div>
-		<div
-			class="albanna-chat__field"
-			@drop="onDrop"
-			@dragover="onDragOver"
-		>
+		<div class="albanna-chat__field" @drop="onDrop" @dragover="onDragOver">
 			<textarea
 				ref="inputEl"
 				class="albanna-chat__input"
@@ -320,10 +318,38 @@ function openFilePicker() {
 				@click="toggleVoice"
 			>
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-					<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-					<path d="M19 10v2a7 7 0 0 1-14 0v-2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-					<line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-					<line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+					<path
+						d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+					<path
+						d="M19 10v2a7 7 0 0 1-14 0v-2"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
+					<line
+						x1="12"
+						y1="19"
+						x2="12"
+						y2="23"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+					/>
+					<line
+						x1="8"
+						y1="23"
+						x2="16"
+						y2="23"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+					/>
 				</svg>
 			</button>
 			<button
@@ -336,7 +362,13 @@ function openFilePicker() {
 				@click="openFilePicker"
 			>
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-					<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+					<path
+						d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					/>
 				</svg>
 			</button>
 			<input
