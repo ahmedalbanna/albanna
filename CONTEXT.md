@@ -1844,17 +1844,18 @@ was not kept.  A statement in a place nobody looks at is not a statement.
 Two things changed, and both were found by asking the question the tool
 should have been answering.
 
-The limitation has **two** causes, not one.  An account that is not linked
+The limitation has **three** causes, not one.  An account that is not linked
 to a mailbox has no `User Email` row, and the framework hides email
 Communications from it.  An account that *is* linked but does not hold a
 role that may read any thread is limited to the Communications it owns —
 and an incoming customer's mail is owned by the account that fetched it,
-not by the agent who should read it.  The first cause is the one that was
-known; the second is the one that hides, because the account looks
-correctly set up.  A reader told the wrong cause goes and fixes the wrong
-thing, so the app names which one applies, and it uses Frappe's own rule
-to decide rather than a copy of it: if the framework changes what it
-restricts, the app follows.
+not by the agent who should read it.  An account that is linked may still
+read only *its* mailbox's threads and not the other mailboxes'.  The
+first cause is the one that was known; the other two are the ones that
+hide, because the account looks correctly set up.  A reader told the
+wrong cause goes and fixes the wrong thing, so the app names which one
+applies, and it uses Frappe's own rule to decide rather than a copy of
+it: if the framework changes what it restricts, the app follows.
 
 And it says it in the tool's **hints**, because that is the channel the
 tool's answer carries to the model.  The hints are how the other tools
@@ -1863,21 +1864,35 @@ apologise for it" — and a limitation belongs with them.
 
 Putting the note where the model can hear it turned the note from a
 promise into a statement, and a statement has to be true for everybody
-who hears it.  The first live run of the fixed code said to the
-Administrator: *"this account has no email account configured, so email
-Communications are not included in this list"* — which was false, because
-the framework exempts a System Manager from the mailbox rule entirely and
-the Administrator reads every thread.  A false statement about a
-privileged reader is worse than no statement at all, because it is
-believed and it is wrong.
+who hears it.  Two live runs showed it false.
 
-So the note has a third case, and the third case is *not a note*: a
-reader the framework exempts is told nothing, because there is nothing to
-tell them.  The exemption is read from the framework's own condition
-rather than from a copy of the framework's list of exempt roles — the
-same rule decides what is hidden and what is said, so the two cannot
-drift apart.  And the case is pinned by a test, because a live run found
-it and a live run is not a test.
+The first said to the Administrator: *"this account has no email account
+configured, so email Communications are not included in this list"* —
+which was false, because the framework exempts a System Manager from the
+mailbox rule entirely and the Administrator reads every thread.  A false
+statement about a privileged reader is worse than no statement at all,
+because it is believed and it is wrong.
+
+The second said the same thing on a site that holds **no** customer mail
+at all.  The limitation was real as a rule and false as a fact, and the
+assistant repeated it in its answer: *"the email thread could not be
+read"* — on a site where there is no email thread, and no reader is
+missing one.
+
+So the note now speaks only when there is something to say, and it decides
+that by **comparison rather than by rule**: the site's own count of email
+Communications, and the reader's own listing of them, are both the
+framework's, and the app asks only whether the second is smaller than the
+first.  A reader who sees everything is told nothing — which covers the
+exempt reader, and covers a site with no customer mail, without the app
+holding a copy of the framework's list of exempt roles.  A copy of a
+rule is a rule that drifts.
+
+The cause is still named, because a reader who is told the problem and
+not the way out can do nothing; but the cause is only reached when the
+comparison has already established that there is a problem.  And the
+cases are pinned by tests, because live runs found them and a live run
+is not a test.
 
 ## What is deliberately not here
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.

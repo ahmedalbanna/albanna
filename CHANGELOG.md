@@ -24,19 +24,30 @@ the live site.
   conversation: the model saw an empty list and no reason for it.  The
   limitation is now carried in the tool's hints, the channel the tool's
   answer reaches the model through, and it names *which* limitation
-  applies: an account that is not linked to a mailbox, and an account
-  that is linked but may only read the threads it owns, hide the mail in
-  two different ways — and the second one looks like a correctly set-up
-  account.  A reader told the wrong one fixes the wrong thing.
-- **And the first live run of that fix said something false to the
-  Administrator.**  The note told it *"this account has no email account
-  configured, so email Communications are not included in this list"*,
-  but the framework exempts a System Manager from the mailbox rule and
-  the Administrator reads every thread.  A false statement about a
-  privileged reader is worse than no statement, because it is believed.
-  A reader the framework exempts is now told nothing, and the exemption
-  is read from the framework's own condition rather than from a copy of
-  its list of exempt roles.  A test pins it.
+  applies: an account that is not linked to a mailbox, an account that is
+  linked but may only read the threads it owns, and an account that may
+  read only its own mailbox's threads, hide the mail in three different
+  ways — and the last two look like correctly set-up accounts.  A reader
+  told the wrong one fixes the wrong thing.
+- **And two live runs of that fix said something false.**  The first
+  told the Administrator *"this account has no email account configured,
+  so email Communications are not included in this list"*, but the
+  framework exempts a System Manager from the mailbox rule and the
+  Administrator reads every thread.  The second said the same thing on a
+  site that holds **no** customer mail at all, and the assistant
+  repeated it: *"the email thread could not be read"*, on a site where
+  there is no email thread and no reader is missing one.  A false
+  statement about a privileged reader, or about the site, is worse than
+  no statement, because it is believed.
+  The note now speaks only when there is something to say, and it
+  decides that by **comparison rather than by rule**: the site's own
+  count of email Communications and the reader's own listing of them
+  are both the framework's, and the app asks only whether the second is
+  smaller than the first.  A reader who sees everything is told
+  nothing — which covers the exempt reader, and a site with no customer
+  mail, without the app holding a copy of the framework's list of
+  exempt roles.  A copy of a rule is a rule that drifts.  Tests pin
+  both cases.
 - **Three of the CI's site tests skipped themselves, and a skipped test
   is a test that quietly stopped testing anything.**  One needed a
   submitted Sales Invoice, one needed a field on Customer the form will

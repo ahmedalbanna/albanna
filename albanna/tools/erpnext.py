@@ -407,10 +407,36 @@ def list_docs(
     )
 
 
+def _email_threads_are_hidden_from(user: str) -> bool:
+    """Whether this reader is missing email Communications the site holds.
+
+    Both halves of the comparison are the framework's: the count is the
+    site's own truth, and the listing is the reader's own view of it.
+    The app only asks whether the second is smaller than the first.
+
+    That comparison is what keeps the note honest.  A note about threads
+    that do not exist is a false statement about the site, and it is the
+    kind of false statement a reader believes — a live run showed the
+    assistant telling a reader, on a site with no customer mail at all,
+    that the email thread could not be read.
+    """
+    total = frappe.db.count("Communication", {"communication_medium": "Email"})
+    if not total:
+        return False
+    visible = frappe.get_list(
+        "Communication",
+        filters={"communication_medium": "Email"},
+        fields=["count(name) as count"],
+        limit_page_length=1,
+    )
+    seen = int(visible[0].get("count") or 0) if visible else 0
+    return seen < total
+
+
 def _communication_limitation(user: str) -> str:
     """Why this account cannot read the email threads, if it cannot.
 
-    There are two reasons, and the second is the one that hides.
+    There are three reasons, and the third is the one that hides.
 
     The first is the link: Frappe hides email Communications from any
     reader whose account has no ``User Email`` row, so an agent who is
@@ -425,12 +451,14 @@ def _communication_limitation(user: str) -> str:
     note that only knew about the link would stay silent exactly when
     it should have spoken.
 
-    And a third case is not a limitation at all: a reader the framework
-    exempts from the rule (a System Manager, a Super Email User) reads
-    every thread, so a note that only knew about the link would tell
-    *them* that they could not read the mail — a false statement about
-    a privileged reader, and the worst kind of note, because it is
-    believed.
+    The third is the scope of the link: a reader linked to one mailbox
+    may read that mailbox's threads and not the others'.  It looks like
+    a correctly set-up account, and it is hiding the rest of the mail.
+
+    And a reader the framework exempts from the rule (a System Manager,
+    a Super Email User) reads every thread, so it is told nothing: a
+    false statement about a privileged reader is the worst kind of note,
+    because it is believed.
 
     So the framework's own rule decides all of it rather than a copy of
     it: if the framework changes what it restricts, the app follows.
@@ -438,15 +466,7 @@ def _communication_limitation(user: str) -> str:
     is worse than no limitation.
     """
     try:
-        from frappe.core.doctype.communication.communication import (
-            get_permission_query_conditions_for_communication,
-        )
-
-        # The framework's own condition for this reader.  ``None`` means
-        # the reader is exempt from the mailbox rule entirely: they see
-        # every thread, and there is nothing to say.
-        condition = get_permission_query_conditions_for_communication(user)
-        if condition is None:
+        if not _email_threads_are_hidden_from(user):
             return ""
     except Exception:
         return ""
@@ -464,9 +484,8 @@ def _communication_limitation(user: str) -> str:
 
     if not linked:
         return (
-            "This account has no email account configured, so email "
-            "Communications are not included in this list: only "
-            "non-email Communications are shown."
+            "This account has no email account configured, so the email "
+            "Communications on this site are not in this list."
         )
 
     try:
@@ -477,15 +496,18 @@ def _communication_limitation(user: str) -> str:
         if requires_owner_constraint(permissions):
             return (
                 "This account is linked to an email account, but its "
-                "permissions limit it to the Communications it owns, so "
-                "email threads that arrived from a customer are not "
-                "included in this list: only the threads it owns and the "
-                "non-email Communications are shown."
+                "permissions limit it to the Communications it owns, so the "
+                "email threads that arrived from a customer are not in this "
+                "list: only the threads it owns are shown."
             )
     except Exception:
         return ""
 
-    return ""
+    return (
+        "This account is linked to an email account, and it may read only "
+        "the email Communications in the mailbox it is linked to, so the "
+        "email Communications in the other mailboxes are not in this list."
+    )
 
 
 def _hidden_fields(document) -> set[str]:

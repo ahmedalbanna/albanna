@@ -302,10 +302,17 @@ class TestPermissionParity(AlbannaTestCase):
         the one answer the reader cannot trust: the model cannot tell
         "there are no email threads" from "the thread exists and I
         cannot see it".  So the tool states the limitation — and it
-        states *which* limitation, because there are two, and a reader
+        states *which* limitation, because there are three, and a reader
         who is told the wrong one will go and fix the wrong thing.
+
+        And it says it only when there is something to say: on a site
+        with no customer mail, every reader sees everything there is,
+        and a note about threads that do not exist is a false statement
+        about the site.  A live run showed the assistant making exactly
+        that statement, so the case is here.
         """
         mailbox = self._mailbox()
+        self._email_communication(mailbox)
 
         # No link at all.
         self._unlink_mailbox(self.sales_user)
@@ -319,12 +326,16 @@ class TestPermissionParity(AlbannaTestCase):
         self.assertTrue(result.ok, result.content)
         self.assertIn("limit it to the Communications it owns", result.content)
 
-        # Linked, and holding the role that may read any thread: nothing
-        # to say.
+        # Linked, and holding the role that may read any thread: the
+        # account is set up correctly, so it must not be told that it
+        # is not linked and not that it may only read its own threads.
+        # (It may still be told that it may read only its own mailbox's
+        # — which is true, and is a third reason.)
         self._grant(self.sales_user, "Inbox User")
         result = self._call("list_docs", {"doctype": "Communication"}, self.sales_user)
         self.assertTrue(result.ok, result.content)
-        self.assertNotIn("email thread could not be read", result.content)
+        self.assertNotIn("no email account configured", result.content)
+        self.assertNotIn("limit it to the Communications it owns", result.content)
 
         # And a reader the framework exempts from the rule — a System
         # Manager — reads every thread, so it must not be told that it
@@ -334,6 +345,36 @@ class TestPermissionParity(AlbannaTestCase):
         # reader is the kind that gets believed.
         self._unlink_mailbox("Administrator")
         result = self._call("list_docs", {"doctype": "Communication"}, "Administrator")
+        self.assertTrue(result.ok, result.content)
+        self.assertNotIn("email thread could not be read", result.content)
+        self.assertNotIn("no email account configured", result.content)
+
+    def test_the_list_says_nothing_when_there_is_nothing_to_hide(self):
+        """A site with no customer mail is a site with nothing to report.
+
+        The note exists so the assistant does not treat the silence as
+        the whole truth.  On a site with no email Communications, the
+        silence *is* the whole truth, and a note about threads that do
+        not exist is a false statement about the site — one the reader
+        believes, and one the assistant then repeats in its answer.  A
+        live run showed exactly that, so the case is here.
+
+        The site's own customer mail is set aside for the length of
+        this test.  The suite runs in a transaction that is rolled
+        back, so the site is as it was afterwards.
+        """
+        frappe.db.set_value(
+            "Communication",
+            {"communication_medium": "Email"},
+            "communication_medium",
+            "Phone",
+        )
+
+        # An account that is not even linked to a mailbox, on a site
+        # with no email threads: there is nothing it cannot read, and
+        # saying otherwise would be inventing a limitation.
+        self._unlink_mailbox(self.sales_user)
+        result = self._call("list_docs", {"doctype": "Communication"}, self.sales_user)
         self.assertTrue(result.ok, result.content)
         self.assertNotIn("email thread could not be read", result.content)
         self.assertNotIn("no email account configured", result.content)
