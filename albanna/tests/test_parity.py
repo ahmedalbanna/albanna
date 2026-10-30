@@ -312,7 +312,18 @@ class TestPermissionParity(AlbannaTestCase):
         that statement, so the case is here.
         """
         mailbox = self._mailbox()
-        self._email_communication(mailbox)
+        thread = self._email_communication(mailbox)
+
+        # The fixture has to be an email thread in the database, or the
+        # rest of the test measures nothing: a note about a thread that
+        # is not there is not a note, and a fixture that lands
+        # differently on a different version of the framework would look
+        # like a note that does not work.
+        self.assertEqual(
+            frappe.db.get_value("Communication", thread, "communication_medium"),
+            "Email",
+            "the test's own thread did not land as an email Communication",
+        )
 
         # No link at all.
         self._unlink_mailbox(self.sales_user)

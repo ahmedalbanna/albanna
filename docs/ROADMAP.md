@@ -620,7 +620,7 @@ one needed a provider key to redact.  The site's preparation now makes
 all three, and the read-only field it makes is a *custom* field — the
 test should not depend on which fields ERPNext happens to lock, which
 is ERPNext's business and may change under the suite.  The CI's site
-suite now runs **176 tests with no skips**, and so does the bench's.
+suite now runs **177 tests with no skips**, and so does the bench's.
 
 **And the site the suite runs on is now made, not inherited.**  The
 bench's gate ran against a database dump of production taken by hand,
@@ -652,6 +652,22 @@ gates:**
   deprecated classifier — and a modern flit refused to build it;
 * the CI's domain suite had never been runnable where it was, because
   five of its modules import the framework.
+
+**And the app's own answer about the mail was repaired where the CI
+could see it and the bench could not.**  The tool states, in its own
+hints, that a reader is missing email threads they cannot read, and it
+decides that by comparing the site's own count of email
+Communications with the reader's own listing of them.  The reader's
+side was asked for as an aggregate — `count(name) as count` — and
+upstream v16 answers a listing through the query builder, which
+refuses an aggregate expression outright, while the fork the site runs
+on builds the SQL itself and accepts it.  So the note was written on
+the bench and absent on the CI, and the refusal was swallowed by a
+bare `except`: a loud failure became a silent one, and a note that
+quietly stops being written looks exactly like a note that was never
+needed.  The comparison is now asked in the way both versions answer —
+a listing of names, counted by the app — and a failure that leaves the
+app saying nothing is logged rather than swallowed (CONTEXT 86).
 
 *Deployed on production, 2026-10-29, following `docs/DEPLOYMENT.md`:*
 the scheduled backup was fresh (`last_ok` 2026-10-29 03:47) → build

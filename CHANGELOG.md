@@ -48,6 +48,22 @@ the live site.
   mail, without the app holding a copy of the framework's list of
   exempt roles.  A copy of a rule is a rule that drifts.  Tests pin
   both cases.
+- **The note about the email threads stopped being written on the CI, and
+  nothing said why.**  The app asked the framework to count the reader's
+  email threads with an aggregate — `count(name) as count`.  Upstream v16
+  answers a listing through the query builder, and the builder parses a
+  field expression with a pattern that admits a field name and nothing
+  else, so it refuses the aggregate outright; the version the site runs
+  on builds the SQL itself and accepts it.  The same code therefore
+  produced the note on the bench and nothing at all on the CI.  The
+  refusal was then swallowed by a bare `except`, which turned a loud
+  failure into a silent one — and a note that quietly stops being
+  written looks exactly like a note that was never needed.  The
+  reader's side of the comparison is now a listing of names, counted by
+  the app and bounded by the site's own count: the same comparison,
+  asked in the way both versions answer.  And a failure that leaves the
+  app saying nothing is now logged rather than swallowed, so the next
+  one says what broke instead of disappearing.
 - **Three of the CI's site tests skipped themselves, and a skipped test
   is a test that quietly stopped testing anything.**  One needed a
   submitted Sales Invoice, one needed a field on Customer the form will
@@ -57,7 +73,7 @@ the live site.
   field — so the test no longer depends on which fields ERPNext
   happens to lock, which is ERPNext's business and may change — and
   the key is one that is not a real key.  The CI's site suite now runs
-  **176 tests with no skips**, and so does the bench's.
+  **177 tests with no skips**, and so does the bench's.
 - **The read-only test skipped itself on a site whose Customer was
   fine.**  It skipped in the CI with "this site has no read-only field
   on Customer", and the CI's own log shows the Customer was intact —

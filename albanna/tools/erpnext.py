@@ -419,6 +419,22 @@ def _email_threads_are_hidden_from(user: str) -> bool:
     kind of false statement a reader believes — a live run showed the
     assistant telling a reader, on a site with no customer mail at all,
     that the email thread could not be read.
+
+    The reader's half is counted by listing the threads and counting the
+    rows, and not by asking the framework for a ``count(name)``
+    aggregate.  The two versions of Frappe this app is measured against
+    parse a field expression differently: upstream v16 routes a listing
+    through the query builder, which refuses an aggregate expression
+    outright — *"Could not parse field: count(name) as count"* — while
+    the version the site runs on builds the SQL itself and accepts it.
+    A note that disappears when the framework changes its parser is a
+    note nobody hears, and the CI, which runs the upstream release, heard
+    nothing at all.
+
+    The listing asks for at most as many rows as the site holds, so a
+    reader who may read every thread is counted in full and a reader
+    who may read fewer is counted short.  It costs the site one query
+    and the reader one page of names.
     """
     total = frappe.db.count("Communication", {"communication_medium": "Email"})
     if not total:
@@ -426,11 +442,11 @@ def _email_threads_are_hidden_from(user: str) -> bool:
     visible = frappe.get_list(
         "Communication",
         filters={"communication_medium": "Email"},
-        fields=["count(name) as count"],
-        limit_page_length=1,
+        fields=["name"],
+        limit_page_length=total,
+        user=user,
     )
-    seen = int(visible[0].get("count") or 0) if visible else 0
-    return seen < total
+    return len(visible) < total
 
 
 def _communication_limitation(user: str) -> str:
@@ -464,11 +480,18 @@ def _communication_limitation(user: str) -> str:
     it: if the framework changes what it restricts, the app follows.
     And when the app cannot tell, it says nothing: a wrong limitation
     is worse than no limitation.
+
+    When the app cannot tell *because something broke*, it says nothing
+    as well — but it says so in the log, because a note that quietly
+    stops being written looks exactly like a note that was never
+    needed.  That is how the CI found the last one: the note was gone,
+    the failure was silent, and nothing said why.
     """
     try:
         if not _email_threads_are_hidden_from(user):
             return ""
     except Exception:
+        logger.exception("Could not compare the email threads %s may read", user)
         return ""
 
     try:
@@ -480,6 +503,7 @@ def _communication_limitation(user: str) -> str:
             )
         )
     except Exception:
+        logger.exception("Could not work out whether %s is linked to a mailbox", user)
         return ""
 
     if not linked:
@@ -501,6 +525,7 @@ def _communication_limitation(user: str) -> str:
                 "list: only the threads it owns are shown."
             )
     except Exception:
+        logger.exception("Could not work out what %s may read of the mail", user)
         return ""
 
     return (

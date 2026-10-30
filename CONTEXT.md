@@ -1729,7 +1729,7 @@ So the claim is kept narrow and said plainly:
 * the CI says *the app works against the released v16 line*;
 * the bench says *the app works against what is deployed* — the site
   suite run against the deployed fork, `bench --site test.localhost
-  run-tests --app albanna`, 176 tests.
+  run-tests --app albanna`, 177 tests.
 
 Both are run: the first on every push, the second before a deploy, and
 the second is the one that speaks for production.
@@ -1764,7 +1764,7 @@ this app.  It cannot be used at all, because it clones the first company
 it finds and a fresh site has none.
 
 The site the suite reads is made by the preparation script, and it is made
-so that nothing skips (84): the CI runs 176 site tests with no skips, and
+so that nothing skips (84): the CI runs 177 site tests with no skips, and
 so does the bench.  A gate that hid a skip would be lying about what it
 covers, and a gate that ran the demo setup would be testing ERPNext's
 demo data as much as this app.
@@ -1823,7 +1823,7 @@ instead of a bare assertion.  The test itself no longer depends on the
 question either way, because the field it refuses to write is one the
 site made for it.
 
-The site suite now runs 176 tests with no skips, in the CI and on the bench.
+The site suite now runs 177 tests with no skips, in the CI and on the bench.
 
 The domain suite has one skip, and it is a legitimate one rather than a
 hole: the test that compares the *installed* systemd unit with the
@@ -1893,6 +1893,46 @@ not the way out can do nothing; but the cause is only reached when the
 comparison has already established that there is a problem.  And the
 cases are pinned by tests, because live runs found them and a live run
 is not a test.
+
+### 86. A note that cannot be computed says nothing, but it says so in the log
+
+The comparison of entry 85 asks the framework two questions: how many email
+Communications the site holds, and how many of them this reader may read.
+The second was asked as an aggregate — `count(name) as count` — because an
+aggregate is the cheap way to count a reader's rows.
+
+The CI refused it.  Upstream v16 routes a listing through the **query
+builder**, and the builder parses a field expression with a pattern that
+admits a field name and nothing else; `count(name) as count` is not a field
+name, so the builder throws *"Could not parse field"*.  The version the site
+runs on — Albanna's fork — still builds the SQL itself and accepts the
+expression.  So the same code produced the note on the bench and nothing at
+all on the CI, and the note was swallowed by a bare `except` on the way out.
+
+Two decisions follow, and they are about how the app treats the framework.
+
+**The app asks the framework in the way the framework answers.**  The
+reader's side of the comparison is now a listing of names, counted by the
+app, bounded by the site's own count: a reader who may read every thread is
+counted in full, a reader who may read fewer is counted short.  It is one
+page of names rather than one aggregate, and it works on both versions.  The
+lesson is not "aggregates are bad" — it is that a *private* path into the
+framework's query layer is a path whose shape belongs to the framework, and
+the app is written against two of them at once (81).
+
+**A failure that makes the app say nothing is logged, not swallowed.**  The
+app still keeps its rule — when it cannot tell, it says nothing, because a
+wrong limitation is worse than no limitation — but the silence now leaves a
+trace.  A note that quietly stops being written is indistinguishable from a
+note that was never needed, and that is exactly how this one hid: the CI
+said the note was missing, and nothing said why.  The bare `except` was the
+real defect.  It converted a loud failure into a silent one, and the silent
+one is what got shipped.
+
+The test that found it also now checks its own fixture — that the thread it
+made really is an email Communication in the database — because a fixture
+that lands differently on another framework version looks exactly like a
+note that does not work.
 
 ## What is deliberately not here
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.
