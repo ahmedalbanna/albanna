@@ -955,10 +955,18 @@ class ChatService:
                 "preview": write_preview(call.name, call.arguments),
                 "diff": write_diff(call.name, call.arguments),
                 "window_seconds": seconds,
+                # The server's own moment the wait opened, in epoch
+                # milliseconds.  The card counts down from *this*: a card
+                # that reaches the reader late (a reload, a socket that
+                # came back after the fact) must not hand the reader a
+                # fresh window the worker no longer holds.  The mirror in
+                # the job parks it with the event, and the poll hands it
+                # on unchanged.
+                "at": int(time.time() * 1000),
             }
         )
 
-        decision = await_decision(request_id, principal.user, timeout=seconds)
+        decision = await_decision(request_id, timeout=seconds)
 
         if decision != "approve":
             message = denial_message(decision)

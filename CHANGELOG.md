@@ -7,9 +7,11 @@ and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-No change to what the app does.  This is the pass that looked at the
-feature drafts an agent had opened against the repository, the gates
-those drafts were measured against, the three tests that had been
+Two passes are recorded here.
+
+The first looked at the feature drafts an agent had opened against the
+repository, the gates those drafts were measured against, the three
+tests that had been
 skipping themselves in the CI because the site they ran on was not
 prepared for them, and the two settings the owner asked to change on
 the live site.
@@ -181,6 +183,89 @@ the live site.
   — `docs/ROADMAP.md` §11, and the design decision behind it in
   `CONTEXT.md` (80).  One idea survived: compacting a long thread's
   older turns, which is §2 item 9 and waits for its trigger.
+
+The second pass is about a live failure the owner reported from the
+shop site: a turn sat with its approval card open, the reader pressed
+**Approve**, and was told the worker *"did not complete the turn"* and
+that the change *"you confirmed did not run"* — while the worker had in
+fact been sleeping, waiting for exactly that approval, on a clock that
+had run out.  Several faults sat behind the one symptom, and each one
+is a lie of a different kind.
+
+### Fixed
+
+- **The job's clock left no time for the reader to read.**  The
+  background job was given ``turn_timeout`` — the budget of the turn's
+  *labour* — and the wait for the reader's decision was spent out of
+  the same number.  A heavy turn (ten rounds, fifty-two tool calls, 318
+  seconds) reached its card with under two minutes of budget left, and
+  a reader who thought before clicking — the only kind of reader worth
+  having — was told the worker had died waiting for the click they were
+  about to make (``JobTimeoutException`` raised inside ``await_decision``).
+  The clock is now **one number for the whole turn**:
+  ``job_budget_seconds`` = the labour (``turn_timeout``) + the wait
+  (``confirm_timeout``) + the queue's slack, and every other clock in
+  the app derives from it: the marker's TTL, the deadline past which a
+  turn is declared lost, the ledger's "unfinished turn" cutoff, and the
+  reaper's window.  ``turn_timeout`` keeps its meaning, and the derived
+  clocks no longer contradict each other by a factor of six.
+- **A card that never arrived could not be answered at all.**  The card
+  is published over socket.io, and a socket that drops — a reload, a
+  laptop that slept, the mobile network handing over — takes it with
+  it: the reader saw a working turn with no card, the worker held its
+  slot asleep, and nobody could answer.  The card is now **mirrored into
+  the parked marker** as it is asked, and ``status`` answers
+  ``awaiting_approval`` with it, so the polling fallback — and only it —
+  draws the card the socket lost.  The card carries the *server's*
+  clock (the moment the wait opened) so a card drawn late counts down
+  the time that actually remains rather than a fresh window the worker
+  no longer holds.  The reader's browser cache going away no longer
+  costs them the decision: that was the reported shape of the failure,
+  and the card now survives it.
+- **A finished turn was overwritten with its own stale copy.**  Two
+  framework behaviours of ``frappe.cache`` collided here, and each one
+  alone was enough to break the polling fallback.  ``get_value`` answers
+  from ``frappe.local.cache`` — the process's own mirror — before it
+  touches Redis, and any read without ``expires=True`` fills that
+  mirror; the job's first read of the marker filled it with the
+  ``running`` marker, and the job's *last* event was served that stale
+  copy, decided the turn was still running, cleared the card, and wrote
+  ``running`` back over the answer the job parked a moment earlier.
+  The reader polled a turn that said it never finished, on a job that
+  had finished fine with a row that said ``ok``.  The mirror is now
+  dropped before every mirror write, and both reads ask for
+  ``expires=True``.
+- **And the framework's own housekeeping deleted the turn mid-flight.**
+  ``clear_user_cache(user)`` deletes every key under
+  ``<db>|user:<user>:`` — on a login, a logout, a User save, a role
+  change, or the **Cache Cleared** button the reader themselves pressed
+  while watching the stuck turn.  Both the parked marker and the pending
+  decision record lived there.  The marker's death is what produced
+  *"the assistant did not finish this question"* on a turn that
+  completed seconds later, and the pending record's death is what
+  produced *"the change you confirmed did not run"* — the reader had
+  approved, the worker's poll found a record that no longer existed,
+  and the write was refused by silence.  The turn's state now lives in
+  the **site's** namespace (``<db>|albanna:turn:…``), which that
+  housekeeping never reaches, and *who may answer* is a field in the
+  pending record rather than a prefix of its key — the binding survives
+  a cache clear, and one reader still cannot approve another reader's
+  write.
+- **The ledger's reaper could mislabel a slow turn as dead.**  Its
+  cutoff was a fixed fifteen minutes while a legitimate turn may now
+  sleep inside its approval card for five; a row saying ``interrupted``
+  about a turn that is alive is the one thing the ledger exists to
+  prevent.  The cutoff is now the same derived clock as everything
+  else.  The cadence tie in ``tests/test_scheduler.py`` still holds.
+
+### Changed
+
+- **The chat runs on its own queue.**  A turn of many rounds held the
+  *short* queue for its whole length, and everything else the site
+  drops there — mail, reminders, the scheduler's own jobs — waited
+  behind it.  The enqueue goes to ``chat`` now, on a worker of its own;
+  a slow turn costs the chat alone.  The queue is registered the way
+  Frappe v16 expects, in ``common_site_config.json``'s ``workers`` map.
 
 ## [0.2.6] — 2026-10-29
 

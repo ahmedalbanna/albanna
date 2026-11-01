@@ -24,6 +24,31 @@ approved.
 
 So the poll asks for ``expires=True``: the value is read from Redis every
 time, and never kept.
+
+
+The second subtlety: the reader's answer must not live in the reader's
+namespace
+--------------------------------------------------------------------
+``frappe.cache()`` namespaces anything written with ``user=`` under
+``<db>|user:<user>:``, and the framework's own
+``frappe.cache_manager.clear_user_cache(user)`` deletes **everything**
+under that prefix — ``delete_keys("user:" + user)`` — on a login, a
+logout, a User document save, a role change.  A pending write stored
+there is deleted the moment any of those happens, whatever the reader
+did: their answer, already written, vanishes; the worker's poll reads a
+record that is no longer there, waits out the whole window, and tells
+the model the reader did not approve.  The change the reader confirmed
+is then not made — the one failure whose symptom is a lie, because the
+reader is told the write was refused while they had approved it.
+
+So the pending record is stored under the *site's* namespace instead —
+``make_key`` without ``user`` — where the framework's housekeeping never
+reaches, and *who may answer* is a field in the record rather than a
+prefix of the key: the request id is a 128-bit random hex, the record
+names the reader it belongs to, and the endpoint refuses anybody else's
+word for it.  A record that survives a cache clear, binds one reader's
+answer, and dies with its own TTL is the record that keeps the reader's
+word.
 """
 
 from __future__ import annotations
@@ -317,23 +342,28 @@ def record_pending(
             "digest": arguments_digest(arguments),
             "decision": "",
             "row": row or "",
+            # Who may answer.  A *field*, and deliberately not the key's
+            # namespace: the answer belongs to the reader the write was
+            # asked of, and that binding must survive the framework's
+            # user-cache clears — a namespace dies with them, a field
+            # does not.
+            "user": user or "",
         },
-        user=user,
         expires_in_sec=int(ttl),
     )
 
 
-def read_pending(request_id: str, user: str) -> dict:
+def read_pending(request_id: str) -> dict:
     """The pending write, or an empty dict when there is not one."""
     try:
-        value = frappe.cache().get_value(pending_key(request_id), user=user, expires=True)
+        value = frappe.cache().get_value(pending_key(request_id), expires=True)
     except Exception:
         return {}
     return value if isinstance(value, dict) else {}
 
 
 def record_decision(
-    request_id: str, user: str, decision: str, ttl: float = DEFAULT_TIMEOUT
+    request_id: str, decision: str, ttl: float = DEFAULT_TIMEOUT
 ) -> dict:
     """Record the reader's decision on a pending write — once.
 
@@ -342,17 +372,23 @@ def record_decision(
     one answer, and a page that can send two is a page whose second click
     may land after the first has already been acted on.
     """
-    pending = read_pending(request_id, user)
+    pending = read_pending(request_id)
     if not pending:
         raise NoPendingWrite()
     if pending.get("decision"):
         raise AlreadyAnswered()
 
+    # The answer is the reader's own: the record names who was asked, and
+    # the session speaking now must be that account.  An endpoint that
+    # took any account's word for any pending write would let one reader
+    # approve another reader's change — and the worker runs it.
+    if pending.get("user") and pending.get("user") != frappe.session.user:
+        raise NoPendingWrite()
+
     pending["decision"] = decision
     frappe.cache().set_value(
         pending_key(request_id),
         pending,
-        user=user,
         expires_in_sec=int(ttl),
     )
     return pending
@@ -360,7 +396,6 @@ def record_decision(
 
 def await_decision(
     request_id: str,
-    user: str,
     timeout: float = DEFAULT_TIMEOUT,
     interval: float = DEFAULT_INTERVAL,
     clock: Callable[[], float] = time.monotonic,
@@ -376,7 +411,7 @@ def await_decision(
     while clock() < deadline:
         # ``expires=True`` is the whole trick: without it the cache keeps
         # the miss and every later poll reads that miss back.
-        pending = read_pending(request_id, user)
+        pending = read_pending(request_id)
         decision = str(pending.get("decision") or "")
         if decision:
             return decision

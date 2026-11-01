@@ -10,7 +10,7 @@ the artifacts rather than in a repository somebody has to find first.
 | | |
 |---|---|
 | **What** | The MariaDB database of every site in the list, the site's private and public files, and its `site_config.json`. |
-| **Which sites** | `albanna.localhost` (production for this app) and `frappe.localhost` (the live Albanna business data). |
+| **Which sites** | `albanna.localhost` (production for this app), `frappe.localhost` (the live Albanna business data) and `butterfly.localhost` (the shop built in the chat — added 2026-10-30, the day its chat turned out to be running writes worth protecting). |
 | **Which are not** | `test.localhost` — a disposable clone that the test suite overwrites. Backing it up would fill the disk to protect nothing. |
 | **Where** | `/home/frappe/backups/sites/<site>/{daily,weekly,monthly}/<date>/` |
 | **When** | Daily at 03:47, by `albanna-site-backup.timer`. A missed run fires on the next boot. |

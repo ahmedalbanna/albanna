@@ -41,7 +41,7 @@
 # Environment overrides (all optional):
 #
 #   SITE_BACKUP_ROOT     where the artifacts live   (default /home/frappe/backups/sites)
-#   SITE_BACKUP_SITES    the sites to back up        (default "albanna.localhost frappe.localhost")
+#   SITE_BACKUP_SITES    the sites to back up        (default "albanna.localhost frappe.localhost butterfly.localhost")
 #   SITE_BACKUP_LOG      the log file                (default /var/log/site-backup.log)
 #   SITE_BACKUP_KEEP_*   retention counts            (defaults below)
 
@@ -50,7 +50,7 @@ set -euo pipefail
 BENCH=/home/frappe/frappe-bench
 ROOT=${SITE_BACKUP_ROOT:-/home/frappe/backups/sites}
 LOG=${SITE_BACKUP_LOG:-/var/log/site-backup.log}
-SITES=${SITE_BACKUP_SITES:-"albanna.localhost frappe.localhost"}
+SITES=${SITE_BACKUP_SITES:-"albanna.localhost frappe.localhost butterfly.localhost"}
 
 KEEP_DAILY=${SITE_BACKUP_KEEP_DAILY:-14}
 KEEP_WEEKLY=${SITE_BACKUP_KEEP_WEEKLY:-8}
@@ -63,6 +63,7 @@ KEEP_MONTHLY=${SITE_BACKUP_KEEP_MONTHLY:-6}
 declare -A SENTINELS=(
   [albanna.localhost]="tabAlbanna Chat Log|tabAlbanna Conversation|tabAlbanna Message"
   [frappe.localhost]="tabToDo|tabUser|tabDocType"
+  [butterfly.localhost]="tabAlbanna Chat Log|tabAlbanna Conversation|tabAlbanna Message"
 )
 
 TODAY=$(date +%F)

@@ -41,6 +41,20 @@ logger = logging.getLogger(__name__)
 #: The socket.io event the client listens on.
 STREAM_EVENT = "albanna_chat_progress"
 
+#: Where a running turn and its parked answer live.
+#:
+#: The key is written **without** ``user=``, which namespaces it under
+#: ``<db>|user:<user>:`` — the namespace the framework's
+#: ``clear_user_cache`` empties outright, on a login, a logout, a User
+#: save or a role change.  A marker parked there is deleted mid-turn
+#: whenever any of those happen, and the polling fallback then reads the
+#: ledger's "the turn did not finish" about a turn whose job returned
+#: ``OK`` and whose row says ``ok``.  The stream id is a random hex;
+#: ``status`` requires the chat gate and the id itself, so the marker is
+#: no more reachable than the browser that owns it — it just survives
+#: the framework's housekeeping.
+TURN_CACHE_KEY = "albanna:turn:{stream_id}"
+
 
 def _prepare_image(image: str, settings: Any) -> tuple[str, str]:
     """Validate an attached image against the site's settings.
@@ -216,7 +230,7 @@ def ask_stream(
     require_chat_access()
 
     from albanna.services.rate_limit import SURFACE_STREAM, check_turn_allowed
-    from albanna.services.settings_service import get_settings
+    from albanna.services.settings_service import get_settings, job_budget_seconds
 
     check_turn_allowed(str(frappe.session.user or ""), SURFACE_STREAM)
 
@@ -250,14 +264,35 @@ def ask_stream(
             "image": image or "",
             "page_context": _render_page_context(page_context),
         },
-        user=frappe.session.user,
-        expires_in_sec=settings.turn_timeout + STALE_GRACE_SECONDS,
+        # No ``user=``: the marker is parked in the site's namespace, not
+        # the reader's — see ``TURN_CACHE_KEY``.  The marker has to
+        # outlive the *job*, not the work: the job's
+        # own clock covers the turn's labour plus the wait for the
+        # reader's decision (see ``job_budget_seconds``), and the grace
+        # after that is for the result to be written.  A marker that
+        # expired while the reader was still answering a card is a
+        # marker that lies — ``status`` would call the turn lost while
+        # its worker sat waiting for the very answer the reader was
+        # about to give.
+        expires_in_sec=job_budget_seconds(settings) + STALE_GRACE_SECONDS,
     )
 
     frappe.enqueue(
         "albanna.services.chat_job.run_turn_job",
-        queue="short",
-        timeout=settings.turn_timeout,
+        # The chat's own queue.  A turn of many rounds held the *short*
+        # queue for its whole length, and everything else the site
+        # drops there — mail, reminders, the scheduler's own jobs —
+        # waited behind it.  On the site's dedicated worker a slow
+        # turn costs the chat alone; nothing else queues behind it.
+        queue="chat",
+        # The enqueue timeout has to cover the wait as well as the work,
+        # because the wait is where the old clock killed real turns: a
+        # turn of ten rounds left under two minutes of budget by the
+        # time its card appeared, and a reader who thought before
+        # clicking Approve was told the worker "did not complete the
+        # turn".  The work keeps its own deadline; the reader's answer
+        # time is a different budget, and the job holds the sum of both.
+        timeout=job_budget_seconds(settings),
         job_id=f"albanna-turn-{stream_id}",
         stream_id=stream_id,
         conversation_id=conversation_id or "",
@@ -287,7 +322,10 @@ def status(stream_id: str = "", conversation: str = "") -> dict[str, Any]:
 
     payload = frappe.cache().get_value(
         TURN_CACHE_KEY.format(stream_id=stream_id),
-        user=frappe.session.user,
+        # ``expires=True``: the marker is a key with a TTL, and this read
+        # is not to be mirrored into this request's process cache — it is
+        # asked for fresh every time the browser polls.
+        expires=True,
     )
 
     if not payload:
@@ -295,6 +333,16 @@ def status(stream_id: str = "", conversation: str = "") -> dict[str, Any]:
         return _lost_turn(conversation)
 
     if payload.get("status") == "running":
+        # A card the socket never delivered is still here: the worker
+        # mirrors the confirm event into the marker as it asks, so the
+        # polling fallback — and only it — can show a card that the
+        # browser never got over the socket.  The pending record's own
+        # TTL governs whether the answer is still worth anything;
+        # ``confirm_write`` refuses a decision whose record expired.
+        pending = payload.get("pending_approval")
+        if isinstance(pending, dict) and pending.get("request_id"):
+            return {"status": "awaiting_approval", "pending": pending}
+
         age = time.time() - float(payload.get("started_at") or time.time())
         if age > _turn_deadline():
             return _lost_turn(conversation)
@@ -378,10 +426,14 @@ def _approved_label(approval: dict[str, Any]) -> str:
 
 
 def _turn_deadline() -> float:
-    """How long a turn may run before it is declared lost."""
-    from albanna.services.settings_service import get_settings
+    """How long a turn may run before it is declared lost.
 
-    return get_settings().turn_timeout + STALE_GRACE_SECONDS
+    The job's clock covers the work *and* the wait (see
+    ``job_budget_seconds``); the grace on top is for pickup and parking.
+    """
+    from albanna.services.settings_service import get_settings, job_budget_seconds
+
+    return job_budget_seconds(get_settings()) + STALE_GRACE_SECONDS
 
 
 @frappe.whitelist()
@@ -430,7 +482,7 @@ def confirm_write(request_id: str = "", decision: str = "") -> dict[str, Any]:
     ttl = int(wait_seconds(get_settings().confirm_timeout)) + 60
 
     try:
-        pending = record_decision(request_id, user, decision, ttl=ttl)
+        pending = record_decision(request_id, decision, ttl=ttl)
     except NoPendingWrite:
         frappe.throw(_("That request is not waiting for a decision."), frappe.ValidationError)
     except AlreadyAnswered:

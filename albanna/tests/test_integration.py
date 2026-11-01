@@ -2047,7 +2047,6 @@ class TestWriteApproval(TestToolPath):
                         with contextlib.suppress(Exception):
                             record_decision(
                                 event["request_id"],
-                                email,
                                 decision,
                                 ttl=60,
                             )
@@ -2124,6 +2123,10 @@ class TestWriteApproval(TestToolPath):
         email = self.accounts_user
         request_id = "late-decision-test"
 
+        # The reader's own session: the decision is bound to the account
+        # the write was asked of, and the worker waits as that account.
+        self._as(email)
+
         # A clean slate: the decision is written after the first poll.
         record_pending(request_id, email, "create_doc", {"doctype": "Customer"}, ttl=60)
 
@@ -2133,11 +2136,10 @@ class TestWriteApproval(TestToolPath):
             polls["n"] += 1
             if polls["n"] == 2:
                 # The reader answers after the first miss.
-                record_decision(request_id, email, "approve", ttl=60)
+                record_decision(request_id, "approve", ttl=60)
 
         decision = await_decision(
             request_id,
-            email,
             timeout=5.0,
             interval=0.01,
             sleep=answering_sleep,
@@ -2172,7 +2174,7 @@ class TestWriteApproval(TestToolPath):
         from albanna.services.approval import pending_key
 
         self._as(self.accounts_user)
-        frappe.cache().delete_value(pending_key("no-such-request"), user=self.accounts_user)
+        frappe.cache().delete_value(pending_key("no-such-request"))
 
         with self.assertRaises(frappe.ValidationError):
             confirm_write(request_id="no-such-request", decision="approve")
@@ -2203,9 +2205,11 @@ class TestWriteApproval(TestToolPath):
     def test_a_decision_by_another_account_does_not_answer_the_write(self):
         """A decision is the reader's own.
 
-        The pending write is kept under the reader's own namespace, so
-        another account's answer is not found by the worker — and the
-        other account is told there is nothing to answer.
+        The pending write names the reader it was asked of — a field in
+        the record, because the record itself must survive the
+        framework's user-cache clears (see
+        ``albanna.services.approval``).  Another account's answer is
+        refused rather than recorded, and the worker never sees it.
         """
         from albanna.services.approval import (
             NoPendingWrite,
@@ -2224,10 +2228,10 @@ class TestWriteApproval(TestToolPath):
 
         self._as(other)
         with self.assertRaises(NoPendingWrite):
-            record_decision(request_id, other, "approve", ttl=60)
+            record_decision(request_id, "approve", ttl=60)
 
         self.assertEqual(
-            read_pending(request_id, self.accounts_user).get("decision"),
+            read_pending(request_id).get("decision"),
             "",
             "another account's decision answered the write",
         )
@@ -2286,7 +2290,7 @@ class TestWriteApproval(TestToolPath):
 
             def emit(event):
                 if event.get("event") == "confirm":
-                    record_decision(event["request_id"], email, "approve", ttl=60)
+                    record_decision(event["request_id"], "approve", ttl=60)
                     # Somebody else changes the document while the reader
                     # is looking at the card.
                     frappe.db.set_value(
@@ -2494,7 +2498,7 @@ class TestWriteApproval(TestToolPath):
                         raw = frappe.db.get_value("Albanna Chat Log", service._audit_name, "tools")
                         capture["payload"] = json.loads(raw or "{}")
                         capture["request_id"] = event["request_id"]
-                    record_decision(event["request_id"], email, decision, ttl=60)
+                    record_decision(event["request_id"], decision, ttl=60)
 
                 return emit
 

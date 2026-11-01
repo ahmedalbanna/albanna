@@ -78,6 +78,16 @@ def test_the_production_site_is_covered_and_the_test_clone_is_not():
     )
 
 
+def test_every_covered_site_has_its_own_sentinels():
+    """A site in the default list without sentinel tables gets the weakest
+    check in the script — the table count — and a dump of the wrong
+    database passes it.  Every site covered must name the tables it wants
+    to see before the run is called good."""
+    for site in _default_sites():
+        sentinels = _sentinels(site)
+        assert sentinels, f"{site} is covered but names no sentinel tables"
+
+
 def test_the_sentinel_tables_are_tables_this_app_owns():
     """A renamed DocType must not leave the check looking for a table that is never there."""
     owned = set()

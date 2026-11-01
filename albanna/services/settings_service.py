@@ -25,6 +25,36 @@ from albanna.providers.base import ProviderConfig, default_base_url
 #: Where the memoised settings live between calls in one request.
 _CACHE_ATTR = "albanna_settings_cache"
 
+#: Slack above the two budgets, for the job to be picked up and the
+#: finished answer to be parked.  The work budget (``turn_timeout``) is
+#: the model's and the wait budget (``confirm_timeout``) is the reader's;
+#: this one is the queue's.
+TURN_SLACK_SECONDS = 60
+
+
+def job_budget_seconds(settings_or_turn: "AppSettings | int", wait: int = 0) -> int:
+    """The whole clock a turn's background job is given.
+
+    One number, because the queue kills the job by it — and a job killed
+    *while it waited for the reader's decision* is the failure this
+    function exists for: on the old clock the work alone had eaten most
+    of the budget and the wait spent the rest, so a reader who took a
+    couple of minutes to answer the card got their turn killed under
+    them (``JobTimeoutException`` raised inside ``await_decision``).
+
+    The budget is therefore the turn's work plus the wait plus the
+    slack: ``turn_timeout`` stays the budget of the turn's *labour*, and
+    every reader of it — the marker's deadline, the ledger's cutoff,
+    the reaper's window — reads the sum through here.
+    """
+    if isinstance(settings_or_turn, int):
+        turn, wait = settings_or_turn, int(wait or 0)
+    else:
+        turn = int(getattr(settings_or_turn, "turn_timeout", 0) or 0)
+        wait = int(getattr(settings_or_turn, "confirm_timeout", 0) or 0)
+    return turn + wait + TURN_SLACK_SECONDS
+
+
 #: How long a write waits for the reader when the operator has not said.
 #: The same number the approval card counts down from, because the
 #: server owns the deadline — see :mod:`albanna.services.approval`.

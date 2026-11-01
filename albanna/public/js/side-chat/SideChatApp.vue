@@ -1147,7 +1147,13 @@ function handleTurnEvent(answer, event, streamId = "") {
 			name: event.name,
 			preview: event.preview || event.name || __("a change"),
 			diff: event.diff || null,
-			at: Date.now(),
+			// The server's own moment the wait opened, in epoch
+			// milliseconds.  It travels with the event — the socket's and
+			// the poll's alike — so a card drawn late counts down from
+			// the truth: without it the card would fall back to `now`,
+			// and a reader who arrived minutes late would be shown a
+			// fresh window the worker no longer holds.
+			at: typeof event.at === "number" && event.at > 0 ? event.at : Date.now(),
 			// The server's own deadline, in seconds.  The card counts
 			// down from this and stops accepting answers at it — the
 			// same deadline the worker is holding, not a second opinion

@@ -316,6 +316,7 @@ export function waitForTurn(streamId, { onEvent, signal, conversation = "" } = {
 		let pollInFlight = false;
 		let lastEventAt = 0;
 		let idlePolls = 0;
+		let lastApprovalId = "";
 		let unsubscribeSocket = () => {};
 
 		const finish = (payload) => {
@@ -375,6 +376,36 @@ export function waitForTurn(streamId, { onEvent, signal, conversation = "" } = {
 				if (payload && (payload.status === "ok" || payload.status === "error")) {
 					finish(payload);
 					return;
+				}
+				/* A card the socket never delivered comes back through
+				 * the poll.  The server mirrors the confirm event into
+				 * the parked marker, and `status` hands it back shaped
+				 * like the same `confirm` event the socket carries — so
+				 * the same handler draws it, including the write-down
+				 * that keeps it for a reader who leaves the thread.  The
+				 * mirror is passed on *once per request id*: every poll
+				 * would otherwise redraw the card and restart a clock
+				 * the server started minutes ago.  The card carries the
+				 * server's own `at` (the moment the wait opened), so
+				 * what the countdown shows is the time that remains —
+				 * not a fresh window the worker no longer holds. */
+				if (payload && payload.status === "awaiting_approval" && payload.pending) {
+					const requestId = payload.pending.request_id || "";
+					if (requestId && requestId !== lastApprovalId) {
+						lastApprovalId = requestId;
+						if (onEvent) {
+							onEvent({
+								event: "confirm",
+								request_id: requestId,
+								name: payload.pending.name,
+								arguments: payload.pending.arguments,
+								preview: payload.pending.preview,
+								diff: payload.pending.diff,
+								window_seconds: payload.pending.window_seconds,
+								at: payload.pending.at,
+							});
+						}
+					}
 				}
 				idlePolls += 1;
 			} catch (error) {

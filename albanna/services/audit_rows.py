@@ -77,11 +77,15 @@ def unfinished_turn(user: str, conversation: str = "") -> dict[str, Any] | None:
     a change that was never made, and that is worse than being told
     nothing.
     """
-    from albanna.services.settings_service import get_settings
+    from albanna.services.settings_service import get_settings, job_budget_seconds
 
     settings = get_settings()
+    # The window is the job's whole budget — work plus wait — plus the
+    # slack: a row that says 'running' about a turn that is still
+    # inside its own budgets is the truth, and the old cutoff (the work
+    # budget alone) began mislabelling long, legitimate turns.
     cutoff = frappe.utils.now_datetime() - timedelta(
-        seconds=int(settings.turn_timeout or 600) + DEAD_TURN_SLACK
+        seconds=job_budget_seconds(settings) + DEAD_TURN_SLACK
     )
 
     filters: dict[str, Any] = {
