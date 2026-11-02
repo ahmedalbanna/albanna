@@ -19,6 +19,7 @@ approval, and for the same reason: the answer is acted on.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import frappe
@@ -51,7 +52,7 @@ def pending_questions(conversation: str = "") -> dict[str, Any]:
 
 
 @frappe.whitelist()
-def answer_question(name: str, value: str) -> dict[str, Any]:
+def answer_question(name: str, value: str = "", values: Any = None) -> dict[str, Any]:
     """Record the reader's answer to a question.
 
     The answer must be one of the question's own options.  An answer the
@@ -65,8 +66,17 @@ def answer_question(name: str, value: str) -> dict[str, Any]:
     require_chat_access()
 
     user = str(frappe.session.user or "")
+    parsed_values = None
+    if values not in (None, ""):
+        if isinstance(values, str):
+            try:
+                parsed_values = json.loads(values)
+            except (TypeError, ValueError):
+                parsed_values = [v.strip() for v in str(values).split(",") if v.strip()]
+        elif isinstance(values, (list, tuple)):
+            parsed_values = list(values)
     try:
-        card = service.answer(str(name or ""), user, str(value or ""))
+        card = service.answer(str(name or ""), user, str(value or ""), values=parsed_values)
     except service.QuestionNotFound:
         frappe.throw(_("That question is not here."), frappe.DoesNotExistError)
     except service.NotTheReader:

@@ -28,6 +28,7 @@ from albanna.tools.base import ToolContext
 def ask_question(
     question: str,
     options: list[dict[str, Any]],
+    multiple: bool = False,
     context: ToolContext | None = None,
 ) -> str:
     """Ask the reader a question, and wait for their answer in the chat.
@@ -58,6 +59,7 @@ def ask_question(
             question=question,
             options=options,
             turn=context.request_id,
+            multiple=bool(multiple),
         )
     except ValueError as exc:
         return _refusal(str(exc))

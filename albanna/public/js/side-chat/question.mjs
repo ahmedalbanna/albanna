@@ -33,6 +33,7 @@ export function questionCard(raw) {
 		name: String(card.name || ""),
 		question: String(card.question || ""),
 		conversation: String(card.conversation || ""),
+		turn: String(card.turn || ""),
 		options: options
 			.map((option) => ({
 				label: String((option && option.label) || ""),
@@ -42,6 +43,7 @@ export function questionCard(raw) {
 		status: String(card.status || PENDING),
 		answer: String(card.answer || ""),
 		answerValue: String(card.answer_value || ""),
+		multiple: Boolean(card.multiple),
 	};
 }
 

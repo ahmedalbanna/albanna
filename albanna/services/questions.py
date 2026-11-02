@@ -81,6 +81,7 @@ def ask(
     question: str,
     options: list[dict] | None,
     turn: str = "",
+    multiple: bool = False,
 ) -> dict:
     """Record a question, and return the card the reader will be shown.
 
@@ -121,6 +122,7 @@ def ask(
     document.conversation = conversation or ""
     document.user = user or frappe.session.user
     document.turn = turn or ""
+    document.multiple = 1 if multiple else 0
     document.status = PENDING
     document.asked_at = frappe.utils.now()
     for row in rows:
@@ -133,7 +135,7 @@ def ask(
 # -- answering ------------------------------------------------------------
 
 
-def answer(name: str, user: str, value: str) -> dict:
+def answer(name: str, user: str, value: str = "", values: list[str] | None = None) -> dict:
     """Record the reader's answer to a question.
 
     The answer must be one of the question's own options: an answer the
@@ -151,18 +153,34 @@ def answer(name: str, user: str, value: str) -> dict:
             raise QuestionCancelled()
         raise AlreadyAnswered()
 
-    chosen = str(value or "").strip()
-    match = None
-    for option in document.get("options") or []:
-        if str(option.get("value") or "") == chosen:
-            match = option
-            break
-    if match is None:
+    offered = {str(option.get("value") or ""): option for option in (document.get("options") or [])}
+
+    chosen_values: list[str] = []
+    if values is not None:
+        chosen_values = [str(v or "").strip() for v in values]
+    elif str(value or "").strip():
+        chosen_values = [str(value or "").strip()]
+
+    if not chosen_values:
+        raise NotAnOption()
+
+    matches = []
+    for chosen in chosen_values:
+        option = offered.get(chosen)
+        if option is None:
+            raise NotAnOption()
+        matches.append(option)
+
+    # A single-select question takes one answer; a multi-select question
+    # takes as many as the reader chose.  A reader who chose several on a
+    # single-select question has not answered it — they have contradicted
+    # it — and the answer is refused rather than half-kept.
+    if not bool(getattr(document, "multiple", 0)) and len(matches) > 1:
         raise NotAnOption()
 
     document.status = ANSWERED
-    document.answer = str(match.get("label") or "")
-    document.answer_value = str(match.get("value") or "")
+    document.answer = ", ".join(str(m.get("label") or "") for m in matches)
+    document.answer_value = ", ".join(str(m.get("value") or "") for m in matches)
     document.answered_by = user or frappe.session.user
     document.answered_at = frappe.utils.now()
     document.save(ignore_permissions=True)
@@ -361,9 +379,11 @@ def payload(document, options: list[dict] | None = None) -> dict:
         "question": field("question"),
         "options": options,
         "status": field("status") or PENDING,
+        "multiple": str(field("multiple") or "") in ("1", "True", "true"),
         "answer": field("answer"),
         "answer_value": field("answer_value"),
         "conversation": field("conversation"),
+        "turn": field("turn"),
         "asked_at": field("asked_at"),
         "answered_at": field("answered_at"),
     }

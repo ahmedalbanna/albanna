@@ -1628,6 +1628,50 @@ body.albanna-side-chat-docked-inline-start {
 	cursor: not-allowed;
 }
 
+.albanna-chat__question-option.is-selected {
+	background: var(--albanna-primary, #2490ef);
+	color: #ffffff;
+	border-color: var(--albanna-primary, #2490ef);
+}
+
+.albanna-chat__question-progress {
+	margin: 0;
+	font-size: 11px;
+	color: var(--albanna-muted, #6b7280);
+}
+
+.albanna-chat__question-nav {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+	justify-content: flex-end;
+	flex-wrap: wrap;
+}
+
+.albanna-chat__question-nav-btn,
+.albanna-chat__question-submit {
+	border: 1px solid var(--albanna-border, #ededed);
+	background: var(--albanna-hover, #f2f4f5);
+	color: var(--albanna-text, #1f2328);
+	border-radius: 6px;
+	padding: 5px 10px;
+	font-size: 12px;
+	cursor: pointer;
+	font-family: inherit;
+}
+
+.albanna-chat__question-submit {
+	background: var(--albanna-primary, #2490ef);
+	color: #ffffff;
+	border-color: var(--albanna-primary, #2490ef);
+}
+
+.albanna-chat__question-nav-btn:disabled,
+.albanna-chat__question-submit:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
 /* The card's own text box: the reader answering *this* question may
    type an answer the assistant did not offer, without scrolling to the
    composer.  What it submits is an ordinary message — the thread's

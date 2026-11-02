@@ -1267,3 +1267,24 @@ msgstr "تعذّر تسجيل الإجابة."
 
 msgid "The answer to “{0}”: {1}"
 msgstr "الإجابة على «{0}»: {1}"
+
+msgid "Back"
+msgstr "رجوع"
+
+msgid "Next"
+msgstr "التالي"
+
+msgid "Submit"
+msgstr "إرسال"
+
+msgid "Sending…"
+msgstr "جارٍ الإرسال…"
+
+msgid "Add"
+msgstr "إضافة"
+
+msgid "Multiple answers"
+msgstr "إجابات متعددة"
+
+msgid "The reader may choose more than one of the offered answers."
+msgstr "يمكن للقارئ اختيار أكثر من إجابة من الإجابات المُقدَّمة."

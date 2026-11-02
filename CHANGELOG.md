@@ -56,6 +56,21 @@ the card carries its own **"type your own answer"** box.
   answer, because the assistant does not know which customer the reader
   meant any better than the reader does.
 
+- **Several questions at once, and more than one answer to a question.**
+  A turn may now ask several questions in the same round, and they are
+  answered together in one small wizard: one question on screen at a time,
+  back and next, and a single submit that sends them all.  A question
+  may also take several answers (a checkbox list) when the model sets its
+  `multiple` flag; otherwise it takes one.  The model sets the flag,
+  because the model knows whether the task needs one customer or several
+  items.  The invariants hold: only the reader may answer, the first
+  answer is the answer, and an answer that was never offered is refused
+  — now per value, so a multi-select question refuses a value that was
+  never on its list even when the others were, and a single-select
+  question that receives several answers is refused rather than
+  half-kept.  `Albanna Question` gains a `multiple` field; questions
+  written before this change read as single.
+
 ### Fixed
 
 - **The app's own answer about what it could not read never reached the

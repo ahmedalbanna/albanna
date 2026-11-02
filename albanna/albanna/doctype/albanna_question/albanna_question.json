@@ -8,6 +8,7 @@
     "field_order": [
         "question",
         "options",
+        "multiple",
         "column_break_answer",
         "status",
         "answer",
@@ -35,6 +36,13 @@
             "label": "Options",
             "options": "Albanna Question Option",
             "read_only": 1
+        },
+        {
+            "default": "0",
+            "description": "The reader may choose more than one of the offered answers.",
+            "fieldname": "multiple",
+            "fieldtype": "Check",
+            "label": "Multiple answers"
         },
         {
             "fieldname": "column_break_answer",

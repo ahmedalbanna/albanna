@@ -721,9 +721,11 @@ ASK_QUESTION = ToolSpec(
         "choose from, and their choice comes back as their next message. "
         "Offer the exact values you would use (a document's name, a field "
         "value) as the option's value, and the readable name as its label. "
-        "Ask one question at a time, and offer only the candidates that "
-        "actually answer it. Do not answer it yourself and do not act on a "
-        "guess: once you have asked, the turn ends and the reader decides."
+        "You may ask several questions in the same turn when the task "
+        "needs more than one choice; they are answered together. Ask only "
+        "the candidates that actually answer each question. Do not answer "
+        "it yourself and do not act on a guess: once you have asked, the "
+        "turn ends and the reader decides."
     ),
     parameters={
         "type": "object",
@@ -759,6 +761,15 @@ ASK_QUESTION = ToolSpec(
                 },
                 "minItems": 2,
                 "maxItems": 50,
+            },
+            "multiple": {
+                "type": "boolean",
+                "description": (
+                    "When true, the reader may choose several of the offered "
+                    "answers (a checkbox list). When false or omitted, only "
+                    "one answer may be chosen (a single choice)."
+                ),
+                "default": False,
             },
         },
         "required": ["question", "options"],

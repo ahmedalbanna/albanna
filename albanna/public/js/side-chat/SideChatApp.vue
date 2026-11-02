@@ -271,6 +271,11 @@ const pendingQuestions = shallowReactive(new Map());
    that two cards on the screen do not share one box. */
 const freeDrafts = shallowReactive(new Map());
 
+/* The state of a question set being answered: which question is on
+   screen, what has been chosen for each, and whether it is being sent.
+   Keyed by the set's key (its turn, or its first question's name). */
+const setStates = shallowReactive(new Map());
+
 /**
  * The questions the reader has asked, oldest first.
  *
@@ -328,6 +333,126 @@ const visibleQuestions = computed(() =>
 		.filter((card) => card.conversation === conversationId.value)
 		.filter((card) => canAnswer(card)),
 );
+
+/* A turn may have asked several questions at once.  They are answered
+   together, in a small wizard: one question on screen at a time, the
+   reader moving back and forth, and a single submit that sends them
+   all.  Grouping is by the turn that asked them — questions asked in
+   the same turn belong to one set. */
+const visibleQuestionSets = computed(() => {
+	const groups = new Map();
+	for (const card of visibleQuestions.value) {
+		const key = card.turn || card.name;
+		if (!groups.has(key)) groups.set(key, []);
+		groups.get(key).push(card);
+	}
+	const sets = [];
+	for (const [key, questions] of groups) {
+		questions.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+		sets.push({ key, questions });
+	}
+	return sets;
+});
+
+function setFor(key) {
+	if (!setStates.has(key)) {
+		const state = reactive({
+			index: 0,
+			selected: {},
+			submitting: false,
+		});
+		setStates.set(key, state);
+	}
+	return setStates.get(key);
+}
+
+function currentQuestion(set) {
+	const state = setFor(set.key);
+	const list = set.questions || [];
+	if (!list.length) return null;
+	if (state.index < 0) state.index = 0;
+	if (state.index >= list.length) state.index = list.length - 1;
+	return list[state.index];
+}
+
+function isSelected(set, card, value) {
+	const state = setFor(set.key);
+	const chosen = (state.selected && state.selected[card.name]) || [];
+	return chosen.indexOf(value) >= 0;
+}
+
+function toggleChoice(set, card, value) {
+	const state = setFor(set.key);
+	if (!state.selected[card.name]) state.selected[card.name] = [];
+	const chosen = state.selected[card.name];
+	if (card.multiple) {
+		const pos = chosen.indexOf(value);
+		if (pos >= 0) chosen.splice(pos, 1);
+		else chosen.push(value);
+	} else {
+		state.selected[card.name] = [value];
+	}
+}
+
+function freeChoice(set, card, text) {
+	const trimmed = String(text || "").trim();
+	if (!trimmed) return;
+	const state = setFor(set.key);
+	if (!state.selected[card.name]) state.selected[card.name] = [];
+	const chosen = state.selected[card.name];
+	if (card.multiple) {
+		if (chosen.indexOf(trimmed) < 0) chosen.push(trimmed);
+	} else {
+		state.selected[card.name] = [trimmed];
+	}
+	freeDrafts.delete(card.name);
+}
+
+function canSubmitSet(set) {
+	const state = setFor(set.key);
+	return (set.questions || []).every((card) => {
+		const chosen = (state.selected && state.selected[card.name]) || [];
+		return chosen.length > 0;
+	});
+}
+
+async function submitSet(set) {
+	const state = setFor(set.key);
+	if (state.submitting) return;
+	if (!canSubmitSet(set)) return;
+	state.submitting = true;
+
+	try {
+		const messages = [];
+		for (const card of set.questions) {
+			const chosen = ((state.selected && state.selected[card.name]) || []).filter(Boolean);
+			if (!chosen.length) continue;
+			pendingQuestions.delete(card.name);
+			if (chosen.length === 1) {
+				await call("albanna.api.questions.answer_question", {
+					name: card.name,
+					value: chosen[0],
+				});
+			} else {
+				await call("albanna.api.questions.answer_question", {
+					name: card.name,
+					values: chosen,
+				});
+			}
+			messages.push(answerMessage(card, { value: chosen.join(", ") }));
+		}
+
+		const combined = messages.filter(Boolean).join("\n");
+		if (combined) await send(combined);
+	} catch (failure) {
+		for (const card of set.questions) pendingQuestions.set(card.name, card);
+		state.error = String(
+			(failure && failure.message) || failure || __("The answer could not be recorded."),
+		);
+	} finally {
+		state.submitting = false;
+	}
+}
 
 /**
  * The document the widget is looking at, if it is looking at one.
@@ -1305,6 +1430,16 @@ function applyTurnResult(result, asked, answer) {
 	// from the same list the assistant offered.
 	if (result && result.question) {
 		rememberQuestion(result.question);
+	}
+
+	// A turn may have asked several questions at once; each is its own
+	// card, and they share the turn they were asked in.
+	if (result && Array.isArray(result.questions)) {
+		for (const raw of result.questions) {
+			if (raw && raw.name && raw.name !== (result.question && result.question.name)) {
+				rememberQuestion(raw);
+			}
+		}
 	}
 
 	// A turn that cancelled the thread's pending questions did so because
@@ -2996,43 +3131,75 @@ onBeforeUnmount(() => {
 			     answer is the reader's next message: it cannot be sent
 			     while another turn holds the thread. -->
 				<div
-					v-for="card in visibleQuestions"
-					:key="card.name"
+					v-for="set in visibleQuestionSets"
+					:key="set.key"
 					class="albanna-chat__question"
 					role="group"
-					:aria-label="card.question"
+					:aria-label="currentQuestion(set) && currentQuestion(set).question"
 				>
-					<p class="albanna-chat__question-text">{{ card.question }}</p>
-					<div class="albanna-chat__question-options">
+					<p class="albanna-chat__question-progress">
+						{{ (setFor(set.key).index + 1) }} / {{ set.questions.length }}
+					</p>
+					<template v-if="currentQuestion(set)">
+						<p class="albanna-chat__question-text">{{ currentQuestion(set).question }}</p>
+						<div class="albanna-chat__question-options">
+							<button
+								v-for="option in currentQuestion(set).options"
+								:key="option.value"
+								type="button"
+								class="albanna-chat__question-option"
+								:class="{ 'is-selected': isSelected(set, currentQuestion(set), option.value) }"
+								:disabled="!maySend || setFor(set.key).submitting"
+								@click="toggleChoice(set, currentQuestion(set), option.value)"
+							>
+								{{ option.label }}
+							</button>
+						</div>
+						<div class="albanna-chat__question-free">
+							<input
+								type="text"
+								class="albanna-chat__question-free-input"
+								:placeholder="__('Type your own answer')"
+								:disabled="!maySend || setFor(set.key).submitting"
+								:value="freeDrafts.get(currentQuestion(set).name) || ''"
+								@input="freeDrafts.set(currentQuestion(set).name, $event.target.value)"
+								@keyup.enter="freeChoice(set, currentQuestion(set), freeDrafts.get(currentQuestion(set).name))"
+								:aria-label="__('Type your own answer')"
+							/>
+							<button
+								type="button"
+								class="albanna-chat__question-free-send"
+								:disabled="!maySend || setFor(set.key).submitting || !(freeDrafts.get(currentQuestion(set).name) || '').trim()"
+								@click="freeChoice(set, currentQuestion(set), freeDrafts.get(currentQuestion(set).name))"
+							>
+								{{ __('Add') }}
+							</button>
+						</div>
+					</template>
+					<div class="albanna-chat__question-nav">
 						<button
-							v-for="option in card.options"
-							:key="option.value"
 							type="button"
-							class="albanna-chat__question-option"
-							:disabled="!maySend"
-							@click="answerQuestion(card, option)"
+							class="albanna-chat__question-nav-btn"
+							:disabled="setFor(set.key).index <= 0 || setFor(set.key).submitting"
+							@click="setFor(set.key).index--"
 						>
-							{{ option.label }}
+							{{ __('Back') }}
 						</button>
-					</div>
-					<div class="albanna-chat__question-free">
-						<input
-							type="text"
-							class="albanna-chat__question-free-input"
-							:placeholder="__('Type your own answer')"
-							:disabled="!maySend"
-							:value="freeDrafts.get(card.name) || ''"
-							@input="freeDrafts.set(card.name, $event.target.value)"
-							@keyup.enter="answerFree(card)"
-							:aria-label="__('Type your own answer')"
-						/>
 						<button
 							type="button"
-							class="albanna-chat__question-free-send"
-							:disabled="!maySend || !(freeDrafts.get(card.name) || '').trim()"
-							@click="answerFree(card)"
+							class="albanna-chat__question-nav-btn"
+							:disabled="setFor(set.key).index >= set.questions.length - 1 || setFor(set.key).submitting"
+							@click="setFor(set.key).index++"
 						>
-							{{ __('Send') }}
+							{{ __('Next') }}
+						</button>
+						<button
+							type="button"
+							class="albanna-chat__question-submit"
+							:disabled="!maySend || setFor(set.key).submitting || !canSubmitSet(set)"
+							@click="submitSet(set)"
+						>
+							{{ setFor(set.key).submitting ? __('Sending…') : __('Submit') }}
 						</button>
 					</div>
 				</div>

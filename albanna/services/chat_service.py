@@ -209,6 +209,10 @@ class TurnOutcome:
     #: question travel together: a reader who is asked something and is
     #: told nothing about it was asked for no reason.
     question: dict[str, Any] | None = None
+    #: The questions the assistant asked the reader, if it asked several.
+    #: Carried alongside ``question`` (which is the first of them) so the
+    #: browser can render them as one set.
+    questions: list[dict[str, Any]] = field(default_factory=list)
     #: The questions the thread was waiting on that this turn cancelled,
     #: because the reader answered the thread by typing.  Carried so the
     #: widget can drop their cards when the turn ends.
@@ -289,6 +293,10 @@ def turn_payload(outcome: TurnOutcome) -> dict[str, Any]:
         # The question the assistant asked, with the answers the reader
         # may choose from.  Null when the turn asked none.
         "question": outcome.question,
+        # The questions the assistant asked, when it asked several at
+        # once.  Carried alongside ``question`` (which is the first of
+        # them) so the browser can render them as one set.
+        "questions": list(outcome.questions or []),
         # The questions the thread was waiting on that this turn cancelled,
         # because the reader answered the thread by typing instead of
         # choosing.  The widget drops their cards when the turn ends.
@@ -467,6 +475,10 @@ class ChatService:
         # question, and the two are different things — a turn that asked
         # one and was asked another has to keep both.
         asked_question: dict[str, Any] | None = None
+        # Every question the turn asked, in the order it asked them.
+        # Carried to the end so a turn that asked several can hand them
+        # all to the reader at once.
+        asked_questions: list[dict[str, Any]] = []
         # Per-round durations, one per model call, for the audit row.
         round_durations: list[int] = []
         usage: Usage | None = None
@@ -598,6 +610,7 @@ class ChatService:
                     image_dropped=image_dropped,
                     written=written,
                     question=asked_question,
+                    questions=list(asked_questions),
                     cancelled_questions=cancelled_questions,
                     cost=(
                         cost_of_turn(
@@ -621,21 +634,22 @@ class ChatService:
             )
 
             for call in answer.tool_calls:
-                if asked_question is not None:
-                    # The reader has been asked.  The rest of this round
-                    # does not run: the assistant has no answer yet, and
-                    # acting on a guess is the one thing a question must
-                    # prevent.
+                # A question is allowed even after another question in the
+                # same round: the model may ask several at once, and they
+                # are answered together.  Everything else stops once the
+                # reader has been asked.
+                if call.name == ASK_QUESTION_TOOL or not asked_questions:
+                    result = self._run_tool(call, authority, principal, site, visible, emit)
+                    card = _question_asked(call, result)
+                    if card is not None:
+                        asked_questions.append(card)
+                        asked_question = asked_question or card
+                else:
                     result = ToolResult.refusal(
                         "The reader was asked a question in this round, so this "
                         "call did not run. Wait for their answer.",
                         "question_pending",
                     )
-                else:
-                    result = self._run_tool(call, authority, principal, site, visible, emit)
-                    card = _question_asked(call, result)
-                    if card is not None:
-                        asked_question = card
                 tool_calls_made.append(tool_entry(call, result))
                 messages.append(tool_result(call.id, result.content))
 
@@ -687,6 +701,7 @@ class ChatService:
             diagnosis=diagnosis,
             written=written,
             question=asked_question,
+            questions=list(asked_questions),
             cancelled_questions=cancelled_questions,
             cost=(
                 cost_of_turn(
