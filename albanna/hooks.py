@@ -19,6 +19,9 @@ app_description = "ERPNext side chat — ask about your data in plain language"
 app_email = "admin@albanna.dev"
 app_license = "mit"
 
+# This app's tools operate on ERPNext doctypes, so ERPNext must be present.
+required_apps = ["erpnext"]
+
 # Desk assets.
 #
 # The launcher is a small, framework-free file (no Vue) that asks the server
