@@ -34,6 +34,19 @@ reply now **cancels** the thread's pending question instead of leaving
 it pinned; unanswered questions **expire** at an operator-set bound; and
 the card carries its own **"type your own answer"** box.
 
+### Added
+
+- **Unanswered questions expire.**  A question with no deadline is a card
+  pinned to a thread for as long as the site lives, and a question
+  nobody could act on forever is not patience — it is clutter that lies
+  about the state of the conversation.  A daily job cancels the pending
+  questions older than the bound the operator sets
+  (``question_expiry_hours`` in the settings, 24 by default; zero means
+  keep them forever).  The row stays as ``Cancelled``: the thread still
+  says a question was asked there, and a late answer is refused rather
+  than applied.  The bound is read fresh each run, so a change to the
+  settings takes effect on the next tick.
+
 ### Fixed
 
 - **The app's own answer about what it could not read never reached the

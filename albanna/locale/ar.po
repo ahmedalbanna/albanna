@@ -45,6 +45,9 @@ msgstr "اسأل عن بياناتك…"
 msgid "Send"
 msgstr "إرسال"
 
+msgid "Type your own answer"
+msgstr "اكتب إجابتك"
+
 
 msgid "The assistant is not available for your account"
 msgstr "المساعد غير متاح لحسابك"
@@ -1243,6 +1246,15 @@ msgstr "سُئل هذا السؤال من شخص آخر."
 
 msgid "That question has already been answered."
 msgstr "تمت الإجابة على هذا السؤال بالفعل."
+
+msgid "That question is no longer waiting for an answer."
+msgstr "هذا السؤال لم يعد ينتظر إجابة."
+
+msgid "Question expiry (hours)"
+msgstr "انتهاء صلاحية السؤال (ساعات)"
+
+msgid "How long an unanswered question the assistant asked the reader stays pending before it is cancelled. Zero means never expire."
+msgstr "مدة بقاء سؤال المساعد غير المجاب معلقًا قبل إلغائه. صفر يعني لا ينتهي أبدًا."
 
 msgid "That answer was not one of the options."
 msgstr "لم تكن هذه الإجابة من الخيارات."

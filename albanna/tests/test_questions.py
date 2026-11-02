@@ -263,6 +263,32 @@ class TestTheQuestion(AlbannaTestCase):
         with pytest.raises(frappe.PermissionError):
             questions_api.answer_question(name=card["name"], value="CUST-0002")
 
+    def test_an_expired_question_is_cancelled(self):
+        """A question that has been waiting too long is cancelled.
+
+        A question with no deadline is a card pinned to a thread for as
+        long as the site lives; the job that expires it turns it into a
+        cancelled row, and the answer endpoint refuses it afterwards.
+        """
+        card = self._the_question()
+
+        frappe.db.set_value(
+            "Albanna Question",
+            card["name"],
+            {"asked_at": "2020-01-01 00:00:00"},
+            update_modified=False,
+        )
+
+        _as(self.reader)
+        cancelled_count = questions_service.expire(1)
+
+        assert cancelled_count >= 1
+        row = frappe.get_doc("Albanna Question", card["name"])
+        assert row.status == questions_service.CANCELLED
+
+        with pytest.raises(questions_service.QuestionCancelled):
+            questions_service.answer(card["name"], self.reader, "CUST-0002")
+
     # -- the pending list --------------------------------------------------
 
     def test_only_pending_questions_are_offered(self):
@@ -449,7 +475,9 @@ class TestTheTurnThatAsks(AlbannaTestCase):
 
         def fake_complete(config, messages, tools, emit, stream):
             last_user = str(
-                next((m.content for m in reversed(messages) if getattr(m, "role", "") == "user"), "")
+                next(
+                    (m.content for m in reversed(messages) if getattr(m, "role", "") == "user"), ""
+                )
             )
             if "typed reply" in last_user:
                 return Completion(

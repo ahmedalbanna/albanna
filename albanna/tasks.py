@@ -41,6 +41,28 @@ def prune_chat_logs() -> None:
         logger.exception("Could not prune the chat logs")
 
 
+def expire_stale_questions() -> None:
+    """Cancel the questions that have been waiting too long.
+
+    A question with no deadline is a card pinned to a thread for as long
+    as the site lives.  The operator sets the bound (``question_expiry_hours``
+    in the settings); zero means keep them forever, and that is a valid
+    choice, not a mistake.  The job reads the bound fresh each run, so a
+    change to the settings takes effect on the next tick.
+    """
+    try:
+        from albanna.services.questions import expire as expire_questions
+        from albanna.services.settings_service import get_settings
+
+        hours = getattr(get_settings(), "question_expiry_hours", 24)
+        count = expire_questions(int(hours or 0))
+        if count:
+            logger.info("Expired %d stale question(s).", count)
+            frappe.db.commit()
+    except Exception:
+        logger.exception("Could not expire stale questions")
+
+
 def interrupt_stale_chat_logs() -> None:
     """Mark audit rows that never finished as 'interrupted'.
 

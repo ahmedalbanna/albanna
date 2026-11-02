@@ -266,6 +266,13 @@
             "description": "How long a write waits for the reader's approval before it is given up on. The reader sees this count down on the approval card."
         },
         {
+            "fieldname": "question_expiry_hours",
+            "fieldtype": "Int",
+            "label": "Question expiry (hours)",
+            "default": "24",
+            "description": "How long an unanswered question the assistant asked the reader stays pending before it is cancelled. Zero means never expire."
+        },
+        {
             "fieldname": "disabled_tools",
             "fieldtype": "Small Text",
             "label": "Disabled tools",

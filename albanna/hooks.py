@@ -86,6 +86,7 @@ after_migrate = "albanna.install.after_migrate"
 scheduler_events = {
     "daily": [
         "albanna.tasks.prune_chat_logs",
+        "albanna.tasks.expire_stale_questions",
     ],
     "cron": {
         "*/5 * * * *": [

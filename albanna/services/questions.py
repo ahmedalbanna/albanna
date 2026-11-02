@@ -235,6 +235,37 @@ def cancel_pending(conversation: str, exclude_turn: str = "") -> list[dict]:
     return [payload(row, options.get(str(row.get("name") or ""), [])) for row in rows]
 
 
+# -- expiry ---------------------------------------------------------------
+
+
+def expire(hours: int) -> int:
+    """Cancel the questions that have been waiting longer than ``hours``.
+
+    A question with no deadline is a card pinned to a thread for as long
+    as the site lives, and a question nobody could act on forever is not
+    patience — it is clutter that lies about the state of the
+    conversation.  ``hours == 0`` means "never expire", so the operator
+    who wants to keep every question can.  Returns how many went.
+    """
+    if not hours or hours <= 0:
+        return 0
+
+    cutoff = frappe.utils.add_to_date(frappe.utils.now_datetime(), hours=-int(hours))
+    names = frappe.get_all(
+        "Albanna Question",
+        filters={"status": PENDING, "asked_at": ("<", cutoff)},
+        pluck="name",
+    )
+    if not names:
+        return 0
+
+    frappe.db.sql(
+        "update `tabAlbanna Question` set status = %s where name in %s and status = %s",
+        (CANCELLED, tuple(names), PENDING),
+    )
+    return len(names)
+
+
 def pending(conversation: str, user: str) -> list[dict]:
     """The questions this reader may still answer in this thread."""
     names = frappe.get_all(

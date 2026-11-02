@@ -100,6 +100,9 @@ class AppSettings:
     #: the thing it counts down to is worse than no countdown: it tells
     #: the reader they have time they do not have.
     confirm_timeout: int = 120
+    #: How long an unanswered question stays pending, in hours.  Zero means
+    #: it never expires.
+    question_expiry_hours: int = 24
     #: The operator's extra options for the provider — the ones the app
     #: has no field for.  See :mod:`albanna.core.options`.
     extra_options: dict[str, Any] = field(default_factory=dict)
@@ -188,6 +191,10 @@ def _build() -> AppSettings:
         # A missing column (pre-migration) or nonsense reads as the
         # default rather than as "no wait at all".
         confirm_timeout=_int(getattr(doc, "confirm_timeout", 0), DEFAULT_CONFIRM_TIMEOUT),
+        # How long an unanswered question stays pending.  A missing column
+        # (pre-migration) or nonsense reads as the default rather than as
+        # "never expire".
+        question_expiry_hours=_int(getattr(doc, "question_expiry_hours", 0), 24),
         # The operator's extra options: the ones the app has no field
         # for, which are added to the request the provider receives.
         extra_options=parse_options(getattr(doc, "extra_options", "")),
