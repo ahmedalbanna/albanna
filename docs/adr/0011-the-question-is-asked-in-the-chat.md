@@ -11,11 +11,11 @@ ways.  The only way to get it was for the reader to *type* it.
 
 That is a bad way to get it, and it is bad in a way the reader feels.
 The names the assistant needs are usually the names it had just looked
-up: the twenty-one customers, the twenty-two items.  The reader is asked
-to retype, from memory or from a list of their own, something the
-assistant was looking at a moment earlier — and the reader who picks the
-wrong one is not corrected, because the assistant never learned which
-customer the reader meant.
+up: the twelve customers on the production site, the hundred and eleven
+items.  The reader is asked to retype, from memory or from a list of
+their own, something the assistant was looking at a moment earlier — and
+the reader who picks the wrong one is not corrected, because the
+assistant never learned which customer the reader meant.
 
 So the question is asked as a question.  The assistant offers the answers
 it found, the reader picks one, and the thread carries on.

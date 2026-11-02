@@ -136,9 +136,10 @@ the reader has to retype a name the assistant had just looked up.
   which item, which of two ways.  Until now the only way to get it was
   for the reader to *type* it, which means the reader has to know the
   names, and the names are usually what the assistant was looking for
-  when it asked: the twenty-one customers, the twenty-two items.  So
-  the question is asked as a question.  The assistant offers the answers
-  it found, the reader picks one, and the thread carries on.
+  when it asked: the twelve customers on the production site, the
+  hundred and eleven items.  So the question is asked as a question.
+  The assistant offers the answers it found, the reader picks one, and
+  the thread carries on.
   It is a tool in the manifest like every other — `ask_question` — so
   it reaches the model the way everything else does, and it travels over
   an MCP backend unchanged when one is plugged in (the app's tools are

@@ -1940,11 +1940,11 @@ The assistant runs out of road in one way only: it needs something the
 reader has and it does not — which customer, which item, which of two
 ways.  The only way to get it was for the reader to *type* it, and that
 is a bad way to get it, because the names the assistant needs are
-usually the names it had just looked up: the twenty-one customers, the
-twenty-two items.  The reader was asked to retype something the
-assistant was looking at a moment earlier, and the reader who picks the
-wrong one is never corrected, because the assistant never learned which
-customer the reader meant.
+usually the names it had just looked up: the twelve customers on the
+production site, the hundred and eleven items.  The reader was asked to
+retype something the assistant was looking at a moment earlier, and the
+reader who picks the wrong one is never corrected, because the
+assistant never learned which customer the reader meant.
 
 So the question is asked as a question, and four decisions follow.
 
