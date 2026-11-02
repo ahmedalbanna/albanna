@@ -107,15 +107,31 @@ sudo systemctl restart 'frappe-bench-frappe-default-worker@1'
 sudo systemctl restart 'frappe-bench-frappe-long-worker@1'
 sudo systemctl restart 'frappe-bench-frappe-short-worker@1'
 
-# supervisor: the two workers and the scheduler
+# supervisor: the three workers and the scheduler
 sudo supervisorctl restart 'frappe-bench-frappe-short-worker:*'
 sudo supervisorctl restart 'frappe-bench-frappe-long-worker:*'
+sudo supervisorctl restart 'frappe-bench-frappe-chat-worker:*'
 sudo supervisorctl restart frappe-bench-frappe-schedule
 ```
 
 `bench restart` **does not work on this host** — it shells out to a
 `supervisorctl` group that does not exist here, and it does not touch the
 systemd units.  Use the commands above.
+
+The `chat` worker is the one that is easy to miss: it has its own queue,
+so it is not in the list the supervisor's group shows, and a turn of many
+rounds runs on it while the short and long workers sit idle.  A chat
+worker that predates the deploy is a worker running the old code, and it
+is the one that answers the reader.  Check it after every deploy:
+
+```bash
+sudo supervisorctl status | grep frappe-bench
+# every line must show an uptime of seconds, not days
+```
+
+The `program:process` name is required — `supervisorctl restart
+frappe-bench-frappe-chat-worker` answers *"no such process"*, because the
+process names carry a `-0` suffix.
 
 Why the workers and not just the web server: each job runs in a worker
 process, and that process imported the app's modules when it started.  A
@@ -162,6 +178,13 @@ sudo supervisorctl status | grep frappe-bench
 **A live turn.**  Open the panel on a document, ask something that reads
 one, and check the answer.  This is the step that catches a provider that
 is slow or a prompt that broke — neither shows up in a status code.
+
+If the turn asked the reader something, the check has two more parts: the
+card appears in the thread with the options the assistant offered, and
+clicking one of them records the answer and sends it on as the reader's
+next message.  The card belongs to its own thread, so it appears in the
+thread that was asked in — not in whichever thread the panel happens to
+be showing.
 
 **The ledger says what happened.**  The `Albanna Chat Log` list view in the
 Desk, or the API.  A finished turn has a terminal `status` (`ok`, `error`,
