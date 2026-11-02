@@ -745,6 +745,30 @@ from the candidates the assistant found, instead of typing a name — and
 the assistant is told *which* one, in the exact value it is going to
 use.
 
+*Deployed on production, 2026-11-02, following `docs/DEPLOYMENT.md`:*
+a backup was taken first (the dump, the files and the config, in
+`sites/albanna.localhost/private/backups`) → build → **migrate** (this
+pass adds two tables, so there was a schema change to lock the site
+for; maintenance mode was on for it) → every worker set restarted
+(systemd web + three workers; supervisor short, long and **chat**
+workers + the scheduler).  The chat worker was missed by the runbook
+and was two days into a deploy when it was found — a worker running
+the code from before the deploy, answering the reader.  The runbook
+names it now.
+
+Verified after it: the site answers `200`; the assets answer `200`
+under their hashed name; a live turn on *أنشئ فاتورة مبيعات للعميل*
+listed the twelve customers and then **asked** — `list_docs` and then
+`ask_question`, three rounds, 21.8 s — and the question came back with
+the twelve customers as its options.  The reader answered it, and the
+next turn carried the answer and asked the *next* question (which
+item), with the item codes as the options' values.  The card was then
+seen in the panel itself: the question and its options as buttons, in
+the thread that was asked in, and clicking an option recorded the
+answer and sent it on as the reader's next message.  Both questions
+read `Answered`, each naming the turn that asked it; the Error Log
+holds no row since the deploy.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
