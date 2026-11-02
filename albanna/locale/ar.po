@@ -19,7 +19,7 @@ msgstr ""
 
 
 msgid "Albanna"
-msgstr "ألبانا"
+msgstr "البنأ"
 
 
 msgid "Ask about this site"
@@ -412,7 +412,7 @@ msgstr "لم يُحدَّد سعر، فـ {0} دور بلا تكلفة معرو�
 msgid "API Key"
 msgstr "مفتاح الـ API"
 msgid "Albanna Settings"
-msgstr "إعدادات ألبانا"
+msgstr "إعدادات البنأ"
 msgid "Base URL"
 msgstr "عنوان الأساس"
 
@@ -538,13 +538,13 @@ msgstr "متوافق مع OpenAI"
 
 
 msgid "Albanna Chat Log"
-msgstr "سجلّ محادثات ألبانا"
+msgstr "سجلّ محادثات البنأ"
 
 msgid "Albanna Conversation"
-msgstr "محادثة ألبانا"
+msgstr "محادثة البنأ"
 
 msgid "Albanna Message"
-msgstr "رسالة ألبانا"
+msgstr "رسالة البنأ"
 
 msgid "Content"
 msgstr "المحتوى"
@@ -745,14 +745,14 @@ msgid "You do not have access to the chat. Reading {0} is done by these roles: {
 msgstr "ليس لديك صلاحية استخدام المحادثة. قراءة {0} متاحة لهذه الأدوار: {1}."
 
 msgid "You do not have access to the chat. Your account's Albanna user policy switches it off."
-msgstr "ليس لديك صلاحية استخدام المحادثة. سياسة مستخدم ألبانا الخاصة بحسابك توقفها."
+msgstr "ليس لديك صلاحية استخدام المحادثة. سياسة مستخدم البنأ الخاصة بحسابك توقفها."
 
 
 msgid " {0} turn(s)"
 msgstr " {0} دور"
 
 msgid "Albanna User Policy"
-msgstr "سياسة مستخدم ألبانا"
+msgstr "سياسة مستخدم البنأ"
 
 msgid "Always"
 msgstr "دائماً"
@@ -964,7 +964,7 @@ msgstr "عائم"
 
 
 msgid "Ask Albanna"
-msgstr "اسأل ألبانا"
+msgstr "اسأل البنأ"
 
 
 msgid "Type a question in plain language — the assistant reads this page and answers from the site's own data. Dismiss any time."
@@ -979,7 +979,7 @@ msgstr "لا توجد محادثات تطابق “{0}”."
 
 
 msgid "Ask Albanna about this error"
-msgstr "اسأل ألبانا عن هذا الخطأ"
+msgstr "اسأل البنأ عن هذا الخطأ"
 
 msgid "Why did this error happen on {0}? {1}"
 msgstr "لماذا حدث هذا الخطأ في {0}؟ {1}"
@@ -1161,10 +1161,10 @@ msgid "running"
 msgstr "قيد التشغيل"
 
 msgid "Albanna Question"
-msgstr "سؤال ألبانا"
+msgstr "سؤال البنأ"
 
 msgid "Albanna Question Option"
-msgstr "خيار سؤال ألبانا"
+msgstr "خيار سؤال البنأ"
 
 msgid "Question"
 msgstr "السؤال"
