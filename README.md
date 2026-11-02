@@ -320,16 +320,12 @@ apologise for something that is not its fault:
     refuses, and for a DocType name that does not exist — the tool answers
     with the names that do.
 
-### The provider this deployment uses
+### The provider
 
-`https://api.hcnsec.cn/v1`, model **`MiniMax-M3.1-Flash`**, falling back
-to **`longcat-2.5`** on the same endpoint.  Both are free, both call tools
-correctly, and MiniMax is the faster of the two by a wide margin — about
-2 seconds against longcat's 8 — so it is the primary and longcat is the
-fallback.
-
-The provider does not report a cost, so the ledger's cost column reads
-zero.  That is accurate rather than missing: the turns are free.
+The adapter is OpenAI-compatible, so any OpenAI-compatible endpoint works
+(OpenRouter, OpenAI, Groq, vLLM, LM Studio, or a relay), as do Ollama and
+Anthropic.  Switching providers is a change in two fields — base URL and
+model.
 
 **`max_tokens` is 2048, and that is not arbitrary.**  Some providers check
 the *worst case* cost of a request — the largest answer it might produce —
@@ -339,8 +335,8 @@ names the number the key *can* afford, and Albanna reads it and asks again
 with that ceiling rather than failing the turn.  A ceiling that a key
 cannot afford is a configuration problem, not a model problem.
 
-The adapter is OpenAI-compatible, so any other provider is a change in
-these two fields — OpenRouter, OpenAI, Groq, vLLM, LM Studio.
+If a provider does not report a cost, the ledger's cost column reads zero
+for that provider's turns.  That is accurate rather than missing.
 
 ## Operational notes
 
