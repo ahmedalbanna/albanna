@@ -266,6 +266,11 @@ const pendingApprovals = shallowReactive(new Map());
  * and the reader's choice is one choice. */
 const pendingQuestions = shallowReactive(new Map());
 
+/* The typed answer the reader is composing for a card that offered a
+   "type your own answer" box.  One draft per card, keyed by name, so
+   that two cards on the screen do not share one box. */
+const freeDrafts = shallowReactive(new Map());
+
 /**
  * The questions the reader has asked, oldest first.
  *
@@ -1691,6 +1696,27 @@ async function answerQuestion(card, option) {
 }
 
 /**
+ * Answer a pending question by typing, the way opencode offers.
+ *
+ * The reader is not limited to the choices the assistant found: a
+ * customer that was not on the list, a value the assistant did not
+ * think of, is still an answer.  What is submitted is an ordinary
+ * message — the thread's pending question is cancelled when the turn
+ * starts, which is why the card goes.
+ */
+async function answerFree(card) {
+	if (!card || !card.name || !maySend.value) return;
+
+	const text = String(freeDrafts.get(card.name) || "").trim();
+	if (!text) return;
+
+	freeDrafts.delete(card.name);
+	pendingQuestions.delete(card.name);
+
+	await send(text);
+}
+
+/**
  * Take a message out of the transcript.
  *
  * @param {object} message the message
@@ -2987,6 +3013,26 @@ onBeforeUnmount(() => {
 							@click="answerQuestion(card, option)"
 						>
 							{{ option.label }}
+						</button>
+					</div>
+					<div class="albanna-chat__question-free">
+						<input
+							type="text"
+							class="albanna-chat__question-free-input"
+							:placeholder="__('Type your own answer')"
+							:disabled="!maySend"
+							:value="freeDrafts.get(card.name) || ''"
+							@input="freeDrafts.set(card.name, $event.target.value)"
+							@keyup.enter="answerFree(card)"
+							:aria-label="__('Type your own answer')"
+						/>
+						<button
+							type="button"
+							class="albanna-chat__question-free-send"
+							:disabled="!maySend || !(freeDrafts.get(card.name) || '').trim()"
+							@click="answerFree(card)"
+						>
+							{{ __('Send') }}
 						</button>
 					</div>
 				</div>

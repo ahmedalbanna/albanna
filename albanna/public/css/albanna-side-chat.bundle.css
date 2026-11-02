@@ -1628,6 +1628,50 @@ body.albanna-side-chat-docked-inline-start {
 	cursor: not-allowed;
 }
 
+/* The card's own text box: the reader answering *this* question may
+   type an answer the assistant did not offer, without scrolling to the
+   composer.  What it submits is an ordinary message — the thread's
+   pending question is cancelled when the turn starts, which is why the
+   card goes. */
+.albanna-chat__question-free {
+	display: flex;
+	gap: 6px;
+	align-items: center;
+}
+
+.albanna-chat__question-free-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	border: 1px solid var(--albanna-border, #ededed);
+	background: var(--albanna-surface, #ffffff);
+	color: var(--albanna-text, #1f2328);
+	border-radius: 6px;
+	padding: 5px 8px;
+	font-size: 12px;
+	font-family: inherit;
+}
+
+.albanna-chat__question-free-input:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+.albanna-chat__question-free-send {
+	border: 1px solid var(--albanna-border, #ededed);
+	background: var(--albanna-hover, #f2f4f5);
+	color: var(--albanna-text, #1f2328);
+	border-radius: 6px;
+	padding: 5px 10px;
+	font-size: 12px;
+	cursor: pointer;
+	font-family: inherit;
+}
+
+.albanna-chat__question-free-send:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
 /* Diff preview in the approval card. */
 .albanna-chat__confirm-diff {
 	margin: 0;

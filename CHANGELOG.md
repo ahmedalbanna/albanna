@@ -47,6 +47,15 @@ the card carries its own **"type your own answer"** box.
   than applied.  The bound is read fresh each run, so a change to the
   settings takes effect on the next tick.
 
+- **The question card accepts a typed answer.**  opencode puts "type your
+  own answer" next to the choices, and the card now does too: a text box
+  on the card itself, so the reader answering *this* question need not
+  scroll to the composer.  What it submits is an ordinary message — the
+  thread's pending question is cancelled when the turn starts, which is
+  why the card goes — and a value the assistant never offered is still an
+  answer, because the assistant does not know which customer the reader
+  meant any better than the reader does.
+
 ### Fixed
 
 - **The app's own answer about what it could not read never reached the

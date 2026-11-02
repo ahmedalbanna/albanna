@@ -117,6 +117,7 @@ def test_the_two_paths_send_the_same_shape():
     assert "turn_payload(outcome)" in endpoint
     assert "turn_payload(outcome)" in worker
 
+
 def test_the_payload_carries_cancelled_questions():
     """A turn that cancelled the thread's pending questions says so.
 
