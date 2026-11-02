@@ -185,6 +185,49 @@ class TestTheParkedCard(AlbannaTestCase):
         assert pending.get("request_id") == "req-card-3"
         assert pending.get("at") == at
 
+    def test_a_confirm_event_without_a_clock_still_parks_the_card(self):
+        """The card does not need a clock to be parked.
+
+        The turn always sends the moment the wait opened, but a card
+        that arrives without one must still reach the reader — a card
+        with no clock is a card that can be counted down from now, which
+        is wrong, but a card that was never parked at all is a reader
+        with no way to answer.
+
+        The mirror used to raise a ``NameError`` here — it read the
+        clock from a module it had not imported — and every test that
+        exercised the mirror sent the clock, so the missing import was
+        never reached.
+        """
+
+        self.stream_id = "test-card-stream"
+        _marker(
+            self.stream_id,
+            {"status": "running", "started_at": time.time()},
+        )
+
+        _mirror_to_marker(
+            self.stream_id,
+            "Administrator",
+            {
+                "event": "confirm",
+                "request_id": "req-no-clock",
+                "name": "create_doc",
+                "arguments": {"doctype": "Bank", "data": {"bank_name": "X"}},
+                "preview": "Create Bank: X",
+                "diff": None,
+                "window_seconds": 300,
+            },
+        )
+
+        parked = frappe.cache().get_value(
+            chat_api.TURN_CACHE_KEY.format(stream_id=self.stream_id),
+            expires=True,
+        )
+        pending = parked.get("pending_approval") or {}
+        assert pending.get("request_id") == "req-no-clock"
+        assert pending.get("at"), "the card must carry a clock of some kind"
+
     def test_a_mirror_never_touches_a_marker_that_is_not_running(self):
         """The final answer parks itself over the marker; a mirror that
         arrived after that must not overwrite the final payload with a
