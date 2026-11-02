@@ -2947,7 +2947,7 @@ onBeforeUnmount(() => {
 					</div>
 				</div>
 
-			<!-- A question the assistant asked, waiting for the reader's
+				<!-- A question the assistant asked, waiting for the reader's
 			     answer.  It is a card in the thread rather than a dialog,
 			     so the reader answers a question and not a JSON blob, and
 			     the thread keeps its place.
@@ -2960,28 +2960,28 @@ onBeforeUnmount(() => {
 			     The buttons stop while a turn is running, because the
 			     answer is the reader's next message: it cannot be sent
 			     while another turn holds the thread. -->
-			<div
-				v-for="card in visibleQuestions"
-				:key="card.name"
-				class="albanna-chat__question"
-				role="group"
-				:aria-label="card.question"
-			>
-				<p class="albanna-chat__question-text">{{ card.question }}</p>
-				<div class="albanna-chat__question-options">
-					<button
-						v-for="option in card.options"
-						:key="option.value"
-						type="button"
-						class="albanna-chat__question-option"
-						:disabled="!maySend"
-						@click="answerQuestion(card, option)"
-					>
-						{{ option.label }}
-					</button>
+				<div
+					v-for="card in visibleQuestions"
+					:key="card.name"
+					class="albanna-chat__question"
+					role="group"
+					:aria-label="card.question"
+				>
+					<p class="albanna-chat__question-text">{{ card.question }}</p>
+					<div class="albanna-chat__question-options">
+						<button
+							v-for="option in card.options"
+							:key="option.value"
+							type="button"
+							class="albanna-chat__question-option"
+							:disabled="!maySend"
+							@click="answerQuestion(card, option)"
+						>
+							{{ option.label }}
+						</button>
+					</div>
 				</div>
 			</div>
-		</div>
 
 			<button
 				v-if="showScrollButton"

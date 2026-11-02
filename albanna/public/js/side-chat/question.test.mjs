@@ -12,12 +12,7 @@ global.__ = (text, args) => {
 	return out;
 };
 
-const {
-	ANSWERED,
-	canAnswer,
-	answerMessage,
-	questionCard,
-} = await import("./question.mjs");
+const { ANSWERED, canAnswer, answerMessage, questionCard } = await import("./question.mjs");
 
 /* -- the card ---------------------------------------------------------- */
 
@@ -47,7 +42,10 @@ assert.equal(empty.status, "Pending");
 /* An option with no label is not a button. */
 const half = questionCard({
 	name: "Q-0002",
-	options: [{ label: "", value: "x" }, { label: "ok", value: "y" }],
+	options: [
+		{ label: "", value: "x" },
+		{ label: "ok", value: "y" },
+	],
 });
 assert.equal(half.options.length, 1);
 assert.equal(half.options[0].value, "y");
