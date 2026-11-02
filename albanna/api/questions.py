@@ -73,6 +73,8 @@ def answer_question(name: str, value: str) -> dict[str, Any]:
         frappe.throw(_("That question was asked of somebody else."), frappe.PermissionError)
     except service.AlreadyAnswered:
         frappe.throw(_("That question has already been answered."), frappe.PermissionError)
+    except service.QuestionCancelled:
+        frappe.throw(_("That question is no longer waiting for an answer."), frappe.PermissionError)
     except service.NotAnOption:
         frappe.throw(_("That answer was not one of the options."), frappe.ValidationError)
 

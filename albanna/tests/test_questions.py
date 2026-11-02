@@ -236,6 +236,33 @@ class TestTheQuestion(AlbannaTestCase):
         with pytest.raises(questions_service.QuestionNotFound):
             questions_service.answer("no-such-question", self.reader, "CUST-0002")
 
+    def test_a_typed_reply_cancels_the_pending_question(self):
+        """A reader who types instead of choosing has answered some other way.
+
+        The pending question is cancelled, not deleted: the thread still
+        says a question was asked there, and a second click on its card
+        is refused rather than applied.
+        """
+        card = self._the_question()
+
+        _as(self.reader)
+        cancelled = questions_service.cancel_pending(self.conversation)
+
+        assert [entry["name"] for entry in cancelled] == [card["name"]]
+        assert questions_service.pending(self.conversation, self.reader) == []
+
+        with pytest.raises(questions_service.QuestionCancelled):
+            questions_service.answer(card["name"], self.reader, "CUST-0002")
+
+    def test_a_cancelled_question_is_refused_by_the_endpoint(self):
+        card = self._the_question()
+
+        _as(self.reader)
+        questions_service.cancel_pending(self.conversation)
+
+        with pytest.raises(frappe.PermissionError):
+            questions_api.answer_question(name=card["name"], value="CUST-0002")
+
     # -- the pending list --------------------------------------------------
 
     def test_only_pending_questions_are_offered(self):
@@ -404,3 +431,77 @@ class TestTheTurnThatAsks(AlbannaTestCase):
         row = frappe.get_doc("Albanna Question", outcome.question["name"])
         assert row.turn
         assert frappe.db.exists("Albanna Chat Log", row.turn)
+
+    def test_a_typed_reply_cancels_the_thread_pending_question(self):
+        """The reader who types instead of choosing moves the thread on.
+
+        The question the assistant asked is cancelled when the next turn
+        starts — its card goes — and the thread carries on with the
+        typed message.  The question row stays, as Cancelled, so the
+        thread still says a question was asked there.
+        """
+        from albanna.core.messages import Message, ToolCall
+        from albanna.providers.base import Completion
+        from albanna.services import questions as questions_service
+        from albanna.services.chat_service import ChatService, TurnRequest
+
+        rounds: list[list[str]] = []
+
+        def fake_complete(config, messages, tools, emit, stream):
+            last_user = str(
+                next((m.content for m in reversed(messages) if getattr(m, "role", "") == "user"), "")
+            )
+            if "typed reply" in last_user:
+                return Completion(
+                    message=Message(role="assistant", content="understood."),
+                    provider="openai",
+                    model="a-model",
+                )
+            rounds.append([spec.name for spec in (tools or [])])
+            if len(rounds) == 1:
+                return Completion(
+                    message=Message(
+                        role="assistant",
+                        content="",
+                        tool_calls=[
+                            ToolCall(
+                                id="call-1",
+                                name="ask_question",
+                                arguments={
+                                    "question": "أي عميل تريد؟",
+                                    "options": OPTIONS,
+                                },
+                            )
+                        ],
+                    ),
+                    provider="openai",
+                    model="a-model",
+                )
+            return Completion(
+                message=Message(role="assistant", content="اختر من القائمة."),
+                provider="openai",
+                model="a-model",
+            )
+
+        service = ChatService()
+        service._complete = fake_complete
+
+        _as(self.reader)
+        first = service.run(TurnRequest(question="أنشئ فاتورة مبيعات", page="test|question|turn|"))
+        assert first.question is not None
+        question_name = first.question["name"]
+
+        second = service.run(
+            TurnRequest(
+                question="typed reply, not an option",
+                conversation_id=first.conversation_id,
+                page="test|question|turn|",
+            )
+        )
+
+        assert second.ok
+        assert [q.get("name") for q in (second.cancelled_questions or [])] == [question_name]
+        assert questions_service.pending(first.conversation_id, self.reader) == []
+
+        row = frappe.get_doc("Albanna Question", question_name)
+        assert row.status == questions_service.CANCELLED

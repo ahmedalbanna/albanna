@@ -1302,6 +1302,15 @@ function applyTurnResult(result, asked, answer) {
 		rememberQuestion(result.question);
 	}
 
+	// A turn that cancelled the thread's pending questions did so because
+	// the reader answered the thread by typing instead of choosing: the
+	// cards go, and the thread carries on with the typed message.
+	if (result && Array.isArray(result.cancelled_questions)) {
+		for (const raw of result.cancelled_questions) {
+			if (raw && raw.name) pendingQuestions.delete(String(raw.name));
+		}
+	}
+
 	// The server says which rows it wrote, so that the question and the
 	// answer can be addressed later — a turn the reader wants gone is
 	// removed by naming it.

@@ -209,6 +209,10 @@ class TurnOutcome:
     #: question travel together: a reader who is asked something and is
     #: told nothing about it was asked for no reason.
     question: dict[str, Any] | None = None
+    #: The questions the thread was waiting on that this turn cancelled,
+    #: because the reader answered the thread by typing.  Carried so the
+    #: widget can drop their cards when the turn ends.
+    cancelled_questions: list[dict[str, Any]] = field(default_factory=list)
     diagnosis: dict[str, Any] = field(default_factory=dict)
     #: The rows this turn wrote, as ``(name, role)`` pairs.
     #:
@@ -285,6 +289,10 @@ def turn_payload(outcome: TurnOutcome) -> dict[str, Any]:
         # The question the assistant asked, with the answers the reader
         # may choose from.  Null when the turn asked none.
         "question": outcome.question,
+        # The questions the thread was waiting on that this turn cancelled,
+        # because the reader answered the thread by typing instead of
+        # choosing.  The widget drops their cards when the turn ends.
+        "cancelled_questions": list(outcome.cancelled_questions or []),
         "error": outcome.error,
         "dry_run": any(
             isinstance(tc, dict) and tc.get("dry_run") for tc in (outcome.tool_calls or [])
@@ -332,8 +340,23 @@ class ChatService:
             load_messages,
             trim_conversation,
         )
+        from albanna.services.questions import cancel_pending
         from albanna.services.settings_service import get_settings
         from albanna.site_context import current_site, default_company, default_currency
+
+        def _cancel_cleared_questions() -> list[dict[str, Any]]:
+            """The thread's pending questions, cancelled, when the reader
+            answers the thread by typing.
+
+            This runs where the reader's message is written, not where the
+            turn begins: a turn that dies before it says anything leaves
+            the thread exactly as it was — card and all.  And the turn
+            that *asked* a question in its final step is excluded: it
+            writes its own capped reply with that question still
+            pending, and a cancellation that counted its own question
+            would take the card it had just put up.
+            """
+            return cancel_pending(conversation, exclude_turn=self._audit_name or "")
 
         started = time.monotonic()
         settings = get_settings()
@@ -517,6 +540,7 @@ class ChatService:
                 reply = (answer.content or "").strip()
                 if not reply:
                     reply = _("I could not produce an answer to that.")
+                cancelled_questions = _cancel_cleared_questions()
                 written = append_messages(
                     conversation,
                     [
@@ -574,6 +598,7 @@ class ChatService:
                     image_dropped=image_dropped,
                     written=written,
                     question=asked_question,
+                    cancelled_questions=cancelled_questions,
                     cost=(
                         cost_of_turn(
                             usage.input_tokens,
@@ -622,6 +647,7 @@ class ChatService:
         diagnosis = self._diagnose(tool_calls_made, rounds)
         reply, truncated = self._answer_from_findings(llm_config, messages, visible, diagnosis)
 
+        cancelled_questions = _cancel_cleared_questions()
         written = append_messages(
             conversation,
             [
@@ -661,6 +687,7 @@ class ChatService:
             diagnosis=diagnosis,
             written=written,
             question=asked_question,
+            cancelled_questions=cancelled_questions,
             cost=(
                 cost_of_turn(
                     usage.input_tokens,

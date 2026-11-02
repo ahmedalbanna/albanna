@@ -29,6 +29,8 @@ answer has already been acted on is refused rather than applied.
 
 from __future__ import annotations
 
+from typing import Any
+
 import frappe
 
 #: The states a question can be in.
@@ -55,6 +57,15 @@ class NotTheReader(Exception):
 
 class AlreadyAnswered(Exception):
     """This question has already been answered."""
+
+
+class QuestionCancelled(Exception):
+    """This question is no longer waiting for an answer.
+
+    It was cancelled — the reader replied to the thread some other way,
+    or it reached its expiry — and a question nobody is waiting on is not
+    a question that can still be answered, no matter which value arrives.
+    """
 
 
 class NotAnOption(Exception):
@@ -136,6 +147,8 @@ def answer(name: str, user: str, value: str) -> dict:
         raise NotTheReader()
 
     if document.status != PENDING:
+        if document.status == CANCELLED:
+            raise QuestionCancelled()
         raise AlreadyAnswered()
 
     chosen = str(value or "").strip()
@@ -155,6 +168,71 @@ def answer(name: str, user: str, value: str) -> dict:
     document.save(ignore_permissions=True)
 
     return payload(document)
+
+
+# -- the thread moving on --------------------------------------------------
+
+
+def cancel_pending(conversation: str, exclude_turn: str = "") -> list[dict]:
+    """Cancel a thread's pending questions, and say which ones went.
+
+    The reader answered the thread *some other way*: they typed a
+    message instead of choosing, and a question they never chose an
+    answer for is a card pinned to a thread that has already moved past
+    it.  This is how opencode's own question tool behaves — a person who
+    types instead of answering has decided not to answer — and it is the
+    rule here too: the questions the thread was waiting on are cancelled
+    when its next turn begins, so its card goes and its row stays.
+
+    The row stays on purpose.  ``Cancelled`` is not ``deleted``: the
+    thread still says a question was asked there, and the audit holds
+    where the assistant looked before the reader moved on.
+
+    ``exclude_turn`` names a turn whose own question must not be
+    touched: the turn that reaches its step budget in the round where it
+    *asked* writes its reply with the question still pending, and a
+    cancellation that counted its own question would erase the card it
+    had just put up.
+    """
+    filters: dict[str, Any] = {"conversation": conversation or "", "status": PENDING}
+    if exclude_turn:
+        filters["turn"] = ["!=", exclude_turn]
+
+    names = frappe.get_all(
+        "Albanna Question",
+        filters=filters,
+        pluck="name",
+        order_by="asked_at asc",
+    )
+    if not names:
+        return []
+
+    rows = frappe.get_all(
+        "Albanna Question",
+        filters={"name": ["in", names]},
+        fields=[
+            "name",
+            "question",
+            "status",
+            "answer",
+            "answer_value",
+            "conversation",
+            "asked_at",
+            "answered_at",
+        ],
+        order_by="asked_at asc",
+    )
+    options = _options_of(names)
+
+    # One update, not one per question — the set was just read under
+    # ``status = pending``, and the guard is repeated in the statement so
+    # a question answered in between is held, not overwritten.
+    frappe.db.sql(
+        "update `tabAlbanna Question` set status = %s where name in %s and status = %s",
+        (CANCELLED, tuple(names), PENDING),
+    )
+
+    return [payload(row, options.get(str(row.get("name") or ""), [])) for row in rows]
 
 
 def pending(conversation: str, user: str) -> list[dict]:
