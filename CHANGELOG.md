@@ -21,6 +21,19 @@ a question and be answered with a choice, instead of a paragraph that
 ends in "please tell me which customer you meant" — a paragraph in which
 the reader has to retype a name the assistant had just looked up.
 
+The fourth reviewed that feature against the flow opencode's own
+question tool has (the owner's standard), and verified two of its
+decisions against the use case rather than assuming them. The review is
+recorded in ADR-0011. It confirmed the question belongs in **storage** —
+the browser has no process that lives from the assistant's reply to the
+reader's click, so a card that survives a reload and a thread whose next
+turn re-reads its ground from the database both need the row; and it
+confirmed the MCP claim is code-true but gives the page nothing to
+build. What the comparison surfaced, the same release fixes: a typed
+reply now **cancels** the thread's pending question instead of leaving
+it pinned; unanswered questions **expire** at an operator-set bound; and
+the card carries its own **"type your own answer"** box.
+
 ### Fixed
 
 - **The app's own answer about what it could not read never reached the
