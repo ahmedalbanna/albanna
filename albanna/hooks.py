@@ -16,7 +16,7 @@ app_name = "albanna"
 app_title = "Albanna"
 app_publisher = "Albanna Software Solutions"
 app_description = "ERPNext side chat — ask about your data in plain language"
-app_email = "admin@albanna.dev"
+app_email = "ahmedalbanna966@gmail.com"
 app_license = "mit"
 
 # This app's tools operate on ERPNext doctypes, so ERPNext must be present.

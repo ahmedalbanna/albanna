@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Please report a security issue privately to **admin@albanna.dev** rather
+Please report a security issue privately to **ahmedalbanna966@gmail.com** rather
 than opening a public issue. Include what you found, how to reproduce it, and
 which version you were on.
 

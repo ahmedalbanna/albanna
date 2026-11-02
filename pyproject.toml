@@ -1,7 +1,7 @@
 [project]
 name = "albanna"
 authors = [
-    { name = "Albanna Software Solutions", email = "admin@albanna.dev"}
+    { name = "Albanna Software Solutions", email = "ahmedalbanna966@gmail.com"}
 ]
 description = "ERPNext side chat — ask about your data in plain language"
 license = "MIT"

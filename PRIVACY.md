@@ -57,4 +57,4 @@ everything. The daily scheduler prunes chat-log rows older than 90 days.
 
 ## Contact
 
-Questions about this policy: **admin@albanna.dev**
+Questions about this policy: **ahmedalbanna966@gmail.com**
