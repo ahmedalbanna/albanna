@@ -29,7 +29,7 @@ roles and the same permissions as the person who asked the question.
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-<img src="docs/images/side-chat-arabic.png" alt="The side chat, in Arabic, answering a question about the open sales orders" width="520">
+<img src="docs/images/side-chat-english.png" alt="The Albanna side chat answering a question about the open sales orders" width="520">
 
 ## Install
 
@@ -138,7 +138,7 @@ Anthropic.  It has no other runtime dependency.
 ## Installing
 
 ```bash
-bench get-app https://github.com/albanna/albanna --branch main
+bench get-app https://github.com/ahmedalbanna/albanna --branch main
 bench --site <site> install-app albanna
 bench --site <site> migrate
 bench build --app albanna
