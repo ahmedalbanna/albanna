@@ -77,8 +77,7 @@ class TestTheQueueClock(AlbannaTestCase):
         # The marker that backs the polling fallback must outlive the
         # job's own clock, never be shorter than it.
         assert (
-            job_budget_seconds(settings) + chat_api.STALE_GRACE_SECONDS
-            >= chat_api._turn_deadline()
+            job_budget_seconds(settings) + chat_api.STALE_GRACE_SECONDS >= chat_api._turn_deadline()
         )
 
 
@@ -237,9 +236,7 @@ class TestTheParkedCard(AlbannaTestCase):
         self.stream_id = "test-card-stream"
         # The process-local mirror, as the job's first read leaves it.
         stale = {"status": "running", "started_at": time.time()}
-        chip = frappe.cache().make_key(
-            chat_api.TURN_CACHE_KEY.format(stream_id=self.stream_id)
-        )
+        chip = frappe.cache().make_key(chat_api.TURN_CACHE_KEY.format(stream_id=self.stream_id))
         frappe.local.cache[chip] = stale
 
         # The cache as the job's park left it.
@@ -259,10 +256,12 @@ class TestTheParkedCard(AlbannaTestCase):
         # And the local mirror is not trusted again afterwards.
         frappe.local.cache.pop(chip, None)
         assert (
-            frappe.cache().get_value(
+            frappe.cache()
+            .get_value(
                 chat_api.TURN_CACHE_KEY.format(stream_id=self.stream_id),
                 expires=True,
-            ).get("status")
+            )
+            .get("status")
             == "ok"
         )
 
@@ -316,9 +315,10 @@ class TestTheParkedCard(AlbannaTestCase):
         _marker(self.stream_id, {"status": "running", "started_at": time.time()})
         # A stale process-local copy: it knows the turn is running and
         # nothing else — in particular, not the card about to land.
-        frappe.local.cache[
-            frappe.cache().make_key(key)
-        ] = {"status": "running", "started_at": time.time()}
+        frappe.local.cache[frappe.cache().make_key(key)] = {
+            "status": "running",
+            "started_at": time.time(),
+        }
 
         _mirror_to_marker(
             self.stream_id,

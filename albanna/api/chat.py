@@ -464,8 +464,6 @@ def confirm_write(request_id: str = "", decision: str = "") -> dict[str, Any]:
     if decision not in ("approve", "reject"):
         frappe.throw(_("That is not a decision."), frappe.ValidationError)
 
-    user = str(frappe.session.user or "")
-
     # The TTL outlives the wait it answers: a decision recorded near the
     # end of a long window must still be there when the worker's next
     # poll comes, and a worker polling every tenth of a second reads it

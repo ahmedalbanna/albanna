@@ -362,9 +362,7 @@ def read_pending(request_id: str) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def record_decision(
-    request_id: str, decision: str, ttl: float = DEFAULT_TIMEOUT
-) -> dict:
+def record_decision(request_id: str, decision: str, ttl: float = DEFAULT_TIMEOUT) -> dict:
     """Record the reader's decision on a pending write — once.
 
     The first decision is the decision.  A second one is refused rather

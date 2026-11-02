@@ -32,7 +32,7 @@ _CACHE_ATTR = "albanna_settings_cache"
 TURN_SLACK_SECONDS = 60
 
 
-def job_budget_seconds(settings_or_turn: "AppSettings | int", wait: int = 0) -> int:
+def job_budget_seconds(settings_or_turn: AppSettings | int, wait: int = 0) -> int:
     """The whole clock a turn's background job is given.
 
     One number, because the queue kills the job by it — and a job killed

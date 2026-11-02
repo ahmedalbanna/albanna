@@ -17,8 +17,8 @@ from __future__ import annotations
 
 from albanna.providers.base import ProviderConfig
 from albanna.services.settings_service import (
-    AppSettings,
     TURN_SLACK_SECONDS,
+    AppSettings,
     job_budget_seconds,
 )
 
