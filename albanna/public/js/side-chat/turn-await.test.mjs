@@ -19,8 +19,8 @@ global.__ = (text) => text;
 
 // A socket-less client: every progress event must come through the
 // poll, and the subscription must be a no-op that was never the point.
-	global.window = {
-		frappe: {
+global.window = {
+	frappe: {
 		call: async ({ method, args }) => {
 			if (method === "albanna.api.chat.status") {
 				statusCalls += 1;
@@ -76,7 +76,7 @@ assert.strictEqual(confirms[0].window_seconds, 300);
 assert.strictEqual(
 	confirms[0].at,
 	1700000000000,
-	"the card counts down from the server's clock, not the poll's"
+	"the card counts down from the server's clock, not the poll's",
 );
 assert.strictEqual(result.status, "ok");
 assert.ok(statusCalls >= 3, "the wait kept polling after forwarding the card");
