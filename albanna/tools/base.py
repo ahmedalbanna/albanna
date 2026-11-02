@@ -28,6 +28,14 @@ class ToolContext:
     principal: Principal
     site: str
     request_id: str = ""
+    #: The conversation the call is part of, when there is one.
+    #:
+    #: A tool that needs to know *which thread* it is in asks for it: the
+    #: question tool needs it, because a question belongs to a thread and
+    #: a question that belongs to no thread is a question nobody sees.
+    #: The model never fills this in — it is not in any schema — and the
+    #: backend hands it to the handlers that declare it.
+    conversation: str = ""
 
 
 @dataclass(frozen=True)

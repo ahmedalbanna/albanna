@@ -1573,6 +1573,61 @@ body.albanna-side-chat-docked-inline-start {
 	opacity: 0.8;
 }
 
+/* A question the assistant asked, waiting for the reader's answer.
+
+   A card in the transcript, like the approval card above it: the reader
+   answers a question and not a JSON blob, and the thread keeps its
+   place. */
+.albanna-chat__question {
+	margin: 0 0 8px;
+	padding: 10px 12px;
+	border-radius: 8px;
+	border: 1px solid var(--albanna-border, #ededed);
+	background: var(--albanna-surface, #ffffff);
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.albanna-chat__question-text {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--albanna-text, #1f2328);
+}
+
+/* The answers, as buttons.
+
+   They wrap, because the list of candidates is as long as the assistant
+   made it, and a card that scrolls sideways is a card the reader cannot
+   read.  The label is the reader's language — an Arabic customer name
+   in an Arabic panel — so the text follows the writing direction. */
+.albanna-chat__question-options {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.albanna-chat__question-option {
+	border: 1px solid var(--albanna-border, #ededed);
+	background: var(--albanna-hover, #f2f4f5);
+	color: var(--albanna-text, #1f2328);
+	border-radius: 6px;
+	padding: 5px 10px;
+	font-size: 12px;
+	cursor: pointer;
+	font-family: inherit;
+	text-align: start;
+}
+
+/* A button that cannot be clicked says so.  The answer is the reader's
+   next message, and it cannot be sent while another turn holds the
+   thread — so the card waits rather than swallowing the click. */
+.albanna-chat__question-option:disabled {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
 /* Diff preview in the approval card. */
 .albanna-chat__confirm-diff {
 	margin: 0;

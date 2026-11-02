@@ -34,9 +34,9 @@ Albanna runs neither as a service, and depends on neither.  See
 | **side chat** | The docked panel in the Desk, and the launcher that opens it. Not a page, not a modal, not a route. |
 | **turn** | One question and the work it causes, from the question to the final answer. |
 | **round** | One model call inside a turn. A round may contain several tool calls. |
-| **tool** | One named operation the model may ask for. Eleven exist. |
+| **tool** | One named operation the model may ask for. Twelve exist. |
 | **tool spec** | The manifest entry for a tool: name, description, JSON schema, tier, required roles. The contract the model sees. |
-| **manifest** | The eleven tool specs, in `core/tools.py`. Plain data, no code. |
+| **manifest** | The twelve tool specs, in `core/tools.py`. Plain data, no code. |
 | **adapter** | The code that actually runs a tool, or calls a model. One per backend, one per vendor. |
 | **principal** | The person a call is made for: their user name, their roles, whether they are a System Manager. |
 | **reachability** | Whether a principal may reach a tool at all. Static: does not depend on the arguments. |
@@ -79,7 +79,7 @@ expensive to get wrong.
 
 ### 1. The tool set is fixed, and the model only sees what it may use
 
-There are eleven tools.  The manifest is filtered by the authority layer
+There are twelve tools.  The manifest is filtered by the authority layer
 *before* the schemas are sent to the model, so a tool the user may not
 reach is never mentioned — not mentioned and then refused, **never
 mentioned**.  A model that can see a tool it cannot use spends a turn
@@ -1701,7 +1701,7 @@ why, because the answer is not "it would be more work":
   happens somewhere else cannot share a transaction with anything
   here.
 
-So the tool set stays fixed: eleven tools, a manifest and an adapter,
+So the tool set stays fixed: twelve tools, a manifest and an adapter,
 checked against each other by a test.  An external tool is an
 integration project, not a chat feature, and when one is wanted it
 arrives with its own approval, its own ledger and its own undo — not as
@@ -1933,6 +1933,59 @@ The test that found it also now checks its own fixture — that the thread it
 made really is an email Communication in the database — because a fixture
 that lands differently on another framework version looks exactly like a
 note that does not work.
+
+### 87. The question is asked in the chat, and the reader answers it in the chat
+
+The assistant runs out of road in one way only: it needs something the
+reader has and it does not — which customer, which item, which of two
+ways.  The only way to get it was for the reader to *type* it, and that
+is a bad way to get it, because the names the assistant needs are
+usually the names it had just looked up: the twenty-one customers, the
+twenty-two items.  The reader was asked to retype something the
+assistant was looking at a moment earlier, and the reader who picks the
+wrong one is never corrected, because the assistant never learned which
+customer the reader meant.
+
+So the question is asked as a question, and four decisions follow.
+
+**The question is a tool.**  It is in the manifest with the same shape as
+every other tool, so it reaches the model the way everything else does —
+as a call it makes, with a schema it fills in.  The app has no MCP
+transport today (decision 80, ADR-0001), and the production site is not
+on the MCP service's allow-list; what the app has is the *port*, and the
+question is built behind it, so it travels over MCP unchanged when an
+MCP backend is plugged in.  It is tiered as a read, because the write
+rail is about the site's business data — the documents the reader would
+have to undo — and a question changes none of them.
+
+**The question is a row, not a cache entry.**  The reader may answer it
+minutes later, from another tab, tomorrow.  A record that expires while
+the reader is thinking has thrown the question away, and the assistant is
+left waiting for an answer to a question that no longer exists.  The
+approval is different, and it lives in the cache for that reason: it is
+bounded by the wait it answers (decisions 77, 79).
+
+**Asking ends the assistant's freedom.**  The tool calls that came in the
+same round as the question do not run, and the next round is given no
+tools at all — the assistant may only speak.  A question that is asked
+and then acted on in the same breath is a question that was never asked.
+This is the app's own rule (a write the reader has not approved does
+not run) applied to the choice the reader has not made.
+
+**The answer is a new turn.**  The reader's choice is sent as their next
+message, and the assistant continues with the whole thread in view.  No
+worker is held while the reader thinks, and the answer does not die with
+the worker that asked the question.  The message names the question it
+answers — the card and the assistant's reply are not in the transcript,
+and without the question an answer of `CUST-0002` is a string with no
+meaning attached to it — and it carries the option's **value**, not the
+label the reader saw, because the value is the one that goes into a
+document.
+
+And the answer is guarded like a write, because it is acted on: only the
+reader the question names may answer it, the first answer is the answer,
+and an answer the reader was never offered is refused.  The whole of it
+is in `docs/adr/0011-the-question-is-asked-in-the-chat.md`.
 
 ## What is deliberately not here
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.

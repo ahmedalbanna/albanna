@@ -201,7 +201,7 @@ it has already been done, what shipped.
 - **Gamification (streaks, badges, leaderboards).** Not appropriate for an
   ERP tool.
 - **Tool marketplace / no-code tool builder.** Albanna's tool set is fixed
-  by design (eleven tools: manifest + adapter, tested for drift). A
+  by design (twelve tools: manifest + adapter, tested for drift). A
   marketplace breaks the security contract.
 - **Cross-app / ecosystem (Frappe-to-Frappe, Shopify bridge, email-to-chat,
   calendar).** Out of scope; these are integration projects, not chat
@@ -224,7 +224,7 @@ it has already been done, what shipped.
 
 ### Shipped (v1 and the trust layer)
 
-Widget, page context, eleven tools, approval gates with a diff, audit,
+Widget, page context, twelve tools, approval gates with a diff, audit,
 mobile, RTL, first-run tour, document entry point, cost ledger, global
 search, bulk update, undo, dry-run, nudge, smart defaults, escalation,
 voice, images, copy-as-markdown, sources, "explain this error".
@@ -687,6 +687,63 @@ After that deploy the rest of this pass changed no runtime code — the
 tests, the CI's own site script, this document — so it needed no second
 one: no build, no migrate, no worker restart.  The bench still runs the
 suite the same way it did, and now the CI runs it too.
+
+### In this pass (unreleased — the question the assistant asks)
+
+The assistant runs out of road in one way only: it needs something the
+reader has and it does not — which customer, which item, which of two
+ways.  Until now the only way to get it was for the reader to **type**
+it, and that is a bad way to get it: the names the assistant needs are
+usually the names it had just looked up.  The reader was asked to retype,
+from memory or from a list of their own, something the assistant was
+looking at a moment earlier — and the reader who picks the wrong one is
+never corrected, because the assistant never learned which customer the
+reader meant.
+
+So the question is asked as a question.  The assistant offers the answers
+it found, the reader picks one, and the thread carries on.  The whole of
+it is in ADR-0011 and CONTEXT 87; what follows is what it is, and what
+it costs.
+
+**It is a tool.**  `ask_question` is in the manifest with the same shape
+as every other tool, so it reaches the model the way everything else
+does — as a call it makes, with a schema it fills in.  The request was
+for it "via MCP", and the honest answer is what the app's own ADR-0001
+already says: the tools are in-process today, the production site is not
+on the MCP service's allow-list, and the *port* is where an MCP backend
+would plug in.  The question is built behind that port, so it travels
+over MCP unchanged when a backend is plugged in — and it works today
+without one.
+
+**It is a row.**  `Albanna Question` holds the question, the options,
+the reader it was asked of, the thread, the turn, and the answer.  Not
+a cache entry: the reader may answer tomorrow, and the approval's cache
+record is bounded by the wait it answers (decisions 77, 79) while a
+question is not.
+
+**Asking it ends the assistant's freedom to act.**  The tool calls in
+the same round do not run; the next round is given no tools at all.  A
+question that is asked and then acted on in the same breath is a
+question that was never asked.
+
+**The answer is the reader's next message.**  It names the question it
+answers — the card and the assistant's reply are not in the transcript —
+and carries the option's **value**, not the label, because the value is
+the one that goes into a document.  No worker is held while the reader
+thinks, and the answer does not die with the worker that asked.
+
+**And it is guarded like a write, because it is acted on.**  Only the
+reader the question names may answer it; the first answer is the answer;
+an answer the reader was never offered is refused.
+
+What it costs: one extra turn in the transcript (the answer is a turn of
+its own — the reader's answer is *their* message, in *their* words, and
+the ledger records it as one), and a twelfth tool in the manifest.
+
+What it buys: the reader chooses a customer, an item, or a field value
+from the candidates the assistant found, instead of typing a name — and
+the assistant is told *which* one, in the exact value it is going to
+use.
 
 ### Later (v3) — §3, only with a named customer
 

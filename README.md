@@ -55,10 +55,10 @@ Anthropic.  It has no other runtime dependency.
 
 ## What it does
 
-* **Eleven tools.** `list_docs`, `get_doc`, `get_doctype_meta`, `run_report`,
+* **Twelve tools.** `list_docs`, `get_doc`, `get_doctype_meta`, `run_report`,
   `create_doc`, `update_doc`, `bulk_update_doc`, `submit_doc`, `cancel_doc`,
-  `amend_doc`, `delete_doc`. The model is told about eleven tools, and only
-  eleven.
+  `amend_doc`, `delete_doc`, `ask_question`. The model is told about twelve
+  tools, and only twelve.
 * **One model provider at a time, with a fallback.** OpenAI-compatible
   (OpenRouter, OpenAI, Groq, vLLM, LM Studio), Ollama, or Anthropic.
 * **A side chat, not a page.** A launcher on every Desk page; the panel
@@ -194,7 +194,7 @@ named place to change:
 `tests/test_tool_manifest.py` fails if the manifest and the adapter name
 different tools, so the first two rows of that table cannot drift.
 
-## The eleven tools
+## The twelve tools
 
 | Tool | Tier | What it does |
 |---|---|---|
@@ -209,6 +209,7 @@ different tools, so the first two rows of that table cannot drift.
 | `cancel_doc` | write | cancel a submitted document |
 | `amend_doc` | write | cancel a submitted document and create a new draft from it |
 | `delete_doc` | write | delete a draft or cancelled document |
+| `ask_question` | read | ask the reader a question, and wait for their answer in the chat |
 
 The writes are different rights, and the manifest says which:
 `create_doc` is authorised against Frappe's `create` permission,
@@ -223,6 +224,17 @@ framework's fields (`owner`, `docstatus`, `name`), it will not touch a
 read-only field, and it will not change a **submitted** document — the
 form will not let a person do that either, and the refusal says so rather
 than apologising for it.
+
+`ask_question` is the one tool that does not act on the site's data: it
+puts a question in front of the reader, with the answers the assistant
+found, and the reader picks one. It is tiered as a read because the write
+rail is about the site's *business* data — the documents the reader would
+have to undo — and a question changes none of them. Asking it ends the
+assistant's freedom to act for the rest of the turn: a question that is
+asked and then acted on in the same breath is a question that was never
+asked. The answer is the reader's next message, so it names the question
+it answers and carries the option's value. See
+[ADR-0011](docs/adr/0011-the-question-is-asked-in-the-chat.md).
 
 `run_sql_query` is deliberately **absent**: it bypasses Frappe's permission
 engine, including User Permissions and every row-level rule built on them.

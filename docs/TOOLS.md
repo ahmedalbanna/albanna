@@ -1,9 +1,9 @@
 # The tools the assistant may use
 
-Albanna's assistant can use exactly eleven tools. There is no hidden twelfth:
-`run_sql_query` is deliberately absent, because a raw SELECT behind a chat
-that ordinary users can reach is a privilege escalation with a chat interface
-on top. Every tool runs in-process, under the caller's own roles and User
+Albanna's assistant can use exactly twelve tools. There is no hidden
+thirteenth: `run_sql_query` is deliberately absent, because a raw SELECT
+behind a chat that ordinary users can reach is a privilege escalation with a
+chat interface on top. Every tool runs in-process, under the caller's own roles and User
 Permissions, so the assistant can never see or do more than the person
 asking.
 
@@ -19,6 +19,7 @@ the code.
 | `get_doc` | Read one document by name. | Frappe's `read` permission on that DocType. |
 | `get_doctype_meta` | The fieldnames and types of a DocType. | Frappe's `read` permission on that DocType. |
 | `run_report` | Run an ERPNext report. | The report's own permission. |
+| `ask_question` | Ask the reader a question, with the answers the assistant found, and wait for their answer in the chat. | Nothing: it touches no document. It is tiered as a read because the write rail is about the site's *business* data, and a question changes none of it. |
 
 ## Write tools
 
@@ -36,6 +37,25 @@ whether they hold it on the *target* of a particular call is decided per call.
 | `cancel_doc` | Cancel a submitted document. | Frappe's `cancel` permission. |
 | `amend_doc` | Cancel a submitted document and create a new draft from it. | Frappe's `amend` permission. |
 | `delete_doc` | Delete a draft or cancelled document. | Frappe's `delete` permission. |
+
+## The question
+
+`ask_question` is the one tool that does not act on the site's data: it puts
+a question in front of the reader, with the options the assistant found, and
+the reader picks one.
+
+* **It is a row, not a cache entry.** The reader may answer it tomorrow.
+* **Asking it ends the assistant's freedom to act** for the rest of the
+  turn: the rest of that round's tool calls do not run, and the next round
+  is given no tools at all.
+* **The answer is the reader's next message.** It names the question it
+  answers, and carries the option's *value* — the document's name — because
+  the value is the one that goes into a document.
+* **Only the reader the question names may answer it**, the first answer is
+  the answer, and an answer the reader was never offered is refused.
+
+The whole of it is in
+[ADR-0011](adr/0011-the-question-is-asked-in-the-chat.md).
 
 ## What a write cannot do
 

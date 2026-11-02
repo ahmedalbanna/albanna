@@ -66,7 +66,7 @@ from albanna.core.messages import (
     user,
 )
 from albanna.core.prompt import PromptContext, build_system_prompt
-from albanna.core.tools import TOOL_MANIFEST, ToolSpec, validate_arguments
+from albanna.core.tools import ASK_QUESTION_TOOL, TOOL_MANIFEST, ToolSpec, validate_arguments
 from albanna.core.undo import is_undoable
 from albanna.providers.base import (
     Completion,
@@ -132,6 +132,38 @@ def _without_secrets(text: str) -> str:
     return body
 
 
+def _round_tools(visible: list[ToolSpec], asked: dict[str, Any] | None) -> list[ToolSpec]:
+    """The tools the model may call in this round.
+
+    Once the reader has been asked a question, the list is empty.  The
+    assistant may then only speak — it has asked, and the answer is not
+    here yet.  A question that is asked and then acted on in the same
+    breath is a question that was never asked.
+    """
+    return [] if asked else visible
+
+
+def _question_asked(call: ToolCall, result: ToolResult) -> dict[str, Any] | None:
+    """The question a tool asked, if it asked one.
+
+    Only the question tool may ask.  The reader is offered a choice when
+    the assistant asked for one in the app's own words — not because some
+    document happened to carry a field called "question".
+    """
+    if call.name != ASK_QUESTION_TOOL or not result.ok:
+        return None
+
+    data = result.data
+    if not isinstance(data, dict):
+        return None
+
+    question = data.get("question")
+    if not isinstance(question, dict) or not question.get("name"):
+        return None
+
+    return question
+
+
 @dataclass
 class TurnRequest:
     """What the user asked for."""
@@ -170,6 +202,13 @@ class TurnOutcome:
     truncated: bool = False
     #: True when an image was sent but no provider could see it.
     image_dropped: bool = False
+    #: The question the assistant asked the reader, if it asked one.
+    #:
+    #: The card the reader is shown is built from this, and from the row
+    #: it names.  It is here because the turn's answer and the turn's
+    #: question travel together: a reader who is asked something and is
+    #: told nothing about it was asked for no reason.
+    question: dict[str, Any] | None = None
     diagnosis: dict[str, Any] = field(default_factory=dict)
     #: The rows this turn wrote, as ``(name, role)`` pairs.
     #:
@@ -243,6 +282,9 @@ def turn_payload(outcome: TurnOutcome) -> dict[str, Any]:
         # worse than one that says it was cut.
         "truncated": outcome.truncated,
         "image_dropped": outcome.image_dropped,
+        # The question the assistant asked, with the answers the reader
+        # may choose from.  Null when the turn asked none.
+        "question": outcome.question,
         "error": outcome.error,
         "dry_run": any(
             isinstance(tc, dict) and tc.get("dry_run") for tc in (outcome.tool_calls or [])
@@ -269,6 +311,9 @@ class ChatService:
         # everywhere, so a _log call that arrives without a run (the tests
         # call it directly) still works.
         self._audit_name: str | None = None
+        # The conversation this turn is in.  A tool that needs to know
+        # which thread it is in is told, through the port's context.
+        self._conversation: str = ""
 
     # -- the turn ---------------------------------------------------------
 
@@ -315,6 +360,7 @@ class ChatService:
         visible = authority.visible()
 
         conversation = self._resolve_conversation(request, principal.user, question)
+        self._conversation = conversation
 
         # An image attached to the question is stored as a Frappe File so
         # that the assistant can reference it by URL — for example, to set
@@ -388,6 +434,16 @@ class ChatService:
 
         tool_calls_made: list[dict[str, Any]] = []
         rounds = 0
+        # The question the assistant asked the reader, if it asked one.
+        # It is carried to the end of the turn so the reader is shown the
+        # card, and it is what takes the tools away for the rest of the
+        # turn: once the reader has been asked, the assistant may speak
+        # and nothing else.
+        #
+        # It is *not* called `question`: that is the reader's own
+        # question, and the two are different things — a turn that asked
+        # one and was asked another has to keep both.
+        asked_question: dict[str, Any] | None = None
         # Per-round durations, one per model call, for the audit row.
         round_durations: list[int] = []
         usage: Usage | None = None
@@ -411,7 +467,13 @@ class ChatService:
             emit({"event": "status", "round": rounds, "code": "thinking"})
 
             try:
-                completion = self._complete(llm_config, messages, visible, emit, request.stream)
+                completion = self._complete(
+                    llm_config,
+                    messages,
+                    _round_tools(visible, asked_question),
+                    emit,
+                    request.stream,
+                )
             except AllProvidersFailed as exc:
                 round_durations.append(int((time.monotonic() - round_start) * 1000))
                 self._log(
@@ -439,6 +501,7 @@ class ChatService:
                     rounds=rounds,
                     tool_calls=tool_calls_made,
                     image_dropped=image_dropped,
+                    question=asked_question,
                 )
 
             round_durations.append(int((time.monotonic() - round_start) * 1000))
@@ -510,6 +573,7 @@ class ChatService:
                     truncated=completion.truncated,
                     image_dropped=image_dropped,
                     written=written,
+                    question=asked_question,
                     cost=(
                         cost_of_turn(
                             usage.input_tokens,
@@ -532,7 +596,21 @@ class ChatService:
             )
 
             for call in answer.tool_calls:
-                result = self._run_tool(call, authority, principal, site, visible, emit)
+                if asked_question is not None:
+                    # The reader has been asked.  The rest of this round
+                    # does not run: the assistant has no answer yet, and
+                    # acting on a guess is the one thing a question must
+                    # prevent.
+                    result = ToolResult.refusal(
+                        "The reader was asked a question in this round, so this "
+                        "call did not run. Wait for their answer.",
+                        "question_pending",
+                    )
+                else:
+                    result = self._run_tool(call, authority, principal, site, visible, emit)
+                    card = _question_asked(call, result)
+                    if card is not None:
+                        asked_question = card
                 tool_calls_made.append(tool_entry(call, result))
                 messages.append(tool_result(call.id, result.content))
 
@@ -582,6 +660,7 @@ class ChatService:
             image_dropped=image_dropped,
             diagnosis=diagnosis,
             written=written,
+            question=asked_question,
             cost=(
                 cost_of_turn(
                     usage.input_tokens,
@@ -810,7 +889,17 @@ class ChatService:
 
         emit({"event": "tool_start", "name": call.name, "arguments": call.arguments})
 
-        context = ToolContext(principal=principal, site=site)
+        context = ToolContext(
+            principal=principal,
+            site=site,
+            # The turn's own row.  A question names the turn that asked
+            # it, so that the record of what was asked sits next to the
+            # record of what was said.
+            request_id=self._audit_name or "",
+            # The thread this call is in.  A question belongs to a
+            # conversation, and the tool that asks it is told which one.
+            conversation=self._conversation or "",
+        )
         try:
             result = self._backend.call(spec, call.arguments, context)
             result = self._explain_failure(spec, call.arguments, result, authority)

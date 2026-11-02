@@ -2,7 +2,8 @@
 
 The manifest (``albanna.core.tools``) is the contract the model sees: the
 name, the description, and the JSON Schema of the arguments.  The
-implementations (``albanna.tools.erpnext``) are what actually runs.
+implementations (``albanna.tools.erpnext``, ``albanna.tools.questions``)
+are what actually runs.
 
 They live in different packages on purpose — the manifest may not import
 Frappe, and the implementations must — so they could drift.  A manifest that
@@ -15,6 +16,7 @@ The cost of that split is one test file, and it is here.
 
 from __future__ import annotations
 
+import importlib
 import inspect
 
 import pytest
@@ -22,16 +24,41 @@ import pytest
 from albanna.core.tools import TOOL_MANIFEST, validate_arguments
 from albanna.tools.backend import ErpnextBackend
 
+#: Where each tool's implementation lives.  The implementations are split
+#: by what they act on: the ERPNext tools act on the site's data, and the
+#: question tool acts on the conversation.
+IMPLEMENTATION_MODULES = {
+    "list_docs": "albanna.tools.erpnext",
+    "get_doc": "albanna.tools.erpnext",
+    "get_doctype_meta": "albanna.tools.erpnext",
+    "run_report": "albanna.tools.erpnext",
+    "create_doc": "albanna.tools.erpnext",
+    "update_doc": "albanna.tools.erpnext",
+    "bulk_update_doc": "albanna.tools.erpnext",
+    "submit_doc": "albanna.tools.erpnext",
+    "cancel_doc": "albanna.tools.erpnext",
+    "amend_doc": "albanna.tools.erpnext",
+    "delete_doc": "albanna.tools.erpnext",
+    "ask_question": "albanna.tools.questions",
+}
+
 #: The model's arguments and the implementation's parameters are the same
 #: contract, so they must have the same names.
 IMPLEMENTATIONS = {
-    "list_docs": "list_docs",
-    "get_doc": "get_doc",
-    "get_doctype_meta": "get_doctype_meta",
-    "run_report": "run_report",
-    "create_doc": "create_doc",
-    "update_doc": "update_doc",
+    "list_docs": ("albanna.tools.erpnext", "list_docs"),
+    "get_doc": ("albanna.tools.erpnext", "get_doc"),
+    "get_doctype_meta": ("albanna.tools.erpnext", "get_doctype_meta"),
+    "run_report": ("albanna.tools.erpnext", "run_report"),
+    "create_doc": ("albanna.tools.erpnext", "create_doc"),
+    "update_doc": ("albanna.tools.erpnext", "update_doc"),
+    "ask_question": ("albanna.tools.questions", "ask_question"),
 }
+
+
+def _implementation(name: str):
+    """The function that implements a tool."""
+    module_name, attribute = IMPLEMENTATIONS[name]
+    return getattr(importlib.import_module(module_name), attribute)
 
 
 def test_the_manifest_and_the_backend_name_the_same_tools():
@@ -40,10 +67,9 @@ def test_the_manifest_and_the_backend_name_the_same_tools():
 
 
 def test_every_tool_in_the_manifest_is_implemented():
-    from albanna.tools import erpnext
-
     for name in TOOL_MANIFEST.names():
-        assert hasattr(erpnext, name), f"{name} has no implementation"
+        module = importlib.import_module(IMPLEMENTATION_MODULES[name])
+        assert hasattr(module, name), f"{name} has no implementation"
 
 
 def test_the_implementation_accepts_exactly_what_the_schema_declares():
@@ -54,11 +80,9 @@ def test_the_implementation_accepts_exactly_what_the_schema_declares():
     accepts a parameter the schema does not declare is a parameter the model
     can never fill.
     """
-    from albanna.tools import erpnext
-
-    for name, attribute in IMPLEMENTATIONS.items():
+    for name in IMPLEMENTATIONS:
         spec = TOOL_MANIFEST.get(name)
-        function = getattr(erpnext, attribute)
+        function = _implementation(name)
         parameters = set(inspect.signature(function).parameters) - {"self"}
 
         declared = set(spec.parameters.get("properties") or {})
@@ -223,10 +247,8 @@ def test_the_implementation_is_callable_with_the_manifests_required_arguments(na
     A tool that cannot be called with the minimum is a tool the model can
     only use wrongly.
     """
-    from albanna.tools import erpnext
-
     spec = TOOL_MANIFEST.get(name)
-    function = getattr(erpnext, IMPLEMENTATIONS[name])
+    function = _implementation(name)
     parameters = inspect.signature(function).parameters
 
     required = set(spec.parameters.get("required") or [])

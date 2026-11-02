@@ -718,6 +718,22 @@ def delete_conversation(conversation: str) -> None:
     """
     assert_owns(conversation, frappe.session.user or "")
     frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
+    # The questions asked in this thread go with it.  They hold what the
+    # assistant was looking for and what the reader was being asked to
+    # choose, and a thread the reader asked to be gone is a thread whose
+    # questions are gone with it.  The options are the child rows of the
+    # questions, so they are deleted first: a direct delete does not
+    # cascade the way the ORM's does.
+    frappe.db.sql(
+        """
+        delete from `tabAlbanna Question Option`
+        where parent in (
+            select name from `tabAlbanna Question` where conversation = %s
+        )
+        """,
+        (conversation,),
+    )
+    frappe.db.sql("delete from `tabAlbanna Question` where conversation = %s", (conversation,))
     frappe.delete_doc("Albanna Conversation", conversation, ignore_permissions=True)
 
 

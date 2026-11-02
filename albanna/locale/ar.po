@@ -1156,3 +1156,102 @@ msgstr "تم مقاطعته"
 
 msgid "running"
 msgstr "قيد التشغيل"
+
+msgid "Albanna Question"
+msgstr "سؤال ألبانا"
+
+msgid "Albanna Question Option"
+msgstr "خيار سؤال ألبانا"
+
+msgid "Question"
+msgstr "السؤال"
+
+msgid "Options"
+msgstr "الخيارات"
+
+msgid "Label"
+msgstr "العنوان"
+
+msgid "Value"
+msgstr "القيمة"
+
+msgid "Answer"
+msgstr "الإجابة"
+
+msgid "Answer Value"
+msgstr "قيمة الإجابة"
+
+msgid "Status"
+msgstr "الحالة"
+
+msgid "Pending"
+msgstr "قيد الانتظار"
+
+msgid "Answered"
+msgstr "تمت الإجابة"
+
+msgid "Cancelled"
+msgstr "ملغى"
+
+msgid "Asked At"
+msgstr "وقت السؤال"
+
+msgid "Answered By"
+msgstr "أجاب"
+
+msgid "Answered At"
+msgstr "وقت الإجابة"
+
+msgid "What the assistant asked, in the reader's own words."
+msgstr "ما سأله المساعد، بكلمات القارئ نفسه."
+
+msgid "The answers the reader may choose from. A question with no options is a question the reader has to type the answer to."
+msgstr "الإجابات التي يمكن للقارئ أن يختار منها. السؤال الذي لا خيارات له هو سؤال يجب أن يكتب القارئ إجابته."
+
+msgid "What the reader chose, as they saw it."
+msgstr "ما اختاره القارئ، كما رآه."
+
+msgid "The value behind the answer — the document's name, the field value. This is what the assistant goes on to use."
+msgstr "القيمة خلف الإجابة — اسم المستند، قيمة الحقل. هذا ما سيستخدمه المساعد بعد ذلك."
+
+msgid "The thread this question was asked in."
+msgstr "المحادثة التي سُئل فيها هذا السؤال."
+
+msgid "The reader this question was asked of. Only this account may answer it."
+msgstr "القارئ الذي سُئل هذا السؤال. لا يمكن لحساب غيره أن يجيب عنه."
+
+msgid "The turn that asked it."
+msgstr "الجولة التي سألته."
+
+msgid "What the reader sees on the card."
+msgstr "ما يراه القارئ على البطاقة."
+
+msgid "The value behind it — the document's name, the field value. What the assistant goes on to use."
+msgstr "القيمة خلفه — اسم المستند، قيمة الحقل. ما سيستخدمه المساعد بعد ذلك."
+
+msgid "A question's reader cannot be changed."
+msgstr "لا يمكن تغيير القارئ الذي سُئل السؤال."
+
+msgid "This question has already been answered."
+msgstr "تمت الإجابة على هذا السؤال بالفعل."
+
+msgid "That question is not here."
+msgstr "هذا السؤال غير موجود."
+
+msgid "That question was asked of somebody else."
+msgstr "سُئل هذا السؤال من شخص آخر."
+
+msgid "That question has already been answered."
+msgstr "تمت الإجابة على هذا السؤال بالفعل."
+
+msgid "That answer was not one of the options."
+msgstr "لم تكن هذه الإجابة من الخيارات."
+
+msgid "Could not load the questions."
+msgstr "تعذّر تحميل الأسئلة."
+
+msgid "The answer could not be recorded."
+msgstr "تعذّر تسجيل الإجابة."
+
+msgid "The answer to “{0}”: {1}"
+msgstr "الإجابة على «{0}»: {1}"

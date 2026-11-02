@@ -73,6 +73,7 @@ import {
 	turnsForPage,
 } from "./inflight.mjs";
 import { canDecide, remainingSeconds } from "./approval.mjs";
+import { answerMessage, canAnswer, questionCard } from "./question.mjs";
 import { mergeOlder, oldestIdx, olderRequest, windowRequest } from "./window.mjs";
 import {
 	beginTurn,
@@ -256,6 +257,15 @@ const keydownHandler = ref(null);
  * never edited: a decision replaces the entry rather than changing it. */
 const pendingApprovals = shallowReactive(new Map());
 
+/* The questions waiting for an answer, by name.
+ *
+ * A map of its own, for the same reason the approvals have one:
+ * `shallowReactive` sees a key being added or deleted and nothing
+ * inside a value.  A card that stays on screen after its answer has
+ * been given is a card that offers a choice nobody is reading any more,
+ * and the reader's choice is one choice. */
+const pendingQuestions = shallowReactive(new Map());
+
 /**
  * The questions the reader has asked, oldest first.
  *
@@ -302,6 +312,17 @@ const busy = computed(() => visibleWaits.value.length > 0);
 const maySend = computed(() => !busy.value && canChat.value);
 /** May the reader stop the turn? */
 const mayStop = computed(() => busy.value && canChat.value);
+
+/** The questions waiting in the thread being read, oldest last.
+ *
+ * A question belongs to the thread it was asked in — the reader is
+ * elsewhere in another thread, and the card comes back when its thread
+ * is opened. */
+const visibleQuestions = computed(() =>
+	[...pendingQuestions.values()]
+		.filter((card) => card.conversation === conversationId.value)
+		.filter((card) => canAnswer(card)),
+);
 
 /**
  * The document the widget is looking at, if it is looking at one.
@@ -1274,6 +1295,13 @@ function applyTurnResult(result, asked, answer) {
 		conversationId.value = result.conversation_id;
 	}
 
+	// The assistant asked the reader something.  The card is drawn from
+	// the server's own record of the question, so the reader chooses
+	// from the same list the assistant offered.
+	if (result && result.question) {
+		rememberQuestion(result.question);
+	}
+
 	// The server says which rows it wrote, so that the question and the
 	// answer can be addressed later — a turn the reader wants gone is
 	// removed by naming it.
@@ -1576,6 +1604,84 @@ function rememberQuestions(messages) {
 }
 
 /**
+ * Remember a question, so that its card is drawn.
+ *
+ * @param {object} raw the question, as the server sent it
+ */
+function rememberQuestion(raw) {
+	const card = questionCard(raw);
+	if (!card.name) return;
+	pendingQuestions.set(card.name, card);
+}
+
+/**
+ * Load the questions the reader may still answer in this thread.
+ *
+ * A question outlives the turn that asked it: the reader may close the
+ * tab, come back tomorrow, and answer it then.  So the card is fetched
+ * with the thread rather than remembered from the turn that asked.
+ *
+ * @param {string} conversation the conversation
+ */
+async function loadPendingQuestions(conversation) {
+	const name = String(conversation || "").trim();
+	if (!name) return;
+
+	try {
+		const result = await call("albanna.api.questions.pending_questions", {
+			conversation: name,
+		});
+		for (const raw of result.questions || []) {
+			rememberQuestion(raw);
+		}
+	} catch (failure) {
+		state.error = String(
+			(failure && failure.message) || failure || __("Could not load the questions."),
+		);
+	}
+}
+
+/**
+ * Answer a question, and let the assistant carry on.
+ *
+ * The card goes the moment the answer is recorded: the reader's choice
+ * is one choice, and a card that stays clickable after its answer has
+ * been acted on accepts an answer nobody is reading any more.
+ *
+ * @param {object} card the card
+ * @param {object} option the option the reader chose
+ */
+async function answerQuestion(card, option) {
+	if (!card || !option || !maySend.value) return;
+
+	const text = answerMessage(card, option);
+	if (!text) return;
+
+	pendingQuestions.delete(card.name);
+
+	try {
+		await call("albanna.api.questions.answer_question", {
+			name: card.name,
+			value: option.value,
+		});
+	} catch (failure) {
+		// The answer did not reach the server.  The card comes back, so
+		// the reader can choose again: a choice that was recorded nowhere
+		// is a choice the reader has to make again.
+		pendingQuestions.set(card.name, card);
+		state.error = String(
+			(failure && failure.message) || failure || __("The answer could not be recorded."),
+		);
+		return;
+	}
+
+	// The answer is the reader's next message.  The assistant continues
+	// with the whole thread in view, and the answer is in the transcript
+	// where the next reader can see what was chosen.
+	await send(text);
+}
+
+/**
  * Take a message out of the transcript.
  *
  * @param {object} message the message
@@ -1868,6 +1974,11 @@ async function openConversation(conversation) {
 		followBottom.value = true;
 		scrollToBottom(true);
 
+		/* The questions of this thread that are still waiting.  A
+		 * question outlives the turn that asked it, so the card is
+		 * fetched with the thread and not remembered from the turn. */
+		await loadPendingQuestions(conversation.name);
+
 		/* The thread being left stops being waited for — its turns
 		 * keep running, and their addresses are remembered — and the
 		 * thread just opened picks up any turn of its own that is still
@@ -2153,6 +2264,9 @@ async function loadPageConversation() {
 		hasOlder.value = !!(result && result.has_more);
 		followBottom.value = true;
 		scrollToBottom(true);
+		// The questions of this thread that are still waiting: a question
+		// outlives the turn that asked it.
+		await loadPendingQuestions(result.conversation);
 		// A turn of this page's thread that is still running is picked
 		// up again: the reader moved to another page and came back, and
 		// the answer is still arriving.
@@ -2832,7 +2946,42 @@ onBeforeUnmount(() => {
 						<span class="albanna-chat__time">{{ message.time }}</span>
 					</div>
 				</div>
+
+			<!-- A question the assistant asked, waiting for the reader's
+			     answer.  It is a card in the thread rather than a dialog,
+			     so the reader answers a question and not a JSON blob, and
+			     the thread keeps its place.
+
+			     The card is drawn from the server's own record of the
+			     question, so it is the same card in every tab and after
+			     every reload — and the answer is recorded against that
+			     record rather than against the browser's memory of it.
+
+			     The buttons stop while a turn is running, because the
+			     answer is the reader's next message: it cannot be sent
+			     while another turn holds the thread. -->
+			<div
+				v-for="card in visibleQuestions"
+				:key="card.name"
+				class="albanna-chat__question"
+				role="group"
+				:aria-label="card.question"
+			>
+				<p class="albanna-chat__question-text">{{ card.question }}</p>
+				<div class="albanna-chat__question-options">
+					<button
+						v-for="option in card.options"
+						:key="option.value"
+						type="button"
+						class="albanna-chat__question-option"
+						:disabled="!maySend"
+						@click="answerQuestion(card, option)"
+					>
+						{{ option.label }}
+					</button>
+				</div>
 			</div>
+		</div>
 
 			<button
 				v-if="showScrollButton"

@@ -52,12 +52,18 @@ app_include_css = ["albanna-side-chat.bundle.css"]
 # two hooks are what make that mean "the owner" — a reader who is not the
 # owner sees nothing of it.  A System Manager is not exempt: running the
 # site and reading somebody's chat are different acts.
+#
+# A question is as private as the thread it was asked in: it names what
+# the assistant was looking for, and what the reader is being asked to
+# choose.  The same two hooks answer for it, for the same reason.
 permission_query_conditions = {
     "Albanna Conversation": "albanna.services.conversation_service.get_permission_query_conditions",
+    "Albanna Question": "albanna.services.questions.get_permission_query_conditions",
 }
 
 has_permission = {
     "Albanna Conversation": "albanna.services.conversation_service.has_permission",
+    "Albanna Question": "albanna.services.questions.has_permission",
 }
 
 # The installer creates the Single settings row so the app is usable the

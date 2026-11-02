@@ -45,6 +45,16 @@ from typing import Any
 READ = "read"
 WRITE = "write"
 
+#: The tool that asks the reader a question.
+#:
+#: One name, in two places: the manifest declares it, and the chat service
+#: watches for it.  A question asked through any *other* tool is not a
+#: question — the reader is only offered a choice when the assistant asked
+#: for one in the app's own words.  The name lives here because the
+#: manifest may not import Frappe and the service may not import the
+#: implementations, and this is the one thing both sides have to agree on.
+ASK_QUESTION_TOOL = "ask_question"
+
 #: The longest tool result handed back to the model, in characters.
 #:
 #: A tool that returns a 200 KB document set does not become a better answer;
@@ -692,6 +702,71 @@ BULK_UPDATE_DOC = ToolSpec(
 )
 
 
+#: The question the assistant asks the reader.
+#:
+#: This is the one tool that does not act on the site's data.  It acts on
+#: the *conversation*: it puts a question in front of the reader and waits
+#: for their answer.  It is tiered as a read for that reason — the write
+#: rail is about changes to the site's business data, and a question
+#: changes none.  What it does write is a row of the app's own chat data,
+#: the same kind of thing the assistant's own reply writes, and the same
+#: kind of thing the reader's approval record writes.
+ASK_QUESTION = ToolSpec(
+    name=ASK_QUESTION_TOOL,
+    description=(
+        "Ask the reader a question, and wait for their answer in the chat. "
+        "Use this when the task cannot go on without a choice that only the "
+        "reader can make — which customer, which item, which of two ways. "
+        "The reader is shown the question and the options as a list they "
+        "choose from, and their choice comes back as their next message. "
+        "Offer the exact values you would use (a document's name, a field "
+        "value) as the option's value, and the readable name as its label. "
+        "Ask one question at a time, and offer only the candidates that "
+        "actually answer it. Do not answer it yourself and do not act on a "
+        "guess: once you have asked, the turn ends and the reader decides."
+    ),
+    parameters={
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "question": {
+                "type": "string",
+                "description": "The question, in the reader's own language.",
+            },
+            "options": {
+                "type": "array",
+                "description": (
+                    "The answers the reader may choose from — the candidates "
+                    "you found, and nothing else."
+                ),
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "label": {
+                            "type": "string",
+                            "description": "What the reader sees on the button.",
+                        },
+                        "value": {
+                            "type": "string",
+                            "description": (
+                                "The value behind it — the document's name, the "
+                                "field value. This is what you go on to use."
+                            ),
+                        },
+                    },
+                    "required": ["label", "value"],
+                },
+                "minItems": 2,
+                "maxItems": 50,
+            },
+        },
+        "required": ["question", "options"],
+    },
+    tier=READ,
+)
+
+
 #: Every tool the app knows about.
 TOOL_MANIFEST = ToolRegistry(
     [
@@ -706,6 +781,7 @@ TOOL_MANIFEST = ToolRegistry(
         CANCEL_DOC,
         AMEND_DOC,
         DELETE_DOC,
+        ASK_QUESTION,
     ]
 )
 

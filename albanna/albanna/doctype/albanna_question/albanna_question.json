@@ -1,0 +1,140 @@
+{
+    "actions": [],
+    "allow_rename": 0,
+    "creation": "2026-11-02 00:00:00.000000",
+    "doctype": "DocType",
+    "editable_grid": 1,
+    "engine": "InnoDB",
+    "field_order": [
+        "question",
+        "options",
+        "column_break_answer",
+        "status",
+        "answer",
+        "answer_value",
+        "conversation",
+        "user",
+        "turn",
+        "asked_at",
+        "answered_by",
+        "answered_at"
+    ],
+    "fields": [
+        {
+            "description": "What the assistant asked, in the reader's own words.",
+            "fieldname": "question",
+            "fieldtype": "Small Text",
+            "label": "Question",
+            "read_only": 1,
+            "reqd": 1
+        },
+        {
+            "description": "The answers the reader may choose from. A question with no options is a question the reader has to type the answer to.",
+            "fieldname": "options",
+            "fieldtype": "Table",
+            "label": "Options",
+            "options": "Albanna Question Option",
+            "read_only": 1
+        },
+        {
+            "fieldname": "column_break_answer",
+            "fieldtype": "Column Break"
+        },
+        {
+            "default": "Pending",
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "Status",
+            "options": "Pending\nAnswered\nCancelled",
+            "read_only": 1
+        },
+        {
+            "description": "What the reader chose, as they saw it.",
+            "fieldname": "answer",
+            "fieldtype": "Data",
+            "label": "Answer",
+            "read_only": 1
+        },
+        {
+            "description": "The value behind the answer — the document's name, the field value. This is what the assistant goes on to use.",
+            "fieldname": "answer_value",
+            "fieldtype": "Data",
+            "label": "Answer Value",
+            "read_only": 1
+        },
+        {
+            "description": "The thread this question was asked in.",
+            "fieldname": "conversation",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "Conversation",
+            "options": "Albanna Conversation",
+            "read_only": 1
+        },
+        {
+            "description": "The reader this question was asked of. Only this account may answer it.",
+            "fieldname": "user",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "User",
+            "options": "User",
+            "read_only": 1,
+            "reqd": 1
+        },
+        {
+            "description": "The turn that asked it.",
+            "fieldname": "turn",
+            "fieldtype": "Link",
+            "label": "Turn",
+            "options": "Albanna Chat Log",
+            "read_only": 1
+        },
+        {
+            "fieldname": "asked_at",
+            "fieldtype": "Datetime",
+            "label": "Asked At",
+            "read_only": 1
+        },
+        {
+            "fieldname": "answered_by",
+            "fieldtype": "Link",
+            "label": "Answered By",
+            "options": "User",
+            "read_only": 1
+        },
+        {
+            "fieldname": "answered_at",
+            "fieldtype": "Datetime",
+            "label": "Answered At",
+            "read_only": 1
+        }
+    ],
+    "index_web_pages_for_search": 0,
+    "links": [],
+    "modified": "2026-11-02 00:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "Albanna",
+    "name": "Albanna Question",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "if_owner": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "Albanna User",
+            "share": 1,
+            "write": 1
+        }
+    ],
+    "sort_field": "asked_at",
+    "sort_order": "DESC",
+    "states": []
+}

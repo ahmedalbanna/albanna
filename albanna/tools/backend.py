@@ -16,6 +16,7 @@ Two things are checked before every call:
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 import re
@@ -25,7 +26,7 @@ from typing import Any
 import frappe
 
 from albanna.core.tools import ToolSpec, compact_json, truncate_result
-from albanna.tools import erpnext
+from albanna.tools import erpnext, questions
 from albanna.tools.base import ToolContext, ToolResult
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ _BOUND_TOOLS: dict[str, Callable[..., str]] = {
     "cancel_doc": erpnext.cancel_doc,
     "amend_doc": erpnext.amend_doc,
     "delete_doc": erpnext.delete_doc,
+    "ask_question": questions.ask_question,
 }
 
 
@@ -75,6 +77,25 @@ def _summarise(payload: Any) -> str:
     return str(doctype)
 
 
+def _wants_context(handler: Callable[..., str]) -> bool:
+    """Does this handler want the port's context?
+
+    A tool that needs to know *which thread* it is in — the question tool
+    does, because a question belongs to a conversation — asks for the
+    context by declaring a ``context`` parameter.  The model never sees
+    it: it is in no schema, and the backend fills it in.
+
+    This is the one thing the backend adds to the call, and it is added
+    only where the handler asks for it, so the manifest's contract stays
+    the implementation's signature for every other tool.
+    """
+    try:
+        parameters = inspect.signature(handler).parameters
+    except (TypeError, ValueError):  # pragma: no cover - a C callable
+        return False
+    return "context" in parameters
+
+
 class ErpnextBackend:
     """Runs the ERPNext tools."""
 
@@ -97,7 +118,7 @@ class ErpnextBackend:
         self._assert_site(spec, context)
         self._assert_actor(spec, context)
 
-        raw = self._invoke(spec, handler, arguments)
+        raw = self._invoke(spec, handler, arguments, context)
         result = self._interpret(spec, raw)
         return self._explain_missing_doctype(result)
 
@@ -153,9 +174,12 @@ class ErpnextBackend:
         spec: ToolSpec,
         handler: Callable[..., str],
         arguments: dict[str, Any],
+        context: ToolContext,
     ) -> str:
         """Call the tool, turning anything it raises into an envelope."""
         try:
+            if _wants_context(handler):
+                return handler(**arguments, context=context)
             return handler(**arguments)
         except Exception as exc:  # noqa: BLE001 - a tool must not kill the turn
             logger.exception("Tool '%s' raised", spec.name)

@@ -7,7 +7,7 @@ and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Two passes are recorded here.
+Three passes are recorded here.
 
 The first looked at the feature drafts an agent had opened against the
 repository, the gates those drafts were measured against, the three
@@ -15,6 +15,11 @@ tests that had been
 skipping themselves in the CI because the site they ran on was not
 prepared for them, and the two settings the owner asked to change on
 the live site.
+
+The third added the one thing the assistant could not do: ask the reader
+a question and be answered with a choice, instead of a paragraph that
+ends in "please tell me which customer you meant" — a paragraph in which
+the reader has to retype a name the assistant had just looked up.
 
 ### Fixed
 
@@ -125,6 +130,30 @@ the live site.
 
 ### Added
 
+- **The assistant can ask the reader a question, and the reader answers
+  it by choosing.**  The assistant runs out of road in one way only: it
+  needs something the reader has and it does not — which customer,
+  which item, which of two ways.  Until now the only way to get it was
+  for the reader to *type* it, which means the reader has to know the
+  names, and the names are usually what the assistant was looking for
+  when it asked: the twenty-one customers, the twenty-two items.  So
+  the question is asked as a question.  The assistant offers the answers
+  it found, the reader picks one, and the thread carries on.
+  It is a tool in the manifest like every other — `ask_question` — so
+  it reaches the model the way everything else does, and it travels over
+  an MCP backend unchanged when one is plugged in (the app's tools are
+  in-process today; see ADR-0001).  It is a **row**, not a cache entry:
+  the reader may answer it tomorrow, and a question that expires while
+  the reader is thinking has thrown the question away.  And asking it
+  **ends the assistant's freedom to act** — the rest of that round's
+  tool calls do not run, and the next round is given no tools at all,
+  because a question that is asked and then acted on in the same breath
+  is a question that was never asked.  The answer is the reader's next
+  message: it names the question it answers (the card is not in the
+  transcript) and carries the option's value, because the value is the
+  one that goes into a document.  Only the reader the question names may
+  answer it, the first answer is the answer, and an answer the reader
+  was never offered is refused.
 - **`scripts/rebuild_test_site.sh` — a site the suite can run on, made
   from scratch.**  The bench's gate ran against a database dump of
   production taken by hand, on a day, and left to drift; the CI built
