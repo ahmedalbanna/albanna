@@ -65,6 +65,7 @@ from albanna.core.messages import (
     sanitize,
     system,
     tool_result,
+    unstored_note,
     user,
 )
 from albanna.core.prompt import PromptContext, build_system_prompt
@@ -177,10 +178,12 @@ class TurnRequest:
     page_context: str = ""
     stream: bool = False
     images: list[str] = field(default_factory=list)
-    #: Pre-stored file URLs, parallel to ``images``.  When an entry holds a
-    #: URL the turn reuses it instead of storing the bytes again — the
-    #: reader attached the file through "Upload to Frappé Files" before
-    #: sending the turn.
+    #: The addresses the bytes were already stored under, parallel to
+    #: ``images``: the address at one place is the address of the bytes
+    #: at the same place.  When an entry holds a URL the turn reuses the
+    #: file instead of storing the bytes again — the reader's file is
+    #: already on the site, and writing it twice leaves two files for one
+    #: picture.
     image_urls: list[str] = field(default_factory=list)
 
 
@@ -401,10 +404,10 @@ class ChatService:
         conversation = self._resolve_conversation(request, principal.user, question)
         self._conversation = conversation
 
-        # Images attached to the question are stored as Frappe Files so
-        # that the assistant can reference them by URL — for example, to set
-        # one as a document's image field.  The bytes travel with the turn
-        # only; what is stored is the files, not the chat.
+        # The files attached to the question are stored as Frappe Files so
+        # that the assistant can refer to them by address — for example, to
+        # set one as a document's image field.  The bytes travel with the
+        # turn; what is stored is the files, not the chat.
         image_urls, extra = self._store_attachments(request, principal.user)
         if extra:
             # The request is whole after this, not a half of one.  It is
@@ -803,10 +806,9 @@ class ChatService:
         them.  The note is empty when there was nothing to store, and
         the turn's page context is left alone then.
 
-        A file the reader already uploaded through "Upload to Frappé
-        Files" is reused rather than stored a second time: the bytes
-        have already been written, and writing them twice leaves two
-        files for one picture.
+        A file the reader already uploaded is reused rather than stored a
+        second time: the bytes have already been written, and writing
+        them twice leaves two files for one picture.
         """
         if not request.images:
             return [], ""
@@ -829,15 +831,9 @@ class ChatService:
             # claim about a file that does not exist.
             note = attachment_note(urls)
             if len(urls) < len(request.images):
-                note += (
-                    f"\n\n{len(request.images) - len(urls)} of the attachments "
-                    "could not be stored as files. Do not attempt to use them."
-                )
+                note += unstored_note(len(request.images) - len(urls), len(request.images))
         else:
-            note = (
-                f"\n\n{len(request.images)} attachment(s) could not be stored "
-                "as files. Do not attempt to use them."
-            )
+            note = unstored_note(len(request.images), len(request.images))
         return urls, note
 
     def _store_image(self, image: str, user: str) -> str:

@@ -20,6 +20,7 @@ from albanna.core.messages import (
     system,
     to_wire,
     tool_result,
+    unstored_note,
     user,
 )
 
@@ -182,11 +183,40 @@ def test_the_note_names_every_stored_file():
     note = attachment_note(["/private/files/a.png", "/private/files/b.pdf"])
     assert "/private/files/a.png" in note
     assert "/private/files/b.pdf" in note
-    assert "2 attachment(s)" in note
+    assert "2 attachments were stored" in note
 
 
 def test_no_note_without_a_stored_file():
     assert attachment_note([]) == ""
+
+
+def test_one_attachment_is_said_in_the_singular():
+    """ "1 attachment(s) is not a sentence, and a model reads it."""
+    note = attachment_note(["/private/files/a.png"])
+    assert "1 attachment was stored" in note
+    assert "attachment(s)" not in note
+
+
+def test_the_note_about_what_was_not_kept_says_how_many():
+    """The model is told how many of the attachments it was given are
+    unusable, so it does not try to use them."""
+    note = unstored_note(2, 3)
+    assert "2 of the attachments" in note
+    assert "Do not attempt to use them." in note
+
+
+def test_one_attachment_that_was_not_kept_is_said_in_the_singular():
+    note = unstored_note(1, 3)
+    assert "1 of the attachments" in note
+    assert "Do not attempt to use it." in note
+
+
+def test_none_of_the_attachments_kept_is_said_without_a_count():
+    """When nothing was kept, the model is told that all of them are
+    unusable — it knows how many it was given."""
+    note = unstored_note(3, 3)
+    assert "None of the attachments" in note
+    assert "attachment(s)" not in note
 
 
 def test_the_note_is_text_and_not_an_image_part():

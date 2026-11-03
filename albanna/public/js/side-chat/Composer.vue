@@ -13,8 +13,10 @@ const props = defineProps({
 	busy: { type: Boolean, default: false },
 	canChat: { type: Boolean, default: false },
 	//: The attachments the reader has chosen for this question.  Each is
-	//: ``{ dataUrl, name, type, size }``; a data URL travels with the turn
-	//: and the same file is stored as a Frappe File by the service.
+	//: an attachment as ``attachments.mjs`` builds it: the bytes the model
+	//: reads, the name the reader recognises, the type the site checks, the
+	//: size the reader is shown, the address the file was stored under, and
+	//: whether it was.
 	files: { type: Array, default: () => [] },
 	imageSupport: { type: Boolean, default: false },
 	maxImageSizeKb: { type: Number, default: 0 },
@@ -380,9 +382,7 @@ async function storeFile(file) {
 async function attachFiles(fileList) {
 	const added = await storeAll(fileList, storeFile, (entries) => {
 		// The composer's own list is read once, here, and written once,
-		// with every file that was stored.  A list written after each
-		// file lets a later upload overwrite an earlier one, and a reader
-		// who dropped three pictures finds one of them gone.
+		// with every file that was stored.
 		emit("update:files", [...props.files, ...entries]);
 	});
 	if (!added.length) return;

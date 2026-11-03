@@ -1033,11 +1033,13 @@ is private and belongs to the reader, and the right to put it on a
 document is Frappe's decision, not ours.
 
 **The browser refuses the same five types, before the bytes leave it.**
-The rule lives in one place in the browser and one on the server, and
-they agree: a reader who chooses a file the server would refuse is told
-so at once, in words that name the types, rather than after an upload
-that ends in a refusal.  A rule that only the server knows is a rule the
-reader learns by being refused.
+The site publishes the rule and the browser asks for it, so there is one
+list and it is the site's: a reader who chooses a file the server would
+refuse is told so at once, in words that name the types, rather than
+after an upload that ends in a refusal.  A rule that only the server
+knows is a rule the reader learns by being refused, and a rule the
+browser keeps a copy of is a rule that goes stale and lets a file
+through.
 
 **The stored address is a path on this site, not a picture.**  A later
 turn is told where the file went — in words, with its URL — and is never

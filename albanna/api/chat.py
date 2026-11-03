@@ -63,7 +63,7 @@ def _prepare_image(image: str, settings: Any) -> tuple[list[str], str]:
     ``image`` may be a single base64 data URL or a JSON-encoded list of
     them.  Returns ``(images, reason)``.  When ``reason`` is empty the
     images are ready to use; otherwise the turn must not start, and
-    :func:`_attachment_error` says why.
+    :func:`_read_attachments` says why.
 
     The reason is a code and not a sentence because this function is
     reached by the domain suite, which has no language to say a sentence

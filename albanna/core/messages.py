@@ -66,9 +66,31 @@ def attachment_note(urls: list[str]) -> str:
     if not urls:
         return ""
     listed = ", ".join(urls)
+    if len(urls) == 1:
+        return (
+            f"\n\n1 attachment was stored as a Frappe File: {listed}. "
+            "If the user asks to set it as a document's field, use its URL as the value."
+        )
     return (
-        f"\n\n{len(urls)} attachment(s) were stored as Frappe File(s): {listed}. "
-        f"If the user asks to set one as a document's field, use its URL as the value."
+        f"\n\n{len(urls)} attachments were stored as Frappe Files: {listed}. "
+        "If the user asks to set one as a document's field, use its URL as the value."
+    )
+
+
+def unstored_note(missing: int, total: int) -> str:
+    """The note that tells the model which attachments were not kept.
+
+    ``missing`` is how many could not be stored and ``total`` is how many
+    the turn carried.  The counts are written out, because "1
+    attachment(s)" is not a sentence, and a model reads these sentences.
+    """
+    if missing == total:
+        return "\n\nNone of the attachments could be stored as files. Do not attempt to use them."
+    if missing == 1:
+        return "\n\n1 of the attachments could not be stored as a file. Do not attempt to use it."
+    return (
+        f"\n\n{missing} of the attachments could not be stored as files. "
+        "Do not attempt to use them."
     )
 
 

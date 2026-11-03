@@ -7,7 +7,7 @@ and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-Three passes are recorded here.
+The passes are recorded here in the order they happened.
 
 The first looked at the feature drafts an agent had opened against the
 repository, the gates those drafts were measured against, the three
@@ -33,6 +33,16 @@ build. What the comparison surfaced, the same release fixes: a typed
 reply now **cancels** the thread's pending question instead of leaving
 it pinned; unanswered questions **expire** at an operator-set bound; and
 the card carries its own **"type your own answer"** box.
+
+The last read the attachment path — the paperclip, the paste, the drop,
+the file kept on the site — against three qualities: that it reads
+clearly, that it can be changed without touching half the app, and that
+it can be tested without a site.  What it found was that the rules an
+attachment follows were written four times and meant four different
+things.  They are written once now, on each side of the wire: the
+browser is told the site's rule rather than keeping a copy of it, the
+turn and the upload ask the same rule, and every refusal a reader can
+get is said in one table of sentences.
 
 ### Added
 
@@ -101,6 +111,33 @@ the card carries its own **"type your own answer"** box.
   question that receives several answers is refused rather than
   half-kept.  `Albanna Question` gains a `multiple` field; questions
   written before this change read as single.
+
+### Changed
+
+- **The browser and the server now refuse the same files.**  The browser
+  kept a list of the types it accepts and the server kept its own, and
+  nothing checked that they agreed.  The site publishes the types it
+  takes now, and the browser asks, so a reader is never asked to choose
+  a file the server will refuse.  The names in the refusal come out of
+  the site's own list, so the sentence cannot name types the site no
+  longer takes.
+
+- **A pasted file goes through the same rule as a dropped one.**  The
+  paste had a second rule of its own, which was looser — it took any
+  image and any PDF, while the site takes five types — so a pasted SVG
+  was taken by the composer and refused by the server, after the upload.
+  It is refused in the same words, before the bytes move.
+
+- **A turn refuses a file the site cannot keep, instead of asking the
+  model about it anyway.**  The bytes used to travel to the model and be
+  discovered at the storage that they could not be kept: the model was
+  asked about a file the site would not hold, and the reader was told
+  afterwards.
+
+- **The size ceiling is enforced where the bytes are written.**  It was
+  checked at the two doors that *asked* for a file and not at the one
+  that *wrote* it, so a caller that reached the write directly filled
+  the disk with whatever it liked.
 
 ### Fixed
 
