@@ -1010,16 +1010,20 @@ not.
 
 ### 51. A picture is a file in the site, and bytes on the wire
 
-An image attached to a question arrives twice.  The bytes travel with the
+A file attached to a question arrives twice.  The bytes travel with the
 turn as a data URL, because that is what a vision-capable provider can
-read.  The same picture is stored as a Frappe File under `Home/Albanna`
+read.  The same file is stored as a Frappe File under `Home/Albanna`
 with a hashed name, and its URL is put into the page context so the
-assistant can set that picture on a document.
+assistant can set that file on a document.
 
 Storing it matters for one reason: a file has an address that outlives
-the request that created it, so the picture is still there after a reload
-or a cleared cache, and the same picture can be attached to two records
+the request that created it, so the file is still there after a reload
+or a cleared cache, and the same file can be attached to two records
 without being uploaded twice.
+
+A question may carry more than one file, and every one of them is kept:
+a turn that carried two pictures and could not read the second must not
+reach the model carrying the first, because the reader attached both.
 
 The upload is narrow on purpose.  Five media types are accepted — PNG,
 JPEG, WebP, GIF and PDF — and anything else is rejected rather than
@@ -1027,6 +1031,13 @@ stored under a guessed extension, because a broad accept would happily
 file `image/svg+xml` (which executes as HTML) away as a `.bin`.  The file
 is private and belongs to the reader, and the right to put it on a
 document is Frappe's decision, not ours.
+
+**The stored address is a path on this site, not a picture.**  A later
+turn is told where the file went — in words, with its URL — and is never
+handed the path as an image part: a vision provider cannot fetch
+`/private/files/albanna-8f2a1c.png`, the request is refused, and the
+second turn of every conversation with an attachment dies with it.  The
+reader is not asked to attach the same picture twice.
 
 A provider that cannot see images is told so, and the reader is told the
 image was dropped rather than the picture travelling silently and

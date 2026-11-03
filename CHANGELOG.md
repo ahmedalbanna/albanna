@@ -36,6 +36,28 @@ the card carries its own **"type your own answer"** box.
 
 ### Added
 
+- **A question may carry more than one file, and the reader can see them
+  all.**  The composer took one picture at a time; it now takes a list,
+  and every attachment is shown in the transcript beside the reader's
+  words rather than only the first.  A turn that carried two pictures and
+  could not read the second is refused outright rather than going to the
+  model carrying the first: the reader attached both, and the model would
+  answer about half of what it was given.
+
+- **"Upload to Frappé Files".**  The reader can store an attached file
+  under `Home/Albanna` *before* asking the question, so the picture is
+  already a file on the site when the question is asked — and the turn
+  reuses that file instead of writing the same bytes twice.  The panel is
+  a card above the composer, not a modal over the Desk: the reader is
+  choosing where a file goes while still reading the thread, the way the
+  approval card does.  It closes on Escape and on a click outside it, and
+  the focus goes back to the button that opened it.
+
+- **Pinned conversations have their own group.**  A pinned thread is
+  pulled out of the date buckets and shown at the top of the drawer, so
+  it stays visible however old it is.  The rest keep their order inside
+  their date group.
+
 - **Unanswered questions expire.**  A question with no deadline is a card
   pinned to a thread for as long as the site lives, and a question
   nobody could act on forever is not patience — it is clutter that lies
@@ -72,6 +94,36 @@ the card carries its own **"type your own answer"** box.
   written before this change read as single.
 
 ### Fixed
+
+- **Every streaming turn failed.**  The worker read the turn's
+  attachments out of the marker the endpoint leaves behind, and the
+  function that reads them was never written — so every question the
+  side chat was asked ended with *"the turn could not finish"*.  The
+  marker is read now, and a turn queued before the change (which parks a
+  single bare data URL rather than a list) still runs.
+
+- **The second turn of a conversation with an attachment died with the
+  first.**  The stored address of a file is a path on this site —
+  `/private/files/albanna-8f2a1c.png` — and it was handed to the model
+  as a picture.  A vision provider cannot fetch a path it has no way to
+  reach, the request is refused, and the turn after the one with the
+  attachment is the turn that fails.  The address now travels in words,
+  which is what it is for: the model is told where the file went, and
+  the reader is not asked to attach the same picture twice.
+
+- **The reader's own attachment was invisible.**  The question went to
+  the model with the picture, the picture was stored, and the transcript
+  showed the words alone: the panel was reading the field the reply
+  filled in, and the echo of the sent question had filled in a
+  different one.  The attachment is shown now — every one of them.
+
+- **The endpoint that uploads a file took the reader's whole file into
+  the request log.**  The log is read by operators and copied off the
+  host, and a picture of a payslip does not belong there.  The parameter
+  is redacted, the folder is the app's rather than the caller's (a
+  folder is a path on the server), and every refusal is now said in
+  words the reader can act on — including the site's own ceiling on a
+  file, which the browser honoured and the server did not.
 
 - **The app's own answer about what it could not read never reached the
   model.**  When a listing of Communications came back short, the tool
