@@ -14,6 +14,7 @@ from albanna.core.messages import (
     ToolCall,
     as_plain_history,
     assistant,
+    attachment_note,
     from_wire,
     sanitize,
     system,
@@ -106,13 +107,25 @@ def test_to_wire_and_from_wire_agree():
     assert len(from_wire(to_wire(messages))) == len(messages)
 
 
-def test_to_wire_emits_vision_shape_when_image_set():
+def test_to_wire_emits_vision_shape_when_an_image_is_set():
     image = "data:image/png;base64,AAAA"
-    message = user("describe this", image=image)
+    message = user("describe this", images=[image])
     wire = message.to_wire()
     assert isinstance(wire["content"], list)
     assert wire["content"][0] == {"type": "text", "text": "describe this"}
     assert wire["content"][1] == {"type": "image_url", "image_url": {"url": image}}
+
+
+def test_to_wire_carries_several_images():
+    first = "data:image/png;base64,AAAA"
+    second = "data:image/jpeg;base64,BBBB"
+    wire = user("these two", images=[first, second]).to_wire()
+    assert [
+        part["image_url"]["url"] for part in wire["content"] if part["type"] == "image_url"
+    ] == [
+        first,
+        second,
+    ]
 
 
 def test_to_wire_emits_plain_string_when_no_image():
@@ -124,21 +137,61 @@ def test_to_wire_emits_plain_string_when_no_image():
 
 def test_from_wire_round_trips_a_vision_message():
     image = "data:image/png;base64,AAAA"
-    original = user("describe this", image=image)
+    original = user("describe this", images=[image])
     parsed = from_wire([original.to_wire()])[0]
     assert parsed.content == "describe this"
-    assert parsed.image == image
+    assert parsed.images == [image]
+
+
+def test_from_wire_round_trips_several_images():
+    first = "data:image/png;base64,AAAA"
+    second = "data:image/jpeg;base64,BBBB"
+    original = user("these two", images=[first, second])
+    parsed = from_wire([original.to_wire()])[0]
+    assert parsed.images == [first, second]
 
 
 def test_from_wire_handles_text_only_content_in_a_list():
     wire = {"role": "user", "content": [{"type": "text", "text": "hi"}]}
     parsed = Message.from_wire(wire)
     assert parsed.content == "hi"
-    assert parsed.image is None
+    assert parsed.images == []
 
 
 def test_as_plain_history_carries_the_image():
     image = "data:image/png;base64,AAAA"
-    messages = [user("q", image=image), assistant("a")]
+    messages = [user("q", images=[image]), assistant("a")]
     plain = as_plain_history(messages)
-    assert plain[0].image == image
+    assert plain[0].images == [image]
+
+
+def test_merging_two_questions_keeps_both_attachments():
+    """Two questions in a row become one message, and a picture attached
+    to either of them is still attached to the message that is sent."""
+    first = "data:image/png;base64,AAAA"
+    second = "data:image/jpeg;base64,BBBB"
+    merged = sanitize([user("q", images=[first]), user("r", images=[second])])
+    assert len(merged) == 1
+    assert merged[0].images == [first, second]
+
+
+# -- the note about where the attachments went ----------------------------
+
+
+def test_the_note_names_every_stored_file():
+    note = attachment_note(["/private/files/a.png", "/private/files/b.pdf"])
+    assert "/private/files/a.png" in note
+    assert "/private/files/b.pdf" in note
+    assert "2 attachment(s)" in note
+
+
+def test_no_note_without_a_stored_file():
+    assert attachment_note([]) == ""
+
+
+def test_the_note_is_text_and_not_an_image_part():
+    """The URL is a path on this site.  A vision provider cannot read a
+    path it has no way to fetch, so the URL travels as words."""
+    note = attachment_note(["/private/files/a.png"])
+    assert "image_url" not in note
+    assert "/private/files/a.png" in note

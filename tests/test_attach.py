@@ -6,16 +6,20 @@ The rules under test:
 - bytes that cannot be decoded are an error the caller sees, never a
   silent text-only turn;
 - the site's size ceiling is honoured;
+- a turn may carry several attachments, and each is carried whole;
+- the marker a parked turn leaves behind can be read back;
 - storage accepts only the types on the allow-list, and names them with
   the extension the type actually means.
 """
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 from albanna.api.chat import _prepare_image
-from albanna.services.chat_service import ChatService
+from albanna.services.chat_job import _json_list
+from albanna.services.chat_service import ATTACHABLE, ChatService
 
 # "hi" in base64.
 HELLO = "aGVsbG8="
@@ -32,9 +36,9 @@ def _data_url(mime="image/png", payload=HELLO):
 # -- _prepare_image ------------------------------------------------------
 
 
-def test_empty_image_passes_through():
-    image, error = _prepare_image("", _settings())
-    assert image == ""
+def test_no_attachment_passes_through():
+    images, error = _prepare_image("", _settings())
+    assert images == []
     assert error == ""
 
 
@@ -45,59 +49,116 @@ def test_off_site_says_so_instead_of_dropping_it():
     received no image — answered "you have not provided one".  That is a
     lie the reader could not see through, so the refusal is explicit now.
     """
-    image, error = _prepare_image(_data_url(), _settings(image_support=False))
-    assert image == ""
+    images, error = _prepare_image(_data_url(), _settings(image_support=False))
+    assert images == []
     assert "not enabled" in error
 
 
 def test_a_good_image_passes():
-    image, error = _prepare_image(_data_url(), _settings())
-    assert image == _data_url()
+    images, error = _prepare_image(_data_url(), _settings())
+    assert images == [_data_url()]
     assert error == ""
 
 
 def test_undecodable_payload_is_an_error():
-    image, error = _prepare_image("data:image/png;base64,!!!!", _settings())
-    assert image == ""
+    images, error = _prepare_image("data:image/png;base64,!!!!", _settings())
+    assert images == []
     assert error != ""
 
 
 def test_oversize_is_an_error_naming_the_ceiling():
     settings = _settings(max_image_size_kb=1)  # 1 KB
     big = "data:image/png;base64," + "A" * 4096
-    image, error = _prepare_image(big, settings)
-    assert image == ""
+    images, error = _prepare_image(big, settings)
+    assert images == []
     assert "1 KB" in error
 
 
 def test_image_within_the_ceiling_passes():
     settings = _settings(max_image_size_kb=2048)
-    image, error = _prepare_image(_data_url(), settings)
+    images, error = _prepare_image(_data_url(), settings)
     assert error == ""
-    assert image
+    assert images
 
 
 def test_zero_ceiling_means_no_ceiling():
     settings = _settings(max_image_size_kb=0)
-    image, error = _prepare_image(_data_url(), settings)
+    images, error = _prepare_image(_data_url(), settings)
     assert error == ""
+
+
+# -- several attachments -------------------------------------------------
+
+
+def test_several_attachments_are_carried_whole():
+    """A reader may attach more than one file, and each is kept."""
+    first = _data_url("image/png")
+    second = _data_url("application/pdf")
+    images, error = _prepare_image(json.dumps([first, second]), _settings())
+    assert images == [first, second]
+    assert error == ""
+
+
+def test_a_single_attachment_still_arrives_as_one():
+    """The turn carries a list, but a reader who attached one file did
+    not attach a list of one by any choice of theirs."""
+    images, error = _prepare_image(json.dumps([_data_url()]), _settings())
+    assert len(images) == 1
+    assert error == ""
+
+
+def test_one_bad_attachment_stops_the_whole_turn():
+    """A turn that carries two files and cannot read one of them must not
+    go to the model as a turn with one file: the reader believes the
+    model saw both."""
+    images, error = _prepare_image(
+        json.dumps([_data_url(), "data:image/png;base64,!!!!"]), _settings()
+    )
+    assert images == []
+    assert error != ""
+
+
+def test_an_entry_that_is_not_a_string_is_refused():
+    images, error = _prepare_image(json.dumps([_data_url(), 7]), _settings())
+    assert images == []
+    assert error != ""
+
+
+# -- the parked marker ---------------------------------------------------
+
+
+def test_the_marker_reads_a_list_back():
+    assert _json_list(json.dumps(["a", "b"])) == ["a", "b"]
+
+
+def test_the_marker_reads_a_bare_attachment_back():
+    """A turn queued before the marker held a list parks one bare data
+    URL, and it must still run."""
+    assert _json_list("data:image/png;base64,AAAA") == ["data:image/png;base64,AAAA"]
+
+
+def test_the_marker_reads_nothing_as_nothing():
+    assert _json_list("") == []
+    assert _json_list(None) == []
+    assert _json_list(7) == []
+    assert _json_list("[not json") == []
 
 
 # -- the storage allow-list ---------------------------------------------
 
 
 def test_allowed_types_spell_their_own_extensions():
-    assert ChatService.ATTACHABLE["image/png"] == ".png"
-    assert ChatService.ATTACHABLE["image/jpeg"] == ".jpg"
-    assert ChatService.ATTACHABLE["image/webp"] == ".webp"
-    assert ChatService.ATTACHABLE["image/gif"] == ".gif"
-    assert ChatService.ATTACHABLE["application/pdf"] == ".pdf"
+    assert ATTACHABLE["image/png"] == ".png"
+    assert ATTACHABLE["image/jpeg"] == ".jpg"
+    assert ATTACHABLE["image/webp"] == ".webp"
+    assert ATTACHABLE["image/gif"] == ".gif"
+    assert ATTACHABLE["application/pdf"] == ".pdf"
 
 
 def test_unknown_types_are_not_on_the_list():
     """An svg executes scripts; html fakes the desk. Neither rides along."""
-    assert "image/svg+xml" not in ChatService.ATTACHABLE
-    assert "text/html" not in ChatService.ATTACHABLE
+    assert "image/svg+xml" not in ATTACHABLE
+    assert "text/html" not in ATTACHABLE
 
 
 def test_storage_rejects_an_unlisted_type():
