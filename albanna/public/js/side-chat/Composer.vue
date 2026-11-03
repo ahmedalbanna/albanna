@@ -581,7 +581,7 @@ async function onChooseFile() {
 			<input
 				ref="fileInput"
 				type="file"
-				accept="image/*,application/pdf"
+				:accept="attachableMimes.join(',')"
 				class="albanna-chat__file-input"
 				@change="onChooseFile"
 			/>

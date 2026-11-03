@@ -28,8 +28,9 @@ browser asks ``options()`` which types it takes.  A browser that accepts
 a file the server would refuse is a reader who waited for an upload that
 was going to be refused.
 
-An SVG is the case that matters.  It is an image, the file picker shows
-it as one, and it cannot be stored: it executes as HTML in a browser.
+An SVG is the case that matters.  It is an image — the reader's computer
+calls it one, and drops it into the composer as one — and it cannot be
+stored: it executes as HTML in a browser.
 
 One rule, one place
 -------------------
