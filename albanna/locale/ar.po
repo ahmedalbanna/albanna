@@ -113,6 +113,10 @@ msgid "Could not delete that conversation."
 msgstr "تعذّر حذف تلك المحادثة."
 
 
+msgid "Could not change the pin on that conversation."
+msgstr "تعذّر تغيير تثبيت تلك المحادثة."
+
+
 msgid "Ask a question."
 msgstr "اطرح سؤالاً."
 

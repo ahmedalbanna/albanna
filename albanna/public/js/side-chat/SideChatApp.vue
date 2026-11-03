@@ -1960,7 +1960,11 @@ async function pinConversation(conversation, pinned) {
 			pinned: pinned ? 1 : 0,
 		});
 	} catch (failure) {
+		// The icon goes back to what it was, and the reader is told why:
+		// a pin that failed in silence is a pin the reader believes is on.
+		// The drawer's other actions say what happened; this one did not.
 		conversation.pinned = !pinned;
+		state.error = failureText(failure, __("Could not change the pin on that conversation."));
 	}
 }
 
