@@ -31,6 +31,15 @@ was going to be refused.
 An SVG is the case that matters.  It is an image, the file picker shows
 it as one, and it cannot be stored: it executes as HTML in a browser.
 
+One rule, one place
+-------------------
+
+:func:`check_attachment` decides whether one file may be attached, and
+every caller asks it.  The browser asks the site what the rule is rather
+than keeping its own copy, so a rule that changed changes in one place,
+and a reader refused in the browser and allowed on the server cannot
+happen.
+
 This module is the *rule*, and never the sentence.  It has no language of
 its own, because it is imported by code that has no language of its own:
 a rule that carries its own wording is a rule that has to be translated
@@ -42,20 +51,40 @@ from __future__ import annotations
 
 import base64
 import json
+from dataclasses import dataclass
 from typing import Any
 
-#: The file types an attachment may carry, and the extension each one
-#: means.  Anything else is rejected rather than stored under a guessed
-#: extension: a broad accept would happily file ``image/svg+xml`` (which
-#: executes as HTML) or ``text/html`` away as a ``.bin`` name the
-#: chromium postfix would not.
-ATTACHABLE_TYPES: dict[str, str] = {
-    "image/png": ".png",
-    "image/jpeg": ".jpg",
-    "image/webp": ".webp",
-    "image/gif": ".gif",
-    "application/pdf": ".pdf",
-}
+
+@dataclass(frozen=True)
+class AttachableType:
+    """One file type an attachment may carry.
+
+    The three names are one type seen three ways: what the browser calls
+    it, what the stored file is called, and what a sentence calls it when
+    it names the types the reader may attach.
+    """
+
+    #: The type the browser sends and the file itself carries.
+    mime: str
+
+    #: The extension the stored file gets, which is the type's own.
+    extension: str
+
+    #: The name the type is called by when a sentence names it.
+    name: str
+
+
+#: The file types an attachment may carry.  Anything else is rejected
+#: rather than stored under a guessed extension: a broad accept would
+#: happily file ``image/svg+xml`` (which executes as HTML) or
+#: ``text/html`` away as a ``.bin`` name the chromium postfix would not.
+ATTACHABLE_TYPES: tuple[AttachableType, ...] = (
+    AttachableType("image/png", ".png", "PNG"),
+    AttachableType("image/jpeg", ".jpg", "JPEG"),
+    AttachableType("image/webp", ".webp", "WebP"),
+    AttachableType("image/gif", ".gif", "GIF"),
+    AttachableType("application/pdf", ".pdf", "PDF"),
+)
 
 #: The site has attachments switched off.  Nothing is carried, and the
 #: reader is told: dropping the attachment quietly leaves the reader
@@ -66,8 +95,45 @@ DISABLED = "disabled"
 #: are not what they claim to be.
 UNREADABLE = "unreadable"
 
+#: The attachment is not one of the types that may be attached.
+UNSUPPORTED_TYPE = "unsupported_type"
+
 #: The attachment is over the site's ceiling.
 TOO_LARGE = "too_large"
+
+#: No file was given at all.
+REQUIRED = "required"
+
+#: The file could not be written.  This one is not a rule about the
+#: file: it is the site failing to keep it.
+NOT_STORED = "not_stored"
+
+
+def attachable_type(mime: str) -> AttachableType | None:
+    """The type the file is, if it is one this site attaches.
+
+    :param mime the type the file claims to be
+    :returns the type, or ``None`` when it is not one that may be attached
+    """
+    for candidate in ATTACHABLE_TYPES:
+        if candidate.mime == mime:
+            return candidate
+    return None
+
+
+def attachable_mimes() -> tuple[str, ...]:
+    """The types an attachment may carry, in the order they are named."""
+    return tuple(candidate.mime for candidate in ATTACHABLE_TYPES)
+
+
+def attachable_names() -> tuple[str, ...]:
+    """The names the types are called by, in the order they are named.
+
+    These are the names a sentence uses when it tells the reader which
+    types it takes.  They are product names and are not translated, which
+    is why a sentence may carry them as a list.
+    """
+    return tuple(candidate.name for candidate in ATTACHABLE_TYPES)
 
 
 def read_attachment_list(value: Any) -> tuple[list[str], bool]:
@@ -120,7 +186,7 @@ def decode_data_url(data_url: str) -> tuple[bytes, str]:
 
     Returns ``(b"", "")`` when the payload cannot be read.  The type is
     the one the URL claims, and it is only a claim: whether it may be
-    stored is :data:`ATTACHABLE_TYPES`'s decision, not this function's.
+    stored is :func:`check_attachment`'s decision, not this function's.
 
     A payload without a ``data:`` header is not a data URL.  The header is
     what says what the bytes are, and the file rules are a list of types:
@@ -143,13 +209,31 @@ def decode_data_url(data_url: str) -> tuple[bytes, str]:
     return raw, mime
 
 
+def check_attachment(mime: str, size: int, max_bytes: int = 0) -> str:
+    """Why one attachment may not be carried, or ``""`` when it may.
+
+    This is the rule.  Every caller — the turn, the upload endpoint, the
+    storage door — asks this function, so a file that is refused in one
+    place is refused in all of them for the same reason.
+
+    :param mime the type the file claims to be
+    :param size the file's size in bytes
+    :param max_bytes the site's ceiling in bytes; zero means no ceiling
+    :returns the reason, or an empty string when the file may be carried
+    """
+    if attachable_type(mime) is None:
+        return UNSUPPORTED_TYPE
+    if max_bytes and size > max_bytes:
+        return TOO_LARGE
+    return ""
+
+
 def check_attachments(value: Any, max_bytes: int = 0) -> tuple[list[str], str]:
     """The attachments a field holds, and why they may not be carried.
 
     Returns ``(images, reason)``.  ``reason`` is empty when the
-    attachments may be carried, and otherwise names the rule they broke:
-    :data:`UNREADABLE` or :data:`TOO_LARGE`.  The wording is the
-    caller's.
+    attachments may be carried, and otherwise names the rule they broke.
+    The wording is the caller's.
 
     A field that cannot be read yields **no** attachments, not the ones
     read so far.  A turn that carried two pictures and could not read the
@@ -164,11 +248,12 @@ def check_attachments(value: Any, max_bytes: int = 0) -> tuple[list[str], str]:
         return [], UNREADABLE
 
     for entry in images:
-        raw, _mime = decode_data_url(entry)
+        raw, mime = decode_data_url(entry)
         if not raw:
             return [], UNREADABLE
-        if max_bytes and len(raw) > max_bytes:
-            return [], TOO_LARGE
+        reason = check_attachment(mime, len(raw), max_bytes)
+        if reason:
+            return [], reason
 
     return images, ""
 

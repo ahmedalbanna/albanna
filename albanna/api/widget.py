@@ -20,7 +20,14 @@ from typing import Any
 import frappe
 from frappe import _
 
-from albanna.core.attachments import ATTACHABLE_TYPES, decode_data_url
+from albanna.core.attachments import (
+    DISABLED,
+    NOT_STORED,
+    REQUIRED,
+    UNREADABLE,
+    check_attachment,
+    decode_data_url,
+)
 from albanna.core.authority import Authority
 from albanna.permissions import require_chat_access
 from albanna.privacy import redacted_request_text
@@ -32,10 +39,9 @@ from albanna.services.toolset import tool_registry
 def upload_file(file_data_url: str = "") -> dict[str, Any]:
     """Store an attached file as a private Frappe File.
 
-    Used by "Upload to Frappé Files" so the file lands under Home/Albanna
-    before the turn is sent.  The same bytes still travel with the turn as
-    a data URL for the model; this is what lets the reader set the file on
-    a document later.
+    The file lands under Home/Albanna before the turn is sent.  The same
+    bytes still travel with the turn as a data URL for the model; this is
+    what lets the reader set the file on a document later.
 
     The parameter carries the reader's whole file, so it is redacted from
     the request log before the body runs: the log is read by operators and
@@ -47,51 +53,40 @@ def upload_file(file_data_url: str = "") -> dict[str, Any]:
     a browser gets to name.
 
     Every refusal is said in words the reader can act on, and they are
-    the same words the browser says: a reader refused here and allowed
-    there cannot tell which rule they broke.
+    the words every other door says and the words the browser says: a
+    reader refused here and allowed there cannot tell which rule they
+    broke.  The rule itself is asked, not written here.
     """
     require_chat_access()
-    from albanna.services.chat_service import (
+    from albanna.services.attachments import (
+        ceiling_in_kb,
         max_attachment_bytes,
+        refusal_sentence,
         store_attached_bytes,
     )
     from albanna.services.settings_service import get_settings
 
     if not file_data_url:
-        frappe.throw(_("A file is required."), frappe.ValidationError)
+        frappe.throw(refusal_sentence(REQUIRED), frappe.ValidationError)
 
     settings = get_settings()
     if not getattr(settings, "image_support", False):
-        frappe.throw(
-            _("Image attachments are not enabled on this site."),
-            frappe.ValidationError,
-        )
+        frappe.throw(refusal_sentence(DISABLED), frappe.ValidationError)
 
     raw, mime = decode_data_url(file_data_url)
     if not raw:
-        frappe.throw(_("The file could not be read."), frappe.ValidationError)
-    if mime not in ATTACHABLE_TYPES:
-        # The types are named, because "only images" is not an answer a
-        # reader can act on: an SVG *is* an image, and an SVG cannot be
-        # stored, because it executes as HTML.
-        frappe.throw(
-            _("Only PNG, JPEG, WebP, GIF and PDF files can be attached."),
-            frappe.ValidationError,
-        )
+        frappe.throw(refusal_sentence(UNREADABLE), frappe.ValidationError)
 
-    ceiling = max_attachment_bytes()
-    if ceiling and len(raw) > ceiling:
-        # The number is a placeholder, not part of the sentence: a
-        # sentence with a number baked into it is a sentence the
-        # translator cannot translate.
+    reason = check_attachment(mime, len(raw), max_attachment_bytes())
+    if reason:
         frappe.throw(
-            _("The file is larger than {0} KB.").format(getattr(settings, "max_image_size_kb", 0)),
+            refusal_sentence(reason, ceiling_in_kb(settings)),
             frappe.ValidationError,
         )
 
     result = store_attached_bytes(raw, mime, frappe.session.user or "")
     if not result:
-        frappe.throw(_("The file could not be stored."), frappe.ValidationError)
+        frappe.throw(refusal_sentence(NOT_STORED), frappe.ValidationError)
     return result
 
 

@@ -28,6 +28,7 @@ from albanna.services.conversation_service import (
     ensure_conversation,
     load_messages,
 )
+from albanna.services.settings_service import get_settings
 from albanna.tests.base import AlbannaTestCase
 
 PNG = "data:image/png;base64,aGVsbG8="  # "hello", which is not a PNG: bytes are enough here
@@ -111,6 +112,58 @@ class TestAdoptingAnAttachment(AlbannaTestCase):
 
         changes = {"description": "/files/albanna-abc.png"}
         self.assertEqual(_adopt_attachments(_Doc(), changes), changes)
+
+
+class TestTheStorageDoor(AlbannaTestCase):
+    """The door that writes the bytes is the door that enforces the rule.
+
+    The browser checks the rule too, and the upload endpoint checks it
+    again before it calls.  But the browser is not the one that fills the
+    disk, and an endpoint that takes a whole file in one parameter is an
+    endpoint somebody will call directly — so the write itself refuses
+    what the rule refuses.
+    """
+
+    def setUp(self):
+        self._ceiling = frappe.db.get_single_value("Albanna Settings", "max_image_size_kb")
+
+    def tearDown(self):
+        self._set_ceiling(self._ceiling)
+        super().tearDown()
+
+    def _set_ceiling(self, kilobytes):
+        """The site's ceiling, and the settings that remember it.
+
+        The settings are read once per request and remembered, so a test
+        that changes the ceiling has to say so again — a ceiling the rule
+        did not see is a ceiling the rule did not enforce.
+        """
+        frappe.db.set_single_value("Albanna Settings", "max_image_size_kb", kilobytes)
+        get_settings(refresh=True)
+
+    def test_a_type_the_site_does_not_take_is_refused_by_the_write(self):
+        """An svg executes as HTML in a browser, so it is not written."""
+        from albanna.services.attachments import store_attached_bytes
+
+        self.assertIsNone(
+            store_attached_bytes(b"<svg></svg>", "image/svg+xml", frappe.session.user or "")
+        )
+
+    def test_a_file_over_the_ceiling_is_refused_by_the_write(self):
+        from albanna.services.attachments import store_attached_bytes
+
+        self._set_ceiling(1)
+        self.assertIsNone(store_attached_bytes(b"x" * 2048, "image/png", frappe.session.user or ""))
+
+    def test_a_file_within_the_ceiling_is_stored(self):
+        from albanna.services.attachments import store_attached_bytes
+
+        self._set_ceiling(1)
+        stored = store_attached_bytes(b"x" * 16, "image/png", frappe.session.user or "")
+        self.assertIsNotNone(stored)
+        self.addCleanup(
+            frappe.delete_doc, "File", stored["name"], force=True, ignore_permissions=True
+        )
 
 
 class TestTheAttachmentInTheNextTurn(AlbannaTestCase):

@@ -23,10 +23,14 @@ from types import SimpleNamespace
 
 from albanna.api.chat import _prepare_image, _read_attachments
 from albanna.core.attachments import (
-    ATTACHABLE_TYPES,
     DISABLED,
     TOO_LARGE,
     UNREADABLE,
+    UNSUPPORTED_TYPE,
+    attachable_mimes,
+    attachable_names,
+    attachable_type,
+    check_attachment,
     check_attachments,
     decode_data_url,
     read_attachment_list,
@@ -251,7 +255,7 @@ def test_the_type_is_read_in_lower_case():
 # -- the rule ------------------------------------------------------------
 
 
-def test_the_rule_names_the_reason_it_refused():
+def test_the_field_rule_names_the_reason_it_refused():
     assert check_attachments(_data_url(), 0) == ([_data_url()], "")
     assert check_attachments("[not json", 0) == ([], UNREADABLE)
     assert check_attachments(_data_url(), 1) == ([], TOO_LARGE)
@@ -282,17 +286,59 @@ def test_the_marker_reads_nothing_as_nothing():
 
 
 def test_allowed_types_spell_their_own_extensions():
-    assert ATTACHABLE_TYPES["image/png"] == ".png"
-    assert ATTACHABLE_TYPES["image/jpeg"] == ".jpg"
-    assert ATTACHABLE_TYPES["image/webp"] == ".webp"
-    assert ATTACHABLE_TYPES["image/gif"] == ".gif"
-    assert ATTACHABLE_TYPES["application/pdf"] == ".pdf"
+    assert attachable_type("image/png").extension == ".png"
+    assert attachable_type("image/jpeg").extension == ".jpg"
+    assert attachable_type("image/webp").extension == ".webp"
+    assert attachable_type("image/gif").extension == ".gif"
+    assert attachable_type("application/pdf").extension == ".pdf"
 
 
 def test_unknown_types_are_not_on_the_list():
     """An svg executes scripts; html fakes the desk. Neither rides along."""
-    assert "image/svg+xml" not in ATTACHABLE_TYPES
-    assert "text/html" not in ATTACHABLE_TYPES
+    assert attachable_type("image/svg+xml") is None
+    assert attachable_type("text/html") is None
+
+
+def test_the_mimes_are_the_mimes_the_browser_sends():
+    """The list the browser is given is this list, not a copy of it."""
+    assert attachable_mimes() == (
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "image/gif",
+        "application/pdf",
+    )
+
+
+def test_the_names_are_the_names_a_sentence_uses():
+    """The names are what a refusal calls the types, and they are the
+    names the types are known by — not a list of extensions."""
+    assert attachable_names() == ("PNG", "JPEG", "WebP", "GIF", "PDF")
+
+
+# -- the one rule --------------------------------------------------------
+
+
+def test_the_rule_lets_a_good_file_through():
+    assert check_attachment("image/png", 10, 0) == ""
+    assert check_attachment("image/png", 10, 10) == ""
+
+
+def test_the_rule_names_the_reason_it_refused():
+    assert check_attachment("image/svg+xml", 10, 0) == UNSUPPORTED_TYPE
+    assert check_attachment("image/png", 10, 5) == TOO_LARGE
+
+
+def test_a_ceiling_of_zero_is_no_ceiling():
+    assert check_attachment("image/png", 10_000, 0) == ""
+
+
+def test_a_type_the_site_does_not_take_stops_the_turn():
+    """The turn and the upload endpoint ask the same rule, so a file one
+    of them refuses is refused by both."""
+    images, reason = _prepare_image(_data_url("image/svg+xml"), _settings())
+    assert images == []
+    assert reason == UNSUPPORTED_TYPE
 
 
 def test_storage_rejects_an_unlisted_type():

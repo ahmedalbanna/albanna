@@ -32,12 +32,7 @@ from typing import Any
 import frappe
 from frappe import _
 
-from albanna.core.attachments import (
-    DISABLED,
-    TOO_LARGE,
-    check_attachments,
-    read_attachment_list,
-)
+from albanna.core.attachments import DISABLED, check_attachments, read_attachment_list
 from albanna.core.prompt import build_page_context
 from albanna.permissions import require_chat_access
 from albanna.privacy import redacted_request_text
@@ -101,29 +96,13 @@ def _read_attachments(
     the turn then stores the bytes itself, which is the safe answer to a
     field it does not understand.
     """
+    from albanna.services.attachments import ceiling_in_kb, refusal_sentence
+
     images, reason = _prepare_image(image, settings)
     if reason:
-        return [], [], _attachment_error(reason, settings)
+        return [], [], refusal_sentence(reason, ceiling_in_kb(settings))
     stored, _readable = read_attachment_list(image_urls)
     return images, stored, ""
-
-
-def _attachment_error(reason: str, settings: Any) -> str:
-    """The sentence a refusal is shown to the reader in.
-
-    The same sentences the upload endpoint says, so a reader refused here
-    and allowed there cannot tell which rule they broke.
-    """
-    if reason == DISABLED:
-        return _("Image attachments are not enabled on this site.")
-    if reason == TOO_LARGE:
-        # The number is a placeholder, not part of the sentence: a
-        # sentence with a number baked into it is a sentence the
-        # translator cannot translate.
-        return _("The file is larger than {0} KB.").format(
-            getattr(settings, "max_image_size_kb", 0)
-        )
-    return _("The file could not be read.")
 
 
 #: Where a finished turn is parked for the polling fallback.
