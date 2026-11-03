@@ -177,6 +177,20 @@ the card carries its own **"type your own answer"** box.
   installed copy — and, where the path the unit names exists, that it is
   this repository's file.  A new test holds the unit systemd actually
   runs to the committed one.
+- **The live hint showed its own placeholders instead of the numbers it
+  counted.**  The sentence above the chat's composer — "3 overdue Sales
+  Invoices — want me to draft reminders?" — reached the reader with
+  ``{0}`` and ``{1}`` still in it, and the count was nowhere: the hint
+  counted the reader's overdue invoices and then could not say how many.
+  The cause was one argument.  ``frappe._`` takes a *language* as its
+  second argument, so the two numbers were read as a language and as a
+  context and dropped on the floor; the framework's translation never
+  fills a ``{0}`` on its own, and the app asked it to.  The message is
+  now translated first and formatted second — the order every other
+  translated string in the app already follows — so the reader sees the
+  count and the doctype, in the reader's own language.  Tests pin the
+  number, the translation, and the two cases where the hint must not
+  appear at all: nothing overdue, and a reader the chat is closed for.
 
 ### Added
 
@@ -337,6 +351,22 @@ is a lie of a different kind.
   about a turn that is alive is the one thing the ledger exists to
   prevent.  The cutoff is now the same derived clock as everything
   else.  The cadence tie in ``tests/test_scheduler.py`` still holds.
+
+- **The live hint showed its own placeholders instead of the count it
+  had found.**  The sentence the panel offers was built as
+  ``frappe._("{0} overdue {1} — want me to draft reminders?", [count, doctype])``,
+  and the framework's translation helper takes its **second argument as
+  a language**, not as the values to fill the holes with: it answered
+  with the string untouched, so the reader was shown ``{0} overdue {1}
+  — want me to draft reminders?`` and the count it had just counted was
+  nowhere in sight.  The message is now **translated first and formatted
+  second** — the order every other message in this app already used —
+  so the number is in the sentence, in the reader's own language.  Five
+  site tests hold it: the count is in the sentence, the Arabic
+  catalogue's translation is used *and* its holes are filled too, a
+  reader with nothing overdue is told nothing, a doctype the chat does
+  not nudge is left alone, and a reader the chat is closed for is
+  refused rather than counted.
 
 ### Changed
 

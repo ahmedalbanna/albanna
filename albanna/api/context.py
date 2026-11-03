@@ -106,9 +106,14 @@ def nudge_for_page(doctype: str) -> dict[str, Any]:
     if not count:
         return {"message": ""}
 
+    # The numbers go into the string *after* the translation, never
+    # through it: ``frappe._`` takes a language as its second argument,
+    # and it never fills a ``{0}`` on its own.  So the message is
+    # translated first and formatted second — otherwise the reader is
+    # shown ``{0} overdue {1}`` and the count is nowhere.
     return {
-        "message": frappe._(
-            "{0} overdue {1} — want me to draft reminders?",
-            [count, doctype],
+        "message": frappe._("{0} overdue {1} — want me to draft reminders?").format(
+            count,
+            doctype,
         )
     }
