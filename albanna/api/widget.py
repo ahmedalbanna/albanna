@@ -72,7 +72,13 @@ def upload_file(file_data_url: str = "") -> dict[str, Any]:
     if not raw:
         frappe.throw(_("The file could not be read."), frappe.ValidationError)
     if mime not in ATTACHABLE:
-        frappe.throw(_("Only images and PDFs can be attached."), frappe.ValidationError)
+        # The types are named, because "only images" is not an answer a
+        # reader can act on: an SVG *is* an image, and an SVG cannot be
+        # stored, because it executes as HTML.
+        frappe.throw(
+            _("Only PNG, JPEG, WebP, GIF and PDF files can be attached."),
+            frappe.ValidationError,
+        )
 
     ceiling = max_attachment_bytes()
     if ceiling and len(raw) > ceiling:

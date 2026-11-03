@@ -1032,6 +1032,13 @@ file `image/svg+xml` (which executes as HTML) away as a `.bin`.  The file
 is private and belongs to the reader, and the right to put it on a
 document is Frappe's decision, not ours.
 
+**The browser refuses the same five types, before the bytes leave it.**
+The rule lives in one place in the browser and one on the server, and
+they agree: a reader who chooses a file the server would refuse is told
+so at once, in words that name the types, rather than after an upload
+that ends in a refusal.  A rule that only the server knows is a rule the
+reader learns by being refused.
+
 **The stored address is a path on this site, not a picture.**  A later
 turn is told where the file went — in words, with its URL — and is never
 handed the path as an image part: a vision provider cannot fetch

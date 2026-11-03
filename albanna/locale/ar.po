@@ -1124,38 +1124,14 @@ msgstr "رابط الصورة"
 msgid "Image attachments are not enabled on this site."
 msgstr "إرفاق الصور غير مُفعّل على هذا الموقع."
 
-msgid "One file at a time — attaching the first."
-msgstr "ملف واحد في كل مرة — سيتم إرفاق الأول."
-
-msgid "Camera"
-msgstr "الكاميرا"
-
-msgid "Choose File"
-msgstr "اختر ملفاً"
-
-msgid "Could not read the clipboard."
-msgstr "لم يتمكّن من قراءة الحافظة."
-
-msgid "Destination"
-msgstr "الوجهة"
-
-msgid "Paste Clipboard"
-msgstr "لصق من الحافظة"
-
-msgid "Pasted file"
-msgstr "ملف تم لصقه"
-
 msgid "The file could not be read."
 msgstr "لم يتمكّن من قراءة الملف."
 
 msgid "The file could not be stored."
 msgstr "لم يتمكّن من تخزين الملف."
 
-msgid "Upload to Frappé Files"
-msgstr "تحميل إلى ملفات Frappé"
-
-msgid "Only images and PDFs can be attached."
-msgstr "يمكن إرفاق الصور وملفات PDF فقط."
+msgid "Only PNG, JPEG, WebP, GIF and PDF files can be attached."
+msgstr "يمكن إرفاق ملفات PNG وJPEG وWebP وGIF وPDF فقط."
 
 msgid "The file is larger than {0} KB."
 msgstr "حجم الملف أكبر من {0} كيلوبايت."

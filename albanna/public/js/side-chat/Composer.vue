@@ -4,6 +4,7 @@
  */
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
+import { checkAttachment, REFUSED_SIZE } from "./attachments.mjs";
 import { MAX_SESSION_MS, mergeTranscript, readResults, voiceErrorText } from "./voice.mjs";
 
 const props = defineProps({
@@ -194,9 +195,17 @@ function onAction() {
 
 const noticeText = ref("");
 const uploading = ref(false);
+//: How many uploads are in flight.  A reader who drops three files has
+//: three uploads, and the flag must not clear when the first one ends
+//: while the other two are still going.
+let uploadsInFlight = 0;
 
-const ATTACHABLE_TYPES = ["image/", "application/pdf"];
-
+/**
+ * A file pasted into the question box.
+ *
+ * The browser puts a pasted picture into the paste event as a file, so
+ * the ordinary Ctrl+V reaches here without anything special.
+ */
 async function onPaste(event) {
 	const items = event.clipboardData && event.clipboardData.items;
 	if (!items) return;
@@ -206,22 +215,25 @@ async function onPaste(event) {
 			const file = item.getAsFile();
 			if (file) {
 				event.preventDefault();
-				await storeFile(file);
+				await attachFiles([file]);
 				return;
 			}
 		}
 	}
 }
 
-function onDrop(event) {
+/**
+ * Files dropped on the question box.
+ *
+ * Every dropped file is attached: the composer takes a list, and a
+ * reader who drops three pictures means three pictures.
+ */
+async function onDrop(event) {
 	event.preventDefault();
 	noticeText.value = "";
 	const files = event.dataTransfer && event.dataTransfer.files;
 	if (!files || !files.length) return;
-	if (files.length > 1) {
-		noticeText.value = __("One file at a time — attaching the first.");
-	}
-	storeFile(files[0]);
+	await attachFiles(Array.from(files));
 }
 
 function onDragOver(event) {
@@ -233,59 +245,18 @@ function removeFile(index) {
 	emit("update:files", props.files.filter((_, i) => i !== index));
 }
 
+/**
+ * Open the file picker.
+ *
+ * The paperclip goes straight to the browser's own picker: the reader
+ * has said they want to attach something, and asking them again — with
+ * a card, a destination and three choices — is a second question
+ * between the reader and the thing they meant to do.
+ */
 function openFilePicker() {
+	if (!props.canChat) return;
+	noticeText.value = "";
 	if (fileInput.value) fileInput.value.click();
-}
-
-const showUpload = ref(false);
-const uploadPanelEl = ref(null);
-const attachButtonEl = ref(null);
-
-function openUpload() {
-	if (!props.canChat || props.busy) return;
-	showUpload.value = true;
-	noticeText.value = "";
-	// The panel takes the focus when it opens, so a reader who opened it
-	// with the keyboard is *in* it rather than still on the button that
-	// opened it.
-	nextTick(() => {
-		if (uploadPanelEl.value) uploadPanelEl.value.focus();
-	});
-}
-
-/**
- * Close the upload panel.
- *
- * The focus goes back where it came from — but only when the reader
- * closed the panel *from* the panel.  A reader who clicked somewhere
- * else in the thread has already put their focus there, and taking it
- * back to the paperclip would be the panel grabbing the reader's hands.
- *
- * @param {boolean} restoreFocus whether to hand the focus back
- */
-function closeUpload(restoreFocus = true) {
-	showUpload.value = false;
-	noticeText.value = "";
-	if (!restoreFocus) return;
-	nextTick(() => {
-		if (attachButtonEl.value) attachButtonEl.value.focus();
-	});
-}
-
-/**
- * A click outside the panel closes it.
- *
- * The panel is a card above the composer, not a modal over the Desk: the
- * reader is choosing where a file goes while still reading the thread,
- * the way the approval card does.  So there is no backdrop to swallow
- * the click, and this is what notices it instead.
- */
-function onDocumentPointerDown(event) {
-	const panel = uploadPanelEl.value;
-	const button = attachButtonEl.value;
-	if (panel && panel.contains(event.target)) return;
-	if (button && button.contains(event.target)) return;
-	closeUpload(false);
 }
 
 /**
@@ -308,28 +279,37 @@ function readAsDataUrl(file) {
 }
 
 /**
- * Store one attached file as a private Frappe File right away, so it lands
- * under Home/Albanna before the turn is sent.  The same bytes still travel
- * with the turn as a data URL for the model; the stored URL is what the
- * reader can later set on a document.
+ * Store one attached file as a private Frappe File, and return it.
+ *
+ * The file is stored right away, so it lands under Home/Albanna before
+ * the turn is sent: the same bytes still travel with the turn as a data
+ * URL for the model, and the stored address is what the reader can
+ * later set on a document.
+ *
+ * The file is *not* added to the composer's list here.  The list is the
+ * caller's to write, once, with every file it managed to store — see
+ * {@link attachFiles}.
+ *
+ * @param {File} file the file the reader chose
+ * @returns {Promise<object|null>} the attachment, or null when it was refused
  */
 async function storeFile(file) {
 	if (!props.imageSupport) {
 		noticeText.value = __("Image attachments are not enabled on this site.");
-		return;
+		return null;
 	}
-	if (!ATTACHABLE_TYPES.some((t) => file.type.startsWith(t))) {
-		noticeText.value = __("Only images and PDFs can be attached.");
-		return;
-	}
-	const max = props.maxImageSizeKb > 0 ? props.maxImageSizeKb * 1024 : 0;
-	if (max && file.size > max) {
-		noticeText.value = __("The file is larger than {0} KB.", [props.maxImageSizeKb]);
-		return;
+	const maxBytes = props.maxImageSizeKb > 0 ? props.maxImageSizeKb * 1024 : 0;
+	const refusal = checkAttachment(file, { maxBytes });
+	if (!refusal.ok) {
+		noticeText.value =
+			refusal.reason === REFUSED_SIZE
+				? __("The file is larger than {0} KB.", [props.maxImageSizeKb])
+				: __("Only PNG, JPEG, WebP, GIF and PDF files can be attached.");
+		return null;
 	}
 
-	showUpload.value = false;
 	noticeText.value = "";
+	uploadsInFlight += 1;
 	uploading.value = true;
 
 	try {
@@ -343,7 +323,7 @@ async function storeFile(file) {
 		const fileUrl = message && message.file_url;
 		if (!fileUrl) throw new Error(__("The file could not be stored."));
 
-		const entry = {
+		return {
 			dataUrl,
 			name: file.name || __("Attached file"),
 			type: file.type || "",
@@ -351,18 +331,42 @@ async function storeFile(file) {
 			fileUrl,
 			stored: true,
 		};
-		emit("update:files", [...props.files, entry]);
-		noticeText.value = "";
-		// The reader has attached their file and is about to ask about
-		// it, so the question box is where the cursor belongs.
-		nextTick(() => {
-			if (inputEl.value) inputEl.value.focus();
-		});
 	} catch (error) {
 		noticeText.value = errorMessage(error) || __("The file could not be stored.");
+		return null;
 	} finally {
-		uploading.value = false;
+		uploadsInFlight -= 1;
+		uploading.value = uploadsInFlight > 0;
 	}
+}
+
+/**
+ * Attach a list of files.
+ *
+ * The composer's own list is read once, at the end, and every file that
+ * was stored is added to it in one go.  A file that refused is left
+ * out, and the reason it refused is on the notice beside the chips.
+ *
+ * Each upload finishes at its own time, and each one adds to the *same*
+ * list: writing the list after every file would let the second upload
+ * overwrite the first, and a reader who dropped three pictures would
+ * find one of them gone.
+ *
+ * @param {File[]} fileList the files the reader chose
+ */
+async function attachFiles(fileList) {
+	const added = [];
+	for (const file of fileList) {
+		const entry = await storeFile(file);
+		if (entry) added.push(entry);
+	}
+	if (!added.length) return;
+	emit("update:files", [...props.files, ...added]);
+	// The reader has attached their files and is about to ask about
+	// them, so the question box is where the cursor belongs.
+	nextTick(() => {
+		if (inputEl.value) inputEl.value.focus();
+	});
 }
 
 function errorMessage(error) {
@@ -435,75 +439,11 @@ function lastLine(text) {
 
 async function onChooseFile() {
 	const file = fileInput.value && fileInput.value.files && fileInput.value.files[0];
-	if (file) await storeFile(file);
+	if (file) await attachFiles([file]);
 	// The input's own value, not the ref's: the ref is the element, and
 	// emptying the ref would leave the button with nothing to open.
 	if (fileInput.value) fileInput.value.value = "";
-	closeUpload();
 }
-
-async function onPasteClipboard() {
-	try {
-		const items = await navigator.clipboard.read();
-		for (const item of items) {
-			for (const type of item.types) {
-				if (type.startsWith("image/") || type === "application/pdf") {
-					const blob = await item.getType(type);
-					await storeFile(
-						new File([blob], __("Pasted file"), { type }),
-					);
-					break;
-				}
-			}
-		}
-	} catch (error) {
-		noticeText.value = __("Could not read the clipboard.");
-	}
-	closeUpload();
-}
-
-function onCamera() {
-	if (!fileInput.value) return;
-	// The camera takes the focus away with it, so the panel is dismissed
-	// without handing the focus back: the reader is choosing a file, not
-	// closing a dialog.
-	showUpload.value = false;
-	fileInput.value.accept = "image/*";
-	fileInput.value.capture = "environment";
-	fileInput.value.click();
-	fileInput.value.capture = "";
-	fileInput.value.accept = "image/*,application/pdf";
-}
-
-/**
- * Escape closes the upload panel.
- *
- * The panel is a dialog the reader opened, so the key that closes a
- * dialog closes this one.  The listener is on the document rather than
- * on the panel, because the reader's focus may have moved to a button
- * inside it, and a key that only works when the panel itself holds the
- * focus is a key that works half the time.
- */
-function onUploadKeydown(event) {
-	if (event.key !== "Escape") return;
-	event.preventDefault();
-	closeUpload();
-}
-
-watch(showUpload, (open) => {
-	if (open) {
-		document.addEventListener("keydown", onUploadKeydown);
-		document.addEventListener("mousedown", onDocumentPointerDown);
-	} else {
-		document.removeEventListener("keydown", onUploadKeydown);
-		document.removeEventListener("mousedown", onDocumentPointerDown);
-	}
-});
-
-onBeforeUnmount(() => {
-	document.removeEventListener("keydown", onUploadKeydown);
-	document.removeEventListener("mousedown", onDocumentPointerDown);
-});
 </script>
 
 <template>
@@ -649,17 +589,23 @@ onBeforeUnmount(() => {
 					/>
 				</svg>
 			</button>
+			<!-- The attachment button.  It is a peer of the microphone and
+			     the send button: a round, quiet mark that says what it
+			     does.  It goes straight to the browser's own picker —
+			     the reader has said they want to attach something, and
+			     a second question between them and that is a second
+			     question too many. -->
 			<button
 				v-if="imageSupport"
-				ref="attachButtonEl"
 				type="button"
 				class="albanna-chat__attach"
+				:class="{ 'albanna-chat__attach--filled': files.length }"
 				:disabled="!canChat"
 				:aria-label="__('Attach file')"
 				:title="__('Attach file')"
-				@click="openUpload"
+				@click="openFilePicker"
 			>
-				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
 					<path
 						d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
 						stroke="currentColor"
@@ -668,6 +614,13 @@ onBeforeUnmount(() => {
 						stroke-linejoin="round"
 					/>
 				</svg>
+				<!-- The count of what is attached.  It is decoration: the
+				     chips above the composer already name every file, so
+				     the number here is for the eye and not for a screen
+				     reader. -->
+				<span v-if="files.length" class="albanna-chat__attach-count" aria-hidden="true">{{
+					files.length
+				}}</span>
 			</button>
 			<input
 				ref="fileInput"
@@ -716,64 +669,5 @@ onBeforeUnmount(() => {
 		<p class="albanna-chat__hint">
 			{{ __("Enter to send · Shift+Enter for a new line") }}
 		</p>
-
-		<!-- Upload to Frappé Files: the reader stores an attached file under
-		     Home/Albanna before sending the turn, so it is already a file on
-		     the site when the question is asked.  It is a card above the
-		     composer and not a modal over the Desk: the thread keeps its
-		     place, the way the approval card does. -->
-		<div v-if="showUpload" class="albanna-chat__upload-dialog">
-			<div
-				ref="uploadPanelEl"
-				class="albanna-chat__upload-panel"
-				role="dialog"
-				aria-labelledby="albanna-upload-title"
-				tabindex="-1"
-			>
-				<div class="albanna-chat__upload-header">
-					<span id="albanna-upload-title" class="albanna-chat__upload-title">{{
-						__("Upload to Frappé Files")
-					}}</span>
-					<button
-						type="button"
-						class="albanna-chat__upload-close"
-						@click="closeUpload"
-						:aria-label="__('Close')"
-					>
-						×
-					</button>
-				</div>
-				<div class="albanna-chat__upload-destination">
-					<span class="albanna-chat__upload-label">{{ __("Destination") }}:</span>
-					<span class="albanna-chat__upload-path">Home/Albanna</span>
-				</div>
-				<div class="albanna-chat__upload-actions">
-					<button
-						type="button"
-						class="albanna-chat__upload-btn"
-						@click="openFilePicker"
-						:aria-label="__('Choose File')"
-					>
-						{{ __("Choose File") }}
-					</button>
-					<button
-						type="button"
-						class="albanna-chat__upload-btn"
-						@click="onPasteClipboard"
-						:aria-label="__('Paste Clipboard')"
-					>
-						{{ __("Paste Clipboard") }}
-					</button>
-					<button
-						type="button"
-						class="albanna-chat__upload-btn"
-						@click="onCamera"
-						:aria-label="__('Camera')"
-					>
-						{{ __("Camera") }}
-					</button>
-				</div>
-			</div>
-		</div>
 	</div>
 </template>

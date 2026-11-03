@@ -2128,6 +2128,70 @@ body.albanna-side-chat-docked-inline-start {
 	display: none;
 }
 
+/* The attachment button.  It is a peer of the microphone and the send
+   button: a round, quiet mark that says what it does and gets out of
+   the way.  The button had no rule at all until now, which left it in
+   whatever the Desk's own button styling is — a rectangle, in the
+   primary colour, in a row of round icons. */
+.albanna-chat__attach {
+	position: relative;
+	flex: 0 0 auto;
+	border: 0;
+	background: transparent;
+	color: var(--albanna-muted, #6c7680);
+	cursor: pointer;
+	padding: 6px;
+	border-radius: 50%;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 32px;
+	min-height: 32px;
+	transition: background 120ms ease, color 120ms ease;
+}
+
+.albanna-chat__attach:hover:not(:disabled) {
+	color: var(--albanna-link, #1f2328);
+	background: var(--albanna-hover, #f3f3f3);
+}
+
+.albanna-chat__attach:disabled {
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.albanna-chat__attach:focus-visible {
+	outline: 2px solid var(--albanna-accent, #2563eb);
+	outline-offset: 1px;
+}
+
+/* With a file attached the button says so at a glance: the reader does
+   not have to look away from the question they are writing to know the
+   picture is going with it. */
+.albanna-chat__attach--filled {
+	color: var(--albanna-link, #1f2328);
+	background: var(--albanna-hover, #f3f3f3);
+}
+
+/* The count of what is attached.  The accent is a fill here and the
+   count is its ink, the way the send button is. */
+.albanna-chat__attach-count {
+	position: absolute;
+	inset-block-start: -1px;
+	inset-inline-end: -1px;
+	min-width: 15px;
+	height: 15px;
+	padding: 0 4px;
+	border-radius: 8px;
+	background: var(--albanna-accent, #171717);
+	color: var(--albanna-on-accent, #fff);
+	font-size: 9px;
+	font-weight: 700;
+	line-height: 15px;
+	text-align: center;
+	pointer-events: none;
+}
+
 .albanna-chat__attach-notice {
 	font-size: 12px;
 	color: var(--text-muted);
@@ -2208,12 +2272,6 @@ body.albanna-side-chat-docked-inline-start {
 	flex: none;
 }
 
-.albanna-chat__attach-notice {
-	font-size: 12px;
-	color: var(--text-muted);
-	padding-left: 4px;
-}
-
 /* A chip whose file has already been stored under Home/Albanna. */
 .albanna-chat__attach-chip--stored {
 	border-color: var(--albanna-accent, #171717);
@@ -2235,126 +2293,3 @@ body.albanna-side-chat-docked-inline-start {
 	color: var(--albanna-link, var(--gray-300, #a1a1aa));
 }
 
-/* Upload to Frappé Files — a card above the composer, not a modal over
-   the Desk.  The reader is choosing where a file goes while still
-   reading the thread, the way the approval card does, so the thread
-   keeps its place.  The composer is the positioned parent, and the card
-   sits above it: a card below the composer would be off the panel. */
-.albanna-chat__upload-dialog {
-	position: absolute;
-	inset-block-end: 100%;
-	inset-inline-end: 0;
-	z-index: 4;
-	width: min(280px, 100%);
-	padding-block-end: 6px;
-}
-
-.albanna-chat__upload-panel {
-	position: relative;
-	z-index: 2;
-	width: 100%;
-	background: var(--albanna-surface, #ffffff);
-	border: 1px solid var(--albanna-border, #ededed);
-	border-radius: 10px;
-	box-shadow: var(--albanna-shadow);
-	display: flex;
-	flex-direction: column;
-	gap: 10px;
-	padding: 14px;
-}
-
-[data-theme="dark"] .albanna-chat__upload-panel {
-	background: var(--albanna-surface, #1f1f1f);
-	border-color: var(--albanna-border, var(--gray-800, #232323));
-	box-shadow: var(--albanna-shadow);
-}
-
-.albanna-chat__upload-header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 8px;
-}
-
-.albanna-chat__upload-title {
-	margin: 0;
-	font-size: 14px;
-	font-weight: 600;
-	color: var(--albanna-text, #1f2328);
-}
-
-.albanna-chat__upload-close {
-	border: 0;
-	background: transparent;
-	color: var(--albanna-muted, #6c7680);
-	cursor: pointer;
-	padding: 4px;
-	border-radius: 6px;
-	line-height: 1;
-	font-size: 20px;
-}
-
-.albanna-chat__upload-close:hover {
-	color: var(--albanna-text, #1f2328);
-	background: var(--albanna-hover, #f3f3f3);
-}
-
-.albanna-chat__upload-destination {
-	display: flex;
-	align-items: baseline;
-	gap: 6px;
-	font-size: 12px;
-	color: var(--albanna-muted, #6c7680);
-}
-
-.albanna-chat__upload-label {
-	font-weight: 600;
-}
-
-.albanna-chat__upload-path {
-	color: var(--albanna-link, #171717);
-}
-
-.albanna-chat__upload-actions {
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-}
-
-.albanna-chat__upload-btn {
-	border: 1px solid var(--albanna-border, #ededed);
-	background: var(--albanna-surface, #ffffff);
-	color: var(--albanna-text, #1f2328);
-	border-radius: 8px;
-	padding: 10px 14px;
-	font-size: 14px;
-	font-weight: 600;
-	text-align: start;
-	cursor: pointer;
-	transition: background 120ms ease, border-color 120ms ease;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-}
-
-[data-theme="dark"] .albanna-chat__upload-btn {
-	background: var(--albanna-bubble, #232323);
-	color: var(--albanna-text, var(--gray-200, #e2e2e2));
-	border-color: var(--albanna-border, var(--gray-800, #232323));
-}
-
-.albanna-chat__upload-btn:hover:not([disabled]) {
-	background: var(--albanna-hover, #f3f3f3);
-	border-color: var(--albanna-border, #ededed);
-}
-
-[data-theme="dark"] .albanna-chat__upload-btn:hover:not([disabled]) {
-	background: var(--albanna-hover, var(--gray-800, #232323));
-	border-color: var(--albanna-border, var(--gray-700, #383838));
-}
-
-/* The composer is the positioned parent of the upload card, so the card
-   sits above the composer rather than over the whole Desk. */
-.albanna-chat__composer {
-	position: relative;
-}

@@ -44,14 +44,23 @@ the card carries its own **"type your own answer"** box.
   model carrying the first: the reader attached both, and the model would
   answer about half of what it was given.
 
-- **"Upload to Frappé Files".**  The reader can store an attached file
-  under `Home/Albanna` *before* asking the question, so the picture is
-  already a file on the site when the question is asked — and the turn
-  reuses that file instead of writing the same bytes twice.  The panel is
-  a card above the composer, not a modal over the Desk: the reader is
-  choosing where a file goes while still reading the thread, the way the
-  approval card does.  It closes on Escape and on a click outside it, and
-  the focus goes back to the button that opened it.
+- **A file is attached with the paperclip, a paste, or a drop.**  The
+  composer takes the file the reader gave it and nothing else: the
+  paperclip goes straight to the browser's own picker, a picture pasted
+  into the question box is attached, and a picture dropped on it is
+  attached.  There is no second card between the reader and the thing
+  they meant to do — the reader has already said they want to attach
+  something, and asking them again, with a destination and three
+  choices, is a second question too many.
+
+  The file is stored under `Home/Albanna` as soon as it is chosen, so it
+  is already a file on the site when the question is asked, and the turn
+  reuses that file instead of writing the same bytes twice.
+
+  The browser refuses a file the server would not store — an SVG, say —
+  before the bytes leave it, and names the types that are allowed, so
+  the answer arrives at once instead of after an upload that ends in a
+  refusal.
 
 - **Pinned conversations have their own group.**  A pinned thread is
   pulled out of the date buckets and shown at the top of the drawer, so
