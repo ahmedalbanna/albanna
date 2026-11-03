@@ -5,6 +5,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { checkAttachment, REFUSED_SIZE } from "./attachments.mjs";
+import { serverMessage } from "./errors.mjs";
 import { MAX_SESSION_MS, mergeTranscript, readResults, voiceErrorText } from "./voice.mjs";
 
 const props = defineProps({
@@ -354,7 +355,7 @@ async function storeFile(file) {
 			stored: true,
 		};
 	} catch (error) {
-		noticeText.value = errorMessage(error) || __("The file could not be stored.");
+		noticeText.value = serverMessage(error) || __("The file could not be stored.");
 		return null;
 	} finally {
 		uploadsInFlight -= 1;
@@ -389,74 +390,6 @@ async function attachFiles(fileList) {
 	nextTick(() => {
 		if (inputEl.value) inputEl.value.focus();
 	});
-}
-
-function errorMessage(error) {
-	if (!error) return "";
-	let body = error.responseJSON;
-	if (!body && typeof error.responseText === "string") {
-		try {
-			body = JSON.parse(error.responseText);
-		} catch (failure) {
-			body = null;
-		}
-	}
-	const payload = body && typeof body === "object" ? body : error;
-	const messages = payload._server_messages;
-	if (messages) {
-		try {
-			const text = messageText(JSON.parse(messages));
-			if (text) return text;
-		} catch (failure) {
-			// Not JSON: fall through to the traceback.
-		}
-	}
-	const exc = payload.exc;
-	if (exc) {
-		try {
-			const parsed = JSON.parse(exc);
-			if (Array.isArray(parsed) && parsed.length) {
-				return lastLine(String(parsed[parsed.length - 1]));
-			}
-		} catch (failure) {
-			return lastLine(String(exc));
-		}
-	}
-	return "";
-}
-
-function messageText(value) {
-	if (!value) return "";
-	if (typeof value === "string") {
-		const trimmed = value.trim();
-		if (trimmed.startsWith("{")) {
-			try {
-				return messageText(JSON.parse(trimmed));
-			} catch (failure) {
-				return value;
-			}
-		}
-		return value;
-	}
-	if (Array.isArray(value)) {
-		for (const item of value) {
-			const text = messageText(item);
-			if (text) return text;
-		}
-		return "";
-	}
-	if (typeof value === "object" && value.message) {
-		return String(value.message);
-	}
-	return "";
-}
-
-function lastLine(text) {
-	const line = String(text || "")
-		.trim()
-		.split("\n")
-		.pop() || "";
-	return line.replace(/^[A-Za-z_.]*(Error|Exception):\s*/, "");
 }
 
 async function onChooseFile() {
