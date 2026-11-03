@@ -253,6 +253,24 @@ msgstr "يشغّل تقريراً"
 msgid "Creating"
 msgstr "يُنشئ"
 
+msgid "Editing"
+msgstr "يُعدّل"
+
+msgid "Updating"
+msgstr "يُحدّث"
+
+msgid "Submitting"
+msgstr "يُقدّم"
+
+msgid "Cancelling"
+msgstr "يتم الإلغاء"
+
+msgid "Amending"
+msgstr "يُعدّل"
+
+msgid "Deleting"
+msgstr "يُحذف"
+
 
 msgid "Working"
 msgstr "يعمل"

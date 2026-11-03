@@ -54,8 +54,48 @@ export function toolLabel(name) {
 			return __("Running a report");
 		case "create_doc":
 			return __("Creating");
+		case "update_doc":
+			return __("Editing");
+		case "submit_doc":
+			return __("Submitting");
+		case "cancel_doc":
+			return __("Cancelling");
+		case "amend_doc":
+			return __("Amending");
+		case "delete_doc":
+			return __("Deleting");
 		default:
 			return __("Working");
+	}
+}
+
+/**
+ * The verb for a tool that changes something, in the reader's language.
+ *
+ * Used on the approval card so the reader sees at a glance what kind of
+ * change is being asked for — "Creating Item" rather than only the
+ * document's name.  Returns nothing for read tools, which never reach the
+ * card at all.
+ *
+ * @param {string} name the tool's name
+ * @returns {string} the action verb, or nothing when the tool does not write
+ */
+export function toolAction(name) {
+	switch (name) {
+		case "create_doc":
+			return __("Creating");
+		case "update_doc":
+			return __("Updating");
+		case "submit_doc":
+			return __("Submitting");
+		case "cancel_doc":
+			return __("Cancelling");
+		case "amend_doc":
+			return __("Amending");
+		case "delete_doc":
+			return __("Deleting");
+		default:
+			return "";
 	}
 }
 

@@ -986,8 +986,8 @@ body.albanna-side-chat-docked-inline-start {
    its place. */
 .albanna-chat__confirm {
 	margin: 0 0 8px;
-	padding: 10px 12px;
-	border-radius: 8px;
+	padding: 12px 14px;
+	border-radius: 10px;
 	border: 1px solid var(--albanna-border, #ededed);
 	background: var(--albanna-surface, #ffffff);
 	display: flex;
@@ -995,11 +995,90 @@ body.albanna-side-chat-docked-inline-start {
 	gap: 8px;
 }
 
-.albanna-chat__confirm-preview {
-	margin: 0;
-	font-size: 13px;
+[data-theme="dark"] .albanna-chat__confirm {
+	background: var(--albanna-surface, #1f1f1f);
+}
+
+/* The card's header: what kind of change this is, and how long is left. */
+.albanna-chat__confirm-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	margin: 0 0 6px;
+}
+
+.albanna-chat__confirm-action {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	padding: 2px 8px;
+	border-radius: 4px;
+	background: var(--albanna-hover, #f2f4f5);
+	color: var(--albanna-muted, #6c7680);
+}
+
+[data-theme="dark"] .albanna-chat__confirm-action {
+	background: var(--albanna-bubble, #232323);
+	color: var(--albanna-text, var(--gray-200, #e2e2e2));
+}
+
+.albanna-chat__confirm-time {
+	font-size: 11px;
 	font-weight: 600;
+	color: var(--albanna-muted, #6c7680);
+	background: var(--albanna-hover, #f2f4f5);
+	padding: 2px 8px;
+	border-radius: 20px;
+}
+
+[data-theme="dark"] .albanna-chat__confirm-time {
+	background: var(--albanna-bubble, #232323);
+	color: var(--albanna-text, var(--gray-200, #e2e2e2));
+}
+
+/* What is being changed — the reader reads this first. */
+.albanna-chat__confirm-preview {
+	margin: 0 0 8px;
+	font-size: 15px;
+	font-weight: 700;
 	color: var(--albanna-text, #1f2328);
+	word-break: break-word;
+}
+
+/* A destructive write names its consequence before the reader looks at
+   the clock. */
+.albanna-chat__confirm-consequence {
+	margin: 0 0 8px;
+	font-size: 12px;
+	color: var(--albanna-danger, var(--red, #e02424));
+	font-weight: 600;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.albanna-chat__confirm-consequence::before {
+	content: "";
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--albanna-danger, var(--red, #e02424));
+	flex: 0 0 auto;
+}
+
+/* The field-by-field diff of what will change. */
+.albanna-chat__confirm-diff {
+	margin: 0 0 10px;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
 }
 
 /* The countdown, and what it becomes when the wait runs out.
@@ -1010,58 +1089,106 @@ body.albanna-side-chat-docked-inline-start {
  * deadline leaves the reader clicking a button that does nothing and
  * drawing their own conclusion about why. */
 .albanna-chat__confirm-countdown {
-	margin: 0;
+	margin: 0 0 10px;
 	font-size: 12px;
 	color: var(--albanna-muted, #6c7680);
 }
 
 .albanna-chat__confirm-countdown--out {
 	color: var(--albanna-danger, var(--red, #e02424));
-	font-weight: 500;
+	font-weight: 600;
 }
 
 .albanna-chat__confirm-actions {
 	display: flex;
+	align-items: center;
+	justify-content: flex-end;
 	gap: 8px;
 }
 
 .albanna-chat__confirm-button {
 	border: 1px solid var(--albanna-border, #ededed);
-	background: var(--albanna-hover, #f2f4f5);
+	background: var(--albanna-surface, #ffffff);
 	color: var(--albanna-text, #1f2328);
 	border-radius: 6px;
-	padding: 5px 12px;
-	font-size: 12px;
-	cursor: pointer;
+	padding: 6px 16px;
+	font-size: 13px;
+	font-weight: 600;
 	font-family: inherit;
+	cursor: pointer;
+	transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
-.albanna-chat__confirm--destructive {
-	border-color: var(--albanna-danger, var(--red, #e02424));
-	background: color-mix(in srgb, var(--albanna-danger, #e02424) 6%, var(--albanna-surface, #ffffff));
+[data-theme="dark"] .albanna-chat__confirm-button {
+	background: var(--albanna-bubble, #232323);
+	color: var(--albanna-text, var(--gray-200, #e2e2e2));
+	border-color: var(--albanna-border, var(--gray-800, #232323));
 }
 
-.albanna-chat__confirm-consequence {
-	margin: 0;
-	font-size: 12px;
-	color: var(--albanna-danger, var(--red, #e02424));
-	font-weight: 500;
+.albanna-chat__confirm-button:hover:not(:disabled) {
+	background: var(--albanna-hover, #f2f4f5);
+	border-color: var(--albanna-border, #ededed);
 }
 
+[data-theme="dark"] .albanna-chat__confirm-button:hover:not(:disabled) {
+	background: var(--albanna-hover, var(--gray-800, #232323));
+	border-color: var(--albanna-border, var(--gray-700, #383838));
+}
+
+/* Cancel stays an outline button. */
+.albanna-chat__confirm-button--cancel {
+	background: var(--albanna-surface, #ffffff);
+	color: var(--albanna-text, #1f2328);
+}
+
+[data-theme="dark"] .albanna-chat__confirm-button--cancel {
+	background: var(--albanna-bubble, #232323);
+	color: var(--albanna-text, var(--gray-200, #e2e2e2));
+}
+
+/* Confirm is the filled, primary action. */
+.albanna-chat__confirm-button--confirm {
+	background: var(--albanna-accent, #171717);
+	border-color: var(--albanna-accent, #171717);
+	color: var(--albanna-on-accent, #ffffff);
+}
+
+.albanna-chat__confirm-button--confirm:hover:not(:disabled) {
+	opacity: 0.9;
+}
+
+[data-theme="dark"] .albanna-chat__confirm-button--confirm {
+	background: var(--albanna-accent, var(--gray-700, #383838));
+	border-color: var(--albanna-accent, var(--gray-700, #383838));
+}
+
+/* A destructive write makes Confirm the danger action. */
 .albanna-chat__confirm-button--danger {
 	background: var(--albanna-danger, var(--red, #e02424));
 	border-color: var(--albanna-danger, var(--red, #e02424));
 	color: var(--albanna-on-danger, #ffffff);
-	filter: brightness(0.97);
 }
 
-/* A card whose wait has run out keeps its shape and loses its colour:
- * the buttons are still there, so the reader can see what they would
- * have pressed, and they cannot be pressed. */
+.albanna-chat__confirm-button--danger:hover:not(:disabled) {
+	opacity: 0.92;
+}
+
 .albanna-chat__confirm-button:disabled {
 	opacity: 0.55;
 	cursor: not-allowed;
 	filter: none;
+}
+
+/* A destructive card carries a subtle red border so the weight of the
+   decision is visible before the reader reads a word. */
+.albanna-chat__confirm--destructive {
+	border-color: var(--albanna-danger, var(--red, #e02424));
+	background: color-mix(in srgb, var(--albanna-danger, #e02424) 5%, var(--albanna-surface, #ffffff));
+}
+
+[data-theme="dark"] .albanna-chat__confirm--destructive {
+	background: color-mix(in srgb, var(--albanna-danger, #f0a8a5) 12%, var(--albanna-surface, #1f1f1f));
+	border-color: var(--albanna-danger, var(--red-600, #d13b34));
 }
 
 .albanna-chat__notice-text {
@@ -1635,9 +1762,21 @@ body.albanna-side-chat-docked-inline-start {
 }
 
 .albanna-chat__question-progress {
-	margin: 0;
-	font-size: 11px;
-	color: var(--albanna-muted, #6b7280);
+	margin: 0 0 6px;
+	font-size: 10px;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--albanna-muted, #6c7680);
+	background: var(--albanna-hover, #f2f4f5);
+	padding: 2px 8px;
+	border-radius: 4px;
+	display: inline-block;
+}
+
+[data-theme="dark"] .albanna-chat__question-progress {
+	background: var(--albanna-bubble, #232323);
+	color: var(--albanna-text, var(--gray-200, #e2e2e2));
 }
 
 .albanna-chat__question-nav {
@@ -1646,24 +1785,54 @@ body.albanna-side-chat-docked-inline-start {
 	align-items: center;
 	justify-content: flex-end;
 	flex-wrap: wrap;
+	margin-top: 4px;
 }
 
 .albanna-chat__question-nav-btn,
 .albanna-chat__question-submit {
 	border: 1px solid var(--albanna-border, #ededed);
-	background: var(--albanna-hover, #f2f4f5);
+	background: var(--albanna-surface, #ffffff);
 	color: var(--albanna-text, #1f2328);
 	border-radius: 6px;
-	padding: 5px 10px;
+	padding: 5px 12px;
 	font-size: 12px;
-	cursor: pointer;
+	font-weight: 600;
 	font-family: inherit;
+	cursor: pointer;
+	transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
+[data-theme="dark"] .albanna-chat__question-nav-btn,
+[data-theme="dark"] .albanna-chat__question-submit {
+	background: var(--albanna-bubble, #232323);
+	color: var(--albanna-text, var(--gray-200, #e2e2e2));
+	border-color: var(--albanna-border, var(--gray-800, #232323));
+}
+
+.albanna-chat__question-nav-btn:hover:not(:disabled) {
+	background: var(--albanna-hover, #f2f4f5);
+	border-color: var(--albanna-border, #ededed);
+}
+
+[data-theme="dark"] .albanna-chat__question-nav-btn:hover:not(:disabled) {
+	background: var(--albanna-hover, var(--gray-800, #232323));
+	border-color: var(--albanna-border, var(--gray-700, #383838));
+}
+
+/* Submit is the filled, primary action — like the card's Confirm. */
 .albanna-chat__question-submit {
-	background: var(--albanna-primary, #2490ef);
-	color: #ffffff;
-	border-color: var(--albanna-primary, #2490ef);
+	background: var(--albanna-accent, #171717);
+	border-color: var(--albanna-accent, #171717);
+	color: var(--albanna-on-accent, #ffffff);
+}
+
+.albanna-chat__question-submit:hover:not(:disabled) {
+	opacity: 0.9;
+}
+
+[data-theme="dark"] .albanna-chat__question-submit {
+	background: var(--albanna-accent, var(--gray-700, #383838));
+	border-color: var(--albanna-accent, var(--gray-700, #383838));
 }
 
 .albanna-chat__question-nav-btn:disabled,

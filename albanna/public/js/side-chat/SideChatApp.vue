@@ -67,7 +67,7 @@ import { hasTable, renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js"
 import { watchRoute } from "./page.mjs";
 import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
 import { takeRetryQuestion } from "./retry.mjs";
-import { describeTool, statusLabel, toolLabel, toolSummary } from "./tool-labels.mjs";
+import { describeTool, statusLabel, toolAction, toolLabel, toolSummary } from "./tool-labels.mjs";
 import { noticeText } from "./notices.mjs";
 import { destructiveConsequence, isDestructiveTool } from "./write-safety.mjs";
 import { waitsOfConversation, waitsOfPage } from "./turn-waits.mjs";
@@ -3173,6 +3173,15 @@ onBeforeUnmount(() => {
 			role="alertdialog"
 			aria-live="assertive"
 		>
+			<div class="albanna-chat__confirm-header">
+				<span class="albanna-chat__confirm-action">{{ toolAction(wait.approval.name) }}</span>
+				<span
+					v-if="canDecide(wait.approval, now)"
+					class="albanna-chat__confirm-time"
+				>
+					{{ __("Waiting {0}s", [remainingSeconds(wait.approval, now)]) }}
+				</span>
+			</div>
 			<p class="albanna-chat__confirm-preview">{{ wait.approval.preview }}</p>
 			<p
 				v-if="isDestructiveTool(wait.approval.name)"
@@ -3195,13 +3204,18 @@ onBeforeUnmount(() => {
 					<span class="albanna-chat__confirm-diff-after">{{ change.after }}</span>
 				</li>
 			</ul>
-			<p v-if="canDecide(wait.approval, now)" class="albanna-chat__confirm-countdown">
-				{{ __("Waiting {0}s", [remainingSeconds(wait.approval, now)]) }}
-			</p>
 			<p v-else class="albanna-chat__confirm-countdown albanna-chat__confirm-countdown--out">
 				{{ __("The wait ran out — the change was not made.") }}
 			</p>
 			<div class="albanna-chat__confirm-actions">
+				<button
+					type="button"
+					class="albanna-chat__confirm-button albanna-chat__confirm-button--cancel"
+					:disabled="!canDecide(wait.approval, now)"
+					@click="decideWrite(wait.streamId, 'reject')"
+				>
+					{{ __("Cancel") }}
+				</button>
 				<button
 					type="button"
 					class="albanna-chat__confirm-button albanna-chat__confirm-button--confirm"
@@ -3214,14 +3228,6 @@ onBeforeUnmount(() => {
 					@click="decideWrite(wait.streamId, 'approve')"
 				>
 					{{ __("Confirm") }}
-				</button>
-				<button
-					type="button"
-					class="albanna-chat__confirm-button albanna-chat__confirm-button--cancel"
-					:disabled="!canDecide(wait.approval, now)"
-					@click="decideWrite(wait.streamId, 'reject')"
-				>
-					{{ __("Cancel") }}
 				</button>
 			</div>
 		</div>
