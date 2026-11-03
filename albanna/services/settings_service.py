@@ -20,6 +20,7 @@ from typing import Any
 import frappe
 
 from albanna.core.options import parse_options
+from albanna.core.tools import parse_tool_names
 from albanna.providers.base import ProviderConfig, default_base_url
 
 #: Where the memoised settings live between calls in one request.
@@ -176,11 +177,10 @@ def _build() -> AppSettings:
         # "free" is a lie the ledger would tell.
         price_per_million=_float(getattr(doc, "price_per_million", 0), 0.0),
         monthly_budget=_float(getattr(doc, "monthly_budget", 0), 0.0),
-        disabled_tools=tuple(
-            t.strip()
-            for t in str(getattr(doc, "disabled_tools", "") or "").replace(",", "\n").split("\n")
-            if t.strip()
-        ),
+        # The parser is the manifest's: the form refuses a name that is
+        # not a tool, and the list the model is shown is parsed by the
+        # same code, so the two cannot disagree about what a list means.
+        disabled_tools=parse_tool_names(getattr(doc, "disabled_tools", "")),
         # Whether a write waits for the reader's approval.  A Check
         # field, read as a bool; a missing column (pre-migration) reads
         # as "off".

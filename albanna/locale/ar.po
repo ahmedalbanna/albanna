@@ -452,8 +452,6 @@ msgstr "كم سؤالاً قد يطرحه شخص في الدقيقة، لكل و
 
 msgid "How many tool rounds one question may take. A backstop against a runaway loop, not a budget: the assistant answers with what it has found when it is reached, rather than apologising for stopping."
 msgstr "كم جولة من الأدوات قد يأخذها سؤال واحد. حدّ أمان ضدّ حلقة لا تنتهي، لا ميزانية: يجيب المساعد بما وجده حين يُبلَغ، بدل أن يعتذر عن التوقّف."
-msgid "Limits"
-msgstr "الحدود"
 
 msgid "Lower is more literal. Keep it low for a tool-using assistant: a high temperature turns a schema into a guess."
 msgstr "كلما انخفضت كانت الإجابة أم حرفية. أبقِها منخفضة لمساعد يستعمل الأدوات: الدرجة العالية تحوّل المخطّط إلى تخمين."
@@ -732,11 +730,7 @@ msgstr "مقطوعة"
 msgid "I could not produce an answer to that."
 msgstr "لم أستطع أن أُنتج جواباً على ذلك."
 
-msgid "Where the side-chat widget sits on the Desk."
-msgstr "المكان الذي يظهر فيه عنصر المحادثة الجانبية على المكتب."
 
-msgid "Widget"
-msgstr "عنصر المحادثة"
 
 msgid "You do not have access to the chat. No role on this site holds read on {0}."
 msgstr "ليس لديك صلاحية استخدام المحادثة. لا يوجد دور على هذا الموقع يملك صلاحية القراءة على {0}."
@@ -769,8 +763,6 @@ msgstr "الميزانية"
 msgid "Cancel"
 msgstr "إلغاء"
 
-msgid "Comma- or newline-separated tool names to hide from the assistant, e.g. create_doc."
-msgstr "أسماء الأدوات التي تُخفى عن المساعد، مفصولة بفواصل أو أسطر، مثل create_doc."
 
 msgid "Confirm"
 msgstr "تأكيد"
@@ -1288,3 +1280,39 @@ msgstr "إجابات متعددة"
 
 msgid "The reader may choose more than one of the offered answers."
 msgstr "يمكن للقارئ اختيار أكثر من إجابة من الإجابات المُقدَّمة."
+
+msgid "Access & Safety"
+msgstr "الوصول والأمان"
+
+msgid "Limits & Cost"
+msgstr "الحدود والتكلفة"
+
+msgid "The widget"
+msgstr "عنصر المحادثة"
+
+msgid "Safety"
+msgstr "الأمان"
+
+msgid "Whether the side chat is on at all, and where it sits on the Desk."
+msgstr "هل المحادثة الجانبية مفعَّلة أصلاً، والمكان الذي تجلس فيه على المكتب."
+
+msgid "What the assistant may do without asking, and what its users may attach to a question."
+msgstr "ما يمكن للمساعد فعله دون أن يسأل، وما يمكن لمستخدميه إرفاقه بسؤال."
+
+msgid "Which API the fallback is called through. The same three choices as the primary."
+msgstr "الواجهة التي يُنادى بها المزوّد الاحتياطي. الخيارات الثلاثة نفسها كما في المزوّد الأساسي."
+
+msgid "The fallback's API key. Stored the same way as the primary's: encrypted, and never sent to the browser."
+msgstr "مفتاح API الخاص بالمزوّد الاحتياطي. يُخزَّن كما يُخزَّن مفتاح المزوّد الأساسي: مشفَّراً، ولا يُرسَل إلى المتصفح أبداً."
+
+msgid "These are not Albanna tools: {0}."
+msgstr "هذه ليست أدوات ألبانا: {0}."
+
+msgid "ask_question is how the assistant asks you to choose between what it found. With it disabled it answers from what it has and never asks."
+msgstr "ask_question هي الأداة التي يطلب بها المساعد منك الاختيار بين ما وجده. حين تُعطَّل يجيب بما لديه ولا يسأل أبداً."
+
+msgid "Tool names, separated by commas or line breaks — one per line is easiest to read. A name that is not one of this app's tools is refused when you save: a name that matches no tool hides nothing from the assistant, and a setting that looks right while hiding nothing is worse than an error. The tools are list_docs, get_doc, get_doctype_meta, run_report, create_doc, update_doc, bulk_update_doc, submit_doc, cancel_doc, amend_doc, delete_doc, ask_question."
+msgstr "أسماء الأدوات، مفصولة بفواصل أو بأسطر — أداة في كل سطر هي الأسهل في القراءة. الاسم الذي ليس أداة من أدوات هذا التطبيق يُرفض عند الحفظ: الاسم الذي لا يطابق أي أداة لا يُخفي عن المساعد شيئاً، والإعداد الذي يبدو صحيحاً وهو لا يُخفي شيئاً أسوأ من خطأ. الأدوات هي: list_docs، get_doc، get_doctype_meta، run_report، create_doc، update_doc، bulk_update_doc، submit_doc، cancel_doc، amend_doc، delete_doc، ask_question."
+
+msgid "and {0} more"
+msgstr "و{0} أخرى"

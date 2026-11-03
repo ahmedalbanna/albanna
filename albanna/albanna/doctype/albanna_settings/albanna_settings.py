@@ -1,18 +1,24 @@
 """``Albanna Settings`` — the Single that holds the site's configuration.
 
-The controller exists for one reason: the API key.  A ``Password`` field
-stores its value in two halves — the ciphertext in ``tabAuth`` and a mask
-in the column — and Frappe v16 has no ``Document.set_password``.
-Saving a document with a ``Password`` field through the ORM writes the
-*plaintext* into the column, which is exactly the thing that must not
-happen to a credential.
+The controller exists for the things a saving form must not get quietly
+wrong, and there are four of them.  The API key is the one that cannot be
+allowed to leak: a ``Password`` field stores its value in two halves — the
+ciphertext in ``tabAuth`` and a mask in the column — and Frappe v16 has no
+``Document.set_password``.  Saving through the ORM writes the *plaintext*
+into the column.
 
-So the key is written during ``validate``, through the encryption API,
-and the column is left holding the mask.  ``validate`` runs after
-``set_new_name`` and before ``db_insert``, so the plain text never
-reaches the table at all — not even briefly.  The same pass repairs a
-key that was already stored in the clear.  The controller is the only
-place that knows this, and the only place it needs to be known.
+So the key is written during ``validate``, through the encryption API, and
+the column is left holding the mask.  ``validate`` runs after
+``set_new_name`` and before ``db_insert``, so the plain text never reaches
+the table at all — not even briefly.  The same pass repairs a key that was
+already stored in the clear.  The controller is the only place that knows
+this, and the only place it needs to be known.
+
+The other three are the operator being believed when they can be:
+options that are not JSON are refused rather than ignored, a tool name
+that matches no tool is refused rather than leaving a tool the operator
+believed they had hidden, and an approval wait outside the bounds the wait
+itself honours is corrected rather than silently clamped at read time.
 """
 
 import frappe
@@ -25,6 +31,7 @@ class AlbannaSettings(Document):
     def validate(self):
         self._secure_secrets()
         self._enforce_valid_options()
+        self._validate_disabled_tools()
         self._clamp_approval_wait()
 
     def on_update(self):
@@ -123,6 +130,46 @@ class AlbannaSettings(Document):
                 frappe._(
                     "The approval wait is kept between {0} and {1} seconds; {2} was used."
                 ).format(int(MIN_TIMEOUT), int(MAX_TIMEOUT), clamped),
+                indicator="orange",
+                alert=True,
+            )
+
+    def _validate_disabled_tools(self):
+        """Refuse tool names that are not tools.
+
+        The field is free text and the operator types tool names into it.
+        A typo would be ignored silently, and the tool the operator meant
+        to hide would stay visible to the model — the one setting whose
+        whole job is to narrow what the assistant may do, quietly failing
+        to narrow it, while looking exactly as it should.
+
+        So the save is where it is caught, and the error names the
+        entries that are not tools, so the operator can fix the spelling
+        rather than delete the list and start again.
+
+        ``ask_question`` is another matter.  It is a real tool, so a
+        list naming it is valid — but it is the tool the assistant asks
+        the reader with, and an operator who disables it is usually
+        trying to stop a tool that would not work rather than deciding
+        the assistant should never ask.  That earns a warning, not a
+        refusal: the list stays as written.
+        """
+        from albanna.core.tools import ASK_QUESTION_TOOL, parse_tool_names, unknown_tool_names
+
+        unknown = unknown_tool_names(self.get("disabled_tools"))
+        if unknown:
+            frappe.throw(
+                frappe._("These are not Albanna tools: {0}.").format(", ".join(unknown)),
+                frappe.ValidationError,
+                title=frappe._("Disabled tools"),
+            )
+
+        if ASK_QUESTION_TOOL in parse_tool_names(self.get("disabled_tools")):
+            frappe.msgprint(
+                frappe._(
+                    "ask_question is how the assistant asks you to choose between what it"
+                    " found. With it disabled it answers from what it has and never asks."
+                ),
                 indicator="orange",
                 alert=True,
             )
