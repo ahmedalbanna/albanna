@@ -60,6 +60,7 @@ from albanna.core.messages import (
     Message,
     ToolCall,
     as_plain_history,
+    attachment_note,
     sanitize,
     system,
     tool_result,
@@ -173,7 +174,12 @@ class TurnRequest:
     page: str = ""
     page_context: str = ""
     stream: bool = False
-    image: str = ""
+    images: list[str] = field(default_factory=list)
+    #: Pre-stored file URLs, parallel to ``images``.  When an entry holds a
+    #: URL the turn reuses it instead of storing the bytes again — the
+    #: reader attached the file through "Upload to Frappé Files" before
+    #: sending the turn.
+    image_urls: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -318,6 +324,142 @@ def turn_payload(outcome: TurnOutcome) -> dict[str, Any]:
     }
 
 
+#: The folder attachments are stored under.
+ALBANNA_FOLDER = "Home/Albanna"
+
+#: The file types an attachment may carry.  Anything else is rejected
+#: rather than stored with a guessed extension — a broad accept would
+#: happily file away ``image/svg+xml`` (which executes as HTML) or
+#: ``text/html`` under a ``.bin`` name the chromium postfix would not.
+ATTACHABLE = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "application/pdf": ".pdf",
+}
+
+
+def _ensure_albanna_folder() -> str:
+    """Ensure the 'Home/Albanna' folder exists and return its name."""
+    folder_name = ALBANNA_FOLDER
+    if frappe.db.exists("File", folder_name):
+        return folder_name
+    try:
+        folder = frappe.new_doc("File")
+        folder.file_name = "Albanna"
+        folder.is_folder = 1
+        folder.folder = "Home"
+        folder.insert(ignore_permissions=True)
+        return folder.name
+    except Exception:
+        if frappe.db.exists("File", "Home/Attachments"):
+            return "Home/Attachments"
+        return "Home"
+
+
+def max_attachment_bytes() -> int:
+    """The site's ceiling on an attachment, in bytes.  Zero means none.
+
+    The setting is named for images because images were the only thing
+    that could be attached when it was written; it is the site's only
+    ceiling on a file, so it is the one that applies to a PDF too.
+    """
+    from albanna.services.settings_service import get_settings
+
+    try:
+        settings = get_settings()
+        return int(getattr(settings, "max_image_size_kb", 0) or 0) * 1024
+    except Exception:
+        logger.exception("Could not read the site's attachment ceiling")
+        return 0
+
+
+def decode_attachment(data_url: str) -> tuple[bytes, str]:
+    """The bytes and the type of a data URL.
+
+    Returns ``(b"", "")`` when the payload cannot be read.  The type is
+    the one the URL claims, and it is only a claim: whether it may be
+    stored is :data:`ATTACHABLE`'s decision, not this function's.
+    """
+    if not data_url:
+        return b"", ""
+    try:
+        import base64
+
+        header, payload = (data_url.split(",", 1) + [""])[:2]
+        raw = base64.b64decode(payload, validate=True)
+    except Exception:
+        return b"", ""
+    mime = header.split(";")[0].split(":")[-1].strip() if header.startswith("data:") else ""
+    return raw, mime
+
+
+def store_attached_bytes(raw: bytes, mime: str, user: str) -> dict[str, str] | None:
+    """Store bytes as a private Frappe File, and say where they went.
+
+    Returns ``{"file_url", "name", "size", "mime"}`` or ``None`` when the
+    file cannot be stored.  The file is private so that only the
+    uploader's session can read it.
+    """
+    ext = ATTACHABLE.get(mime)
+    if ext is None:
+        logger.warning("Rejected an attached file of unsupported type %r", mime or "(none)")
+        return None
+    try:
+        filename = f"albanna-{frappe.generate_hash(length=8)}{ext}"
+        folder = _ensure_albanna_folder()
+        saved = frappe.utils.file_manager.save_file(
+            filename, raw, "User", user, is_private=1, folder=folder
+        )
+        file_url = str(getattr(saved, "file_url", "") or "")
+        if not file_url:
+            return None
+        return {
+            "file_url": file_url,
+            "name": str(getattr(saved, "name", "") or ""),
+            "size": len(raw),
+            "mime": mime,
+        }
+    except Exception:
+        logger.exception("Could not store an attached file")
+        return None
+
+
+def store_attached_file(data_url: str, user: str) -> dict[str, str] | None:
+    """Store an attached file as a private Frappe File.
+
+    Returns ``{"file_url", "name", "size", "mime"}`` or ``None`` when the
+    file cannot be stored.  The file is private so that only the uploader's
+    session can read it.
+
+    This is the turn's door: it refuses silently, because a turn that
+    cannot store a picture still answers, and the reader is told that the
+    attachment did not make it.  The endpoint that uploads on its own
+    says the same refusals in words, because there the reader is waiting
+    for an answer and can do something about it.
+
+    The site's ceiling is checked here, at the door that writes the
+    bytes: the browser checks it too, but the browser is not the one that
+    fills the disk, and an endpoint that takes a whole file in one
+    parameter is an endpoint somebody will call directly.
+    """
+    if not data_url:
+        return None
+    raw, mime = decode_attachment(data_url)
+    if not raw:
+        return None
+    max_bytes = max_attachment_bytes()
+    if max_bytes and len(raw) > max_bytes:
+        logger.warning(
+            "Refused an attached file of %d bytes; the site's ceiling is %d",
+            len(raw),
+            max_bytes,
+        )
+        return None
+    return store_attached_bytes(raw, mime, user)
+
+
 class ChatService:
     """Runs one turn of the chat."""
 
@@ -369,7 +511,7 @@ class ChatService:
         started = time.monotonic()
         settings = get_settings()
 
-        image_dropped = bool(request.image) and not (
+        image_dropped = bool(request.images) and not (
             getattr(settings.provider, "supports_vision", False)
             or (
                 settings.fallback is not None
@@ -393,33 +535,22 @@ class ChatService:
         conversation = self._resolve_conversation(request, principal.user, question)
         self._conversation = conversation
 
-        # An image attached to the question is stored as a Frappe File so
-        # that the assistant can reference it by URL — for example, to set
-        # it as a document's image field.  The bytes travel with the turn
-        # only; what is stored is the file, not the chat.
-        image_url = ""
-        if request.image:
-            image_url = self._store_image(request.image, principal.user)
-            is_image = str(request.image).startswith("data:image/")
-            kind = "image" if is_image else "file"
-            if image_url:
-                extra = (
-                    f"\n\nA {kind} was attached to this question and stored as a "
-                    f"Frappe File. Its URL is: {image_url}. If the user asks to "
-                    f"set it as a document's field, use this URL as the value."
-                )
-            else:
-                extra = (
-                    f"\n\nA {kind} was attached to this question but could not be "
-                    "stored as a file. Do not attempt to use it."
-                )
+        # Images attached to the question are stored as Frappe Files so
+        # that the assistant can reference them by URL — for example, to set
+        # one as a document's image field.  The bytes travel with the turn
+        # only; what is stored is the files, not the chat.
+        image_urls, extra = self._store_attachments(request, principal.user)
+        if extra:
             request = TurnRequest(
                 question=request.question,
                 conversation_id=request.conversation_id,
                 page=request.page,
                 page_context=(request.page_context or "") + extra,
                 stream=request.stream,
-                image=request.image,
+                images=request.images,
+                # The addresses the files were stored under.  The request
+                # is whole after the turn, not a half of one.
+                image_urls=image_urls,
             )
 
         history = load_messages(conversation, settings.history_limit)
@@ -436,7 +567,7 @@ class ChatService:
             running.status = "running"
             running.rounds = 0
             running.tool_calls = 0
-            running.had_image = 1 if bool(request.image) else 0
+            running.had_image = 1 if bool(request.images) else 0
             running.insert(ignore_permissions=True)
             self._audit_name = running.name
             frappe.db.commit()
@@ -461,7 +592,7 @@ class ChatService:
             system(build_system_prompt(visible, context, settings.system_prompt))
         ]
         messages.extend(sanitize(as_plain_history(history)))
-        messages.append(user(question, image=request.image or None))
+        messages.append(user(question, images=request.images or None))
 
         tool_calls_made: list[dict[str, Any]] = []
         rounds = 0
@@ -525,7 +656,7 @@ class ChatService:
                         error_class="provider_error",
                         error_message=str(exc),
                         price_per_million=settings.price_per_million,
-                        had_image=bool(request.image),
+                        had_image=bool(request.images),
                         round_ms=round_durations,
                     )
                 )
@@ -560,7 +691,7 @@ class ChatService:
                             "role": "user",
                             "content": question,
                             "round_no": 0,
-                            "image_url": image_url,
+                            "image_url": json.dumps(image_urls),
                         },
                         {
                             "role": "assistant",
@@ -593,7 +724,7 @@ class ChatService:
                         started=started,
                         status="truncated" if completion.truncated else "ok",
                         price_per_million=settings.price_per_million,
-                        had_image=bool(request.image),
+                        had_image=bool(request.images),
                         round_ms=round_durations,
                     )
                 )
@@ -665,7 +796,12 @@ class ChatService:
         written = append_messages(
             conversation,
             [
-                {"role": "user", "content": question, "round_no": 0, "image_url": image_url},
+                {
+                    "role": "user",
+                    "content": question,
+                    "round_no": 0,
+                    "image_url": json.dumps(image_urls),
+                },
                 {"role": "assistant", "content": reply, "round_no": rounds},
             ],
         )
@@ -792,58 +928,51 @@ class ChatService:
 
     # -- the tools --------------------------------------------------------
 
-    def _ensure_albanna_folder(self) -> str:
-        """Ensure the 'Home/Albanna' folder exists and return its name."""
-        folder_name = "Home/Albanna"
-        if frappe.db.exists("File", folder_name):
-            return folder_name
-        try:
-            folder = frappe.new_doc("File")
-            folder.file_name = "Albanna"
-            folder.is_folder = 1
-            folder.folder = "Home"
-            folder.insert(ignore_permissions=True)
-            return folder.name
-        except Exception:
-            if frappe.db.exists("File", "Home/Attachments"):
-                return "Home/Attachments"
-            return "Home"
+    def _store_attachments(self, request: TurnRequest, user: str) -> tuple[list[str], str]:
+        """Store the turn's attachments, and say where they went.
 
-    #: The file types an attachment may carry.  Anything else is rejected
-    #: rather than stored with a guessed extension — a broad accept would
-    #: happily file away ``image/svg+xml`` (which executes as HTML) or
-    #: ``text/html`` under a ``.bin`` name the chromium postfix would not.
-    ATTACHABLE = {
-        "image/png": ".png",
-        "image/jpeg": ".jpg",
-        "image/webp": ".webp",
-        "image/gif": ".gif",
-        "application/pdf": ".pdf",
-    }
+        Returns the stored URLs and the note that tells the model about
+        them.  The note is empty when there was nothing to store, and
+        the turn's page context is left alone then.
+
+        A file the reader already uploaded through "Upload to Frappé
+        Files" is reused rather than stored a second time: the bytes
+        have already been written, and writing them twice leaves two
+        files for one picture.
+        """
+        if not request.images:
+            return [], ""
+
+        pre_stored = request.image_urls or []
+        urls: list[str] = []
+        for index, image in enumerate(request.images):
+            reuse = pre_stored[index] if index < len(pre_stored) else ""
+            stored = reuse or self._store_image(image, user)
+            if stored:
+                urls.append(stored)
+
+        if urls:
+            # The count is the count that was *stored*.  A turn that sent
+            # three pictures and stored two has told the reader it sent
+            # three; a note that says "three were stored" would be a
+            # claim about a file that does not exist.
+            note = attachment_note(urls)
+            if len(urls) < len(request.images):
+                note += (
+                    f"\n\n{len(request.images) - len(urls)} of the attachments "
+                    "could not be stored as files. Do not attempt to use them."
+                )
+        else:
+            note = (
+                f"\n\n{len(request.images)} attachment(s) could not be stored "
+                "as files. Do not attempt to use them."
+            )
+        return urls, note
 
     def _store_image(self, image: str, user: str) -> str:
         """Store an attached file as a Frappe File and return its URL."""
-        if not image:
-            return ""
-        try:
-            import base64
-
-            header, payload = (image.split(",", 1) + [""])[:2]
-            raw = base64.b64decode(payload, validate=True)
-            mime = header.split(";")[0].split(":")[-1].strip() if header.startswith("data:") else ""
-            ext = self.ATTACHABLE.get(mime)
-            if ext is None:
-                logger.warning("Rejected an attached file of unsupported type %r", mime or "(none)")
-                return ""
-            filename = f"albanna-{frappe.generate_hash(length=8)}{ext}"
-            folder = self._ensure_albanna_folder()
-            saved = frappe.utils.file_manager.save_file(
-                filename, raw, "User", user, is_private=1, folder=folder
-            )
-            return str(getattr(saved, "file_url", "") or "")
-        except Exception:
-            logger.exception("Could not store an attached file")
-            return ""
+        result = store_attached_file(image, user)
+        return result["file_url"] if result else ""
 
     def _resolve_conversation(self, request: TurnRequest, user: str, question: str) -> str:
         """The conversation this turn belongs to.

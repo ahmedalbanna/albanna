@@ -40,13 +40,36 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 Role = Literal["system", "user", "assistant", "tool"]
 
 #: The only tool-call type this app speaks.
 TOOL_CALL_TYPE = "function"
+
+
+def attachment_note(urls: list[str]) -> str:
+    """The note that tells the model where the attachments went.
+
+    The bytes travel with the turn; the file is what outlives it.  A
+    later turn must still be able to say "the picture you sent is the
+    one at this URL" — otherwise the reader has to attach it a second
+    time to set it on a document, which is the reader doing the app's
+    work twice.
+
+    The URL goes into the message as *text*, never as an image part: a
+    stored file's address is a path on this site
+    (``/private/files/albanna-8f2a1c.png``), and a vision provider
+    cannot read a path it has no way to fetch.
+    """
+    if not urls:
+        return ""
+    listed = ", ".join(urls)
+    return (
+        f"\n\n{len(urls)} attachment(s) were stored as Frappe File(s): {listed}. "
+        f"If the user asks to set one as a document's field, use its URL as the value."
+    )
 
 
 def new_tool_call_id() -> str:
@@ -123,20 +146,21 @@ class Message:
     content: str = ""
     tool_calls: tuple[ToolCall, ...] = ()
     tool_call_id: str = ""
-    #: An optional image, as a base64 data URL.  Carried only on the
-    #: user's question; the assistant's answer is text.  None means "no
-    #: image", which is the common case and keeps the wire shape plain.
-    image: str | None = None
+    #: The attachments carried on the user's question, as base64 data URLs.
+    #: The assistant's answer is text.  Empty means "no attachment", which
+    #: is the common case and keeps the wire shape plain.
+    images: list[str] = field(default_factory=list)
 
     def to_wire(self) -> dict[str, Any]:
         """The OpenAI-shaped wire form."""
-        if self.image:
-            content: Any = []
+        content: Any = self.content
+        if self.images:
+            parts: list[dict[str, Any]] = []
             if self.content:
-                content.append({"type": "text", "text": self.content})
-            content.append({"type": "image_url", "image_url": {"url": self.image}})
-        else:
-            content = self.content
+                parts.append({"type": "text", "text": self.content})
+            for image in self.images:
+                parts.append({"type": "image_url", "image_url": {"url": image}})
+            content = parts
         payload: dict[str, Any] = {"role": self.role, "content": content}
         if self.tool_calls:
             payload["tool_calls"] = [call.to_wire() for call in self.tool_calls]
@@ -155,12 +179,12 @@ class Message:
             role = "user"
 
         content = raw.get("content")
-        image: str | None = None
+        images: list[str] = []
         if content is None:
             content = ""
         elif isinstance(content, list):
             # Vision shape: a list of {type: "text"} and
-            # {type: "image_url"} parts.  Reassemble into text + image.
+            # {type: "image_url"} parts.  Reassemble into text + images.
             text_parts: list[str] = []
             for part in content:
                 if not isinstance(part, dict):
@@ -173,7 +197,7 @@ class Message:
                     if isinstance(url, dict):
                         url = url.get("url")
                     if isinstance(url, str) and url:
-                        image = url
+                        images.append(url)
             content = "\n".join(text_parts)
         elif not isinstance(content, str):
             content = json.dumps(content, default=str)
@@ -188,7 +212,7 @@ class Message:
             content=content,
             tool_calls=tool_calls,
             tool_call_id=str(raw.get("tool_call_id") or ""),
-            image=image,
+            images=images,
         )
 
 
@@ -196,8 +220,8 @@ def system(text: str) -> Message:
     return Message(role="system", content=text)
 
 
-def user(text: str, image: str | None = None) -> Message:
-    return Message(role="user", content=text, image=image)
+def user(text: str, images: list[str] | None = None) -> Message:
+    return Message(role="user", content=text, images=images or [])
 
 
 def assistant(text: str = "", tool_calls: tuple[ToolCall, ...] = ()) -> Message:
@@ -250,7 +274,7 @@ def sanitize(messages: list[Message]) -> list[Message]:
             kept[-1] = Message(
                 role=message.role,
                 content=f"{kept[-1].content}\n\n{message.content}",
-                image=kept[-1].image or message.image,
+                images=(kept[-1].images or []) + (message.images or []),
             )
             continue
 
@@ -273,7 +297,11 @@ def as_plain_history(messages: list[Message]) -> list[Message]:
     as they are.
     """
     return [
-        Message(role=message.role, content=message.content, image=message.image)
+        Message(
+            role=message.role,
+            content=message.content,
+            images=message.images,
+        )
         if message.role == "assistant"
         else message
         for message in messages

@@ -29,7 +29,7 @@ from typing import Any
 import frappe
 from frappe import _
 
-from albanna.core.messages import Message, ToolCall
+from albanna.core.messages import Message, ToolCall, attachment_note
 from albanna.core.undo import is_undoable
 
 logger = logging.getLogger(__name__)
@@ -215,6 +215,25 @@ def _next_index(conversation: str) -> int:
     return int(current[0][0]) + 1 if current else 1
 
 
+def _stored_images(value: str) -> list[str]:
+    """The attachment URLs stored on a message row, as a list.
+
+    A row carries them as a JSON-encoded list; a legacy row carries a
+    single bare URL.  Both are accepted.
+    """
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except (json.JSONDecodeError, ValueError):
+        return [value]
+    if isinstance(parsed, list):
+        return [str(x) for x in parsed if isinstance(x, str) and x]
+    if isinstance(parsed, str) and parsed:
+        return [parsed]
+    return []
+
+
 def load_messages(conversation: str, limit: int = 20) -> list[Message]:
     """The last *limit* messages of a conversation, oldest first.
 
@@ -230,7 +249,7 @@ def load_messages(conversation: str, limit: int = 20) -> list[Message]:
     """
     rows = frappe.db.sql(
         """
-        select role, content, tool_name, tool_calls
+        select role, content, image_url, tool_name, tool_calls
         from `tabAlbanna Message`
         where parent = %s and parentfield = %s
         order by idx asc
@@ -264,10 +283,25 @@ def load_messages(conversation: str, limit: int = 20) -> list[Message]:
             except (json.JSONDecodeError, ValueError, TypeError):
                 tool_calls = ()
 
+        # The attachments a reader sent are stored as Frappe Files, and
+        # the row knows their URLs.  The model is told about them in
+        # words, because a stored file's address is a path on this site
+        # (``/private/files/albanna-8f2a1c.png``) and a vision provider
+        # cannot read a path it has no way to fetch: the request is
+        # refused, and the second turn of every conversation with an
+        # attachment dies with it.
+        #
+        # The widget's own view of the thread keeps the URLs
+        # (:func:`load_transcript`), and the reader sees the picture.
+        stored = _stored_images(row.image_url or "")
+        content = row.content or ""
+        if stored and role == "user":
+            content += attachment_note(stored)
+
         messages.append(
             Message(
                 role=role,
-                content=row.content or "",
+                content=content,
                 tool_calls=tool_calls,
                 tool_call_id="",
             )
@@ -370,7 +404,7 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
                 "idx": int(row.idx or 0),
                 "role": role,
                 "content": row.content or "",
-                "image": row.image_url or "",
+                "images": _stored_images(row.image_url or ""),
                 "rating": row.rating or "",
                 "tools": tools,
                 # When it was said, so that the transcript can say so.

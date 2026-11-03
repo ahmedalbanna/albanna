@@ -24,6 +24,7 @@ long will have it cut off.  The worker moves the wait off the request.
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import time
 import uuid
@@ -56,35 +57,71 @@ STREAM_EVENT = "albanna_chat_progress"
 TURN_CACHE_KEY = "albanna:turn:{stream_id}"
 
 
-def _prepare_image(image: str, settings: Any) -> tuple[str, str]:
-    """Validate an attached image against the site's settings.
+def _prepare_image(image: str, settings: Any) -> tuple[list[str], str]:
+    """Validate attached images against the site's settings.
 
-    Returns ``(``image``, ``error)``.  When ``error`` is empty the image is
-    ready to use; otherwise the turn must not start, and the error is shown
-    to the caller — dropping the attachment silently would leave the user
-    convinced the model saw it.
+    ``image`` may be a single base64 data URL or a JSON-encoded list of
+    them.  Returns ``(images, error)``.  When ``error`` is empty the images
+    are ready to use; otherwise the turn must not start, and the error is
+    shown to the caller — dropping an attachment silently would leave the
+    reader believing the model saw a picture it never received.
+
+    An error returns **no** images, not the ones read so far.  A turn that
+    carried two pictures and could not read the second must not reach the
+    model carrying the first: the reader attached both, and the model
+    would answer about half of what it was given.
     """
-    image = image or ""
+    images: list[str] = []
     if not image:
-        return "", ""
+        return images, ""
     if not getattr(settings, "image_support", False):
         # The site has images switched off.  Saying so is the whole point:
         # dropping the attachment quietly leaves the reader believing the
         # model saw a picture it never received, and the model — which
         # really did receive nothing — says exactly that.
-        return "", "Image attachments are not enabled on this site."
+        return images, "Image attachments are not enabled on this site."
     try:
-        payload = image.split(",", 1)[-1]
-        raw = base64.b64decode(payload, validate=True)
-    except Exception:
-        return "", "The attached file could not be read."
+        parsed = json.loads(image)
+    except (ValueError, TypeError):
+        parsed = image
+    if isinstance(parsed, str):
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        return [], "The attached file could not be read."
     max_bytes = int(getattr(settings, "max_image_size_kb", 0) or 0) * 1024
-    if max_bytes and len(raw) > max_bytes:
-        return "", (
-            f"The attached image is too large. The maximum is "
-            f"{getattr(settings, 'max_image_size_kb', 0)} KB."
-        )
-    return image, ""
+    for entry in parsed:
+        if not isinstance(entry, str) or not entry:
+            return [], "The attached file could not be read."
+        try:
+            payload = entry.split(",", 1)[-1]
+            raw = base64.b64decode(payload, validate=True)
+        except Exception:
+            return [], "The attached file could not be read."
+        if max_bytes and len(raw) > max_bytes:
+            return [], (
+                f"The attached image is too large. The maximum is "
+                f"{getattr(settings, 'max_image_size_kb', 0)} KB."
+            )
+        images.append(entry)
+    return images, ""
+
+
+def _parse_image_urls(value: str) -> list[str]:
+    """A JSON-encoded list of pre-stored file URLs, parallel to ``images``.
+
+    ``upload_file`` returns one URL per attached file; the composer sends
+    them back with the turn so the worker reuses them instead of storing
+    the same bytes again.
+    """
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(x) for x in parsed if isinstance(x, str) and x]
 
 
 #: Where a finished turn is parked for the polling fallback.
@@ -184,6 +221,7 @@ def ask(
     page: str = "",
     page_context: Any = None,
     image: str = "",
+    image_urls: str = "",
 ) -> dict[str, Any]:
     """Ask a question and wait for the answer."""
     require_chat_access()
@@ -196,9 +234,11 @@ def ask(
     from albanna.services.settings_service import get_settings
 
     settings = get_settings()
-    image, error = _prepare_image(image, settings)
+    images, error = _prepare_image(image, settings)
     if error:
         return {"status": "error", "error": error}
+
+    stored_urls = _parse_image_urls(image_urls)
 
     request = TurnRequest(
         question=question or "",
@@ -206,7 +246,8 @@ def ask(
         page=page or "",
         page_context=_render_page_context(page_context),
         stream=False,
-        image=image or "",
+        images=images,
+        image_urls=stored_urls,
     )
     outcome = ChatService().run(request)
 
@@ -221,6 +262,7 @@ def ask_stream(
     page: str = "",
     page_context: Any = None,
     image: str = "",
+    image_urls: str = "",
 ) -> dict[str, Any]:
     """Ask a question and get the answer as it happens.
 
@@ -235,9 +277,11 @@ def ask_stream(
     check_turn_allowed(str(frappe.session.user or ""), SURFACE_STREAM)
 
     settings = get_settings()
-    image, error = _prepare_image(image, settings)
+    images, error = _prepare_image(image, settings)
     if error:
         return {"status": "error", "error": error}
+
+    stored_urls = _parse_image_urls(image_urls)
 
     stream_id = uuid.uuid4().hex
 
@@ -261,7 +305,8 @@ def ask_stream(
             "status": "running",
             "started_at": time.time(),
             "question": question or "",
-            "image": image or "",
+            "images": json.dumps(images),
+            "image_urls": json.dumps(stored_urls),
             "page_context": _render_page_context(page_context),
         },
         # No ``user=``: the marker is parked in the site's namespace, not
