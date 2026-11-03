@@ -232,6 +232,18 @@ the card carries its own **"type your own answer"** box.
   own text.  The CI uses it now, so the CI's site and the bench's are
   made the same way.
 
+- **The live hint names the documents it counted.**  "3 overdue Sales
+  Invoices — want me to draft reminders?" was a number the reader had to
+  look up: the reader was told how many invoices were overdue and then
+  had to find which three, on the list they were already looking at.
+  The hint now names them — the customer the reader recognises at a
+  glance and the series they can look up, each a link that opens the
+  document — and counts the ones behind them ("and 2 more"), because the
+  panel is a hint and a list of forty names is not one.  The names come
+  from the same permission-filtered query as the count, so a document
+  the reader may not see is neither counted nor named: the count and the
+  names are two answers to one question and must not disagree.
+
 ### Added
 
 - **A test that pins how a reader reads a mailbox.**  The framework

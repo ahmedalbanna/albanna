@@ -4,14 +4,24 @@ The panel opens on a list and says one thing about it: *there is one
 overdue invoice — want me to draft reminders?*  It is the only thing the
 chat says before the reader has asked anything, so it has to be right in
 a way that is hard to get right: the count must be the reader's own
-count, the words must be in the reader's language, and the numbers must
-be in the sentence at all.
+count, the words must be in the reader's language, the numbers must be
+in the sentence at all, and the documents it names must be the reader's
+own documents.
 
-This file holds the first of those three.  The hint is a translated
-string with two holes in it, and a translated string is filled *after*
-the translation — ``frappe._`` takes a language as its second argument
-and never fills a ``{0}`` on its own.  Getting that wrong leaves the
-reader looking at ``{0} overdue {1}``, which is what happened.
+This file holds the first and the last of those.  The hint is a
+translated string with two holes in it, and a translated string is
+filled *after* the translation — ``frappe._`` takes a language as its
+second argument and never fills a ``{0}`` on its own.  Getting that
+wrong leaves the reader looking at ``{0} overdue {1}``, which is what
+happened.
+
+And a count with no names is a number the reader has to look up: they
+are told that three invoices are overdue, and they have to find which
+three.  So the hint names them — and the names come from the same
+permission-filtered query as the count, because a name the reader may
+not see is a leak, and it is a leak in the one place the reader is least
+suspicious: a name in an empty state, offered before they have asked
+anything.
 
 These tests need a site, and they are excluded from the default
 ``pytest`` run by the ``integration`` marker.  They run with:
@@ -147,3 +157,163 @@ class TestTheLiveHint(AlbannaTestCase):
 
         with pytest.raises(frappe.PermissionError):
             context_api.nudge_for_page("Sales Invoice")
+
+
+@pytest.mark.integration
+class TestTheHintNamesItsDocuments(AlbannaTestCase):
+    """The documents the hint names are the reader's own documents.
+
+    The count and the names have to agree, and they have to agree because
+    they come from the same query: the permission query conditions, the
+    row-level rules, the ownership constraint and the User Permissions
+    all apply to both.  A count that sees forty invoices and a list of
+    names that sees three of somebody else's would be worse than no hint
+    at all.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.reader = _make_user(READER, ("Albanna User", "Accounts User"))
+        _as(self.reader)
+
+    # -- the rows of this test ----------------------------------------------
+
+    def _customer(self, name: str) -> str:
+        """A customer of this test's own."""
+        if not frappe.db.exists("Customer", name):
+            group = frappe.db.get_value("Customer", {"disabled": 0}, "customer_group")
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                customer = frappe.new_doc("Customer")
+                customer.customer_name = name
+                customer.customer_type = "Company"
+                customer.customer_group = group
+                customer.flags.ignore_permissions = True
+                customer.insert()
+            finally:
+                _as(former)
+        return name
+
+    def _overdue_invoice(self, customer: str) -> str:
+        """An invoice of this test's own, marked overdue.
+
+        The invoice is a draft: the suite does not submit an invoice of
+        its own, because a submission runs whatever hooks the site's
+        apps have put on it.  What the hint reads is the ``status``
+        column, so the status is written in the database — the row the
+        query finds is the row the reader would see, and no submission is
+        needed to prove it.
+
+        The invoice is made by the Administrator, so that the reader's
+        own rows are not the only rows they may see: what hides a row
+        here is a permission, not an owner.
+        """
+        company = frappe.db.get_value("Company", {}, "name")
+        currency = frappe.db.get_value("Company", company, "default_currency")
+        item = frappe.db.get_value("Item", {"disabled": 0}, "name")
+
+        former = frappe.session.user
+        frappe.set_user("Administrator")
+        try:
+            invoice = frappe.new_doc("Sales Invoice")
+            invoice.company = company
+            invoice.currency = currency
+            invoice.customer = customer
+            invoice.append("items", {"item_code": item, "qty": 1, "rate": 10})
+            invoice.flags.ignore_permissions = True
+            invoice.insert()
+            frappe.db.set_value("Sales Invoice", invoice.name, "status", "Overdue")
+        finally:
+            _as(former)
+        return invoice.name
+
+    def _overdue_count(self) -> int:
+        """How many overdue invoices the reader may see."""
+        return context_api._count_readable("Sales Invoice", [["status", "=", "Overdue"]])
+
+    # -- the names ----------------------------------------------------------
+
+    def test_the_hint_names_the_documents_it_counted(self):
+        """The names are the documents the count was made of.
+
+        The reader is told how many invoices are overdue and is shown
+        some of them: the customer they recognise at a glance, and the
+        series they can look up.
+        """
+        customer = self._customer("Albanna Context Named")
+        invoice = self._overdue_invoice(customer)
+
+        result = context_api.nudge_for_page("Sales Invoice")
+
+        named = {document["name"]: document for document in result["documents"]}
+        assert invoice in named, "the hint counted an invoice it did not name"
+        assert named[invoice]["title"] == customer
+        assert result["more"] == max(0, self._overdue_count() - len(result["documents"]))
+
+    def test_the_hint_names_three_documents_at_most(self):
+        """Three names, and a count of the ones behind them.
+
+        The panel is a hint: a list of forty names is not a hint.  So the
+        names stop at three, and the reader is told how many are behind
+        them rather than being shown a wall.
+        """
+        for index in range(5):
+            self._overdue_invoice(self._customer(f"Albanna Context Many {index}"))
+
+        result = context_api.nudge_for_page("Sales Invoice")
+
+        assert len(result["documents"]) == 3
+        assert result["more"] == self._overdue_count() - 3
+        assert result["more"] >= 2
+
+    def test_the_names_are_the_readers_own_rows(self):
+        """A name the reader may not see is a leak.
+
+        The account may read one customer, and this invoice belongs to
+        another.  The count does not see it either — the count and the
+        names come from the same query — so the hint says nothing about
+        it and shows no sign of it.
+        """
+        mine = self._customer("Albanna Context Mine")
+        theirs = self._customer("Albanna Context Theirs")
+        my_invoice = self._overdue_invoice(mine)
+        their_invoice = self._overdue_invoice(theirs)
+
+        permission = frappe.get_doc(
+            {
+                "doctype": "User Permission",
+                "user": self.reader,
+                "allow": "Customer",
+                "for_value": mine,
+                "apply_to_all_doctypes": 1,
+            }
+        )
+        permission.flags.ignore_permissions = True
+        permission.insert()
+
+        result = context_api.nudge_for_page("Sales Invoice")
+
+        names = [document["name"] for document in result["documents"]]
+        assert my_invoice in names
+        assert their_invoice not in names
+        assert result["more"] == max(0, self._overdue_count() - len(result["documents"]))
+
+    def test_a_document_with_no_title_is_named_by_its_own_name(self):
+        """The title is sent as the site holds it.
+
+        An invoice whose customer has no title carries no title, and the
+        server does not invent one: the panel falls back to the
+        document's own name, which is what the reader would see in the
+        list anyway.
+        """
+        customer = self._customer("Albanna Context Untitled")
+        invoice = self._overdue_invoice(customer)
+        frappe.db.set_value("Sales Invoice", invoice, "title", "")
+
+        result = context_api.nudge_for_page("Sales Invoice")
+
+        named = {document["name"]: document for document in result["documents"]}
+        assert invoice in named
+        assert named[invoice]["title"] == ""
+        assert named[invoice]["name"] == invoice

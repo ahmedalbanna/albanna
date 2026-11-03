@@ -1763,8 +1763,53 @@ body.albanna-side-chat-docked-inline-start {
 	background: var(--albanna-accent-soft, #f3f3f3);
 	border-radius: 6px;
 	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 6px;
+}
+
+.albanna-chat__nudge-message {
+	margin: 0;
+	display: flex;
 	align-items: center;
 	gap: 8px;
+}
+
+/* The documents the nudge names: the reader's own rows, as links to
+   them. */
+.albanna-chat__nudge-documents {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.albanna-chat__nudge-document {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	min-width: 0;
+}
+
+.albanna-chat__nudge-link {
+	color: var(--albanna-link, #1f2328);
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	overflow-wrap: anywhere;
+}
+
+/* The document's own name, beside the name the reader sees: the reader
+   recognises one by sight and the other by reference. */
+.albanna-chat__nudge-reference {
+	color: var(--albanna-muted, #6c7680);
+	overflow-wrap: anywhere;
+}
+
+.albanna-chat__nudge-more {
+	margin: 0;
+	color: var(--albanna-muted, #6c7680);
 }
 
 .albanna-chat__nudge-ask {

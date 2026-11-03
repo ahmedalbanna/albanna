@@ -73,6 +73,7 @@ import {
 	turnsForPage,
 } from "./inflight.mjs";
 import { canDecide, remainingSeconds } from "./approval.mjs";
+import { documentRoute, moreText, namedDocuments, unnamedCount } from "./nudge.mjs";
 import { answerMessage, canAnswer, questionCard } from "./question.mjs";
 import { mergeOlder, oldestIdx, olderRequest, windowRequest } from "./window.mjs";
 import {
@@ -184,11 +185,19 @@ const doctypeCount = ref(null);
 /** A non-intrusive nudge for the current list page, if any. */
 const nudgeMessage = ref("");
 
+/** The documents the nudge names, as the panel draws them. */
+const nudgeDocuments = ref([]);
+
+/** How many documents the nudge left out, in the reader's language. */
+const nudgeMoreText = ref("");
+
 watch(currentPage, async () => {
 	const context = resolveContext();
 	if (!context || !context.doctype || context.name) {
 		doctypeCount.value = null;
 		nudgeMessage.value = "";
+		nudgeDocuments.value = [];
+		nudgeMoreText.value = "";
 		return;
 	}
 	try {
@@ -204,8 +213,12 @@ watch(currentPage, async () => {
 			doctype: context.doctype,
 		});
 		nudgeMessage.value = (result && result.message) || "";
+		nudgeDocuments.value = namedDocuments(result);
+		nudgeMoreText.value = moreText(unnamedCount(result));
 	} catch (failure) {
 		nudgeMessage.value = "";
+		nudgeDocuments.value = [];
+		nudgeMoreText.value = "";
 	}
 });
 
@@ -825,15 +838,11 @@ function documentLink(document) {
 	if (!name) return null;
 
 	const doctype = String(document.doctype || "").trim();
-	const slug =
-		doctype && window.frappe && window.frappe.router
-			? window.frappe.router.slug(doctype)
-			: doctype.toLowerCase().replace(/ /g, "-");
 
 	return {
 		name,
 		doctype,
-		url: `/app/${encodeURIComponent(slug)}/${encodeURIComponent(name)}`,
+		url: documentRoute(doctype, name),
 	};
 }
 
@@ -2782,16 +2791,38 @@ onBeforeUnmount(() => {
 					<p v-if="pageContext" class="albanna-chat__empty-context">
 						{{ pageContext }}
 					</p>
-					<p v-if="nudgeMessage" class="albanna-chat__nudge">
-						{{ nudgeMessage }}
-						<button
-							type="button"
-							class="albanna-chat__nudge-ask"
-							@click="ask(nudgeMessage)"
-						>
-							{{ __("Go") }}
-						</button>
-					</p>
+					<div v-if="nudgeMessage" class="albanna-chat__nudge">
+						<p class="albanna-chat__nudge-message">
+							{{ nudgeMessage }}
+							<button
+								type="button"
+								class="albanna-chat__nudge-ask"
+								@click="ask(nudgeMessage)"
+							>
+								{{ __("Go") }}
+							</button>
+						</p>
+						<ul v-if="nudgeDocuments.length" class="albanna-chat__nudge-documents">
+							<li
+								v-for="document in nudgeDocuments"
+								:key="document.name"
+								class="albanna-chat__nudge-document"
+							>
+								<a class="albanna-chat__nudge-link" :href="document.url">
+									{{ document.label }}
+								</a>
+								<span
+									v-if="document.title"
+									class="albanna-chat__nudge-reference"
+								>
+									{{ document.name }}
+								</span>
+							</li>
+						</ul>
+						<p v-if="nudgeMoreText" class="albanna-chat__nudge-more">
+							{{ nudgeMoreText }}
+						</p>
+					</div>
 					<p v-if="showTour" class="albanna-chat__tour">
 						{{
 							__(

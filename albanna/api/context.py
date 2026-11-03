@@ -49,6 +49,63 @@ def _count_readable(doctype: str, filters: list | None = None) -> int:
         return 0
 
 
+#: How many documents the hint names.  Three is enough for the reader to
+#: recognise the row they meant, and few enough that the panel stays a
+#: hint rather than a list.
+NUDGE_NAMES = 3
+
+
+def _readable_documents(
+    doctype: str, filters: list | None = None, limit: int = NUDGE_NAMES
+) -> list[dict[str, str]]:
+    """The documents the caller may read, with the names the reader sees.
+
+    The same query the count came from — the permission query conditions,
+    the row-level rules and the ownership constraint all apply — so a name
+    that appears here is a row the reader may open, and a row that does
+    not appear is not theirs to see.  A count and a list of names drawn
+    from two different queries would be two answers to the same question.
+
+    Each document carries two names: its own ``name`` — the series it was
+    filed under — and the DocType's title, which is what the reader sees
+    in the list.  On an invoice the title is the customer, and the
+    reader recognises the customer at a glance and the series by
+    reference; carrying both lets the panel show either.
+
+    The order is the DocType's own — the order of the list the reader is
+    looking at — so the names are the first rows of that list rather than
+    a sample from somewhere else.
+    """
+    try:
+        from frappe.model.db_query import DatabaseQuery
+
+        meta = frappe.get_meta(doctype)
+        title_field = meta.get_title_field()
+        fields = ["name"]
+        if title_field and title_field != "name" and meta.has_field(title_field):
+            fields.append(title_field)
+
+        rows = DatabaseQuery(doctype).execute(
+            fields=fields,
+            filters=filters or None,
+            limit_page_length=limit,
+        )
+    except Exception:
+        return []
+
+    documents: list[dict[str, str]] = []
+    for row in rows or []:
+        name = str(row.get("name") or "").strip()
+        if not name:
+            continue
+        title = ""
+        if title_field and title_field != "name":
+            title = str(row.get(title_field) or "").strip()
+        documents.append({"name": name, "title": title})
+
+    return documents
+
+
 @frappe.whitelist()
 def count_doctype(doctype: str) -> dict[str, Any]:
     """How many documents of *doctype* the caller may see.
@@ -80,31 +137,38 @@ def count_doctype(doctype: str) -> dict[str, Any]:
 def nudge_for_page(doctype: str) -> dict[str, Any]:
     """A non-intrusive nudge for the list page, if any.
 
-    Returns ``{"message": "..."}`` or ``{"message": ""}``.  Only a small
-    number of high-value cases are nudged, so the chat does not become a
+    Returns ``{"message": "...", "doctype": ..., "documents": [...],
+    "more": 0}`` — or the same shape with an empty message, so that the
+    caller never has to guess which keys are there.  Only a small number
+    of high-value cases are nudged, so the chat does not become a
     notification system.
 
     The number in the nudge is the caller's own count: a reader who may
-    not see an invoice does not get told that one is overdue.
+    not see an invoice does not get told that one is overdue.  The names
+    are the caller's own rows too, drawn from the same query as the
+    count — a count with no names is a number the reader has to look up,
+    and a name the reader may not see is a leak.
     """
     require_chat_access()
 
     doctype = (doctype or "").strip()
     if doctype not in ("Sales Invoice", "Purchase Invoice"):
-        return {"message": ""}
+        return {"message": "", "doctype": doctype, "documents": [], "more": 0}
 
     try:
         from frappe.permissions import has_permission as _has_permission
 
         if not _has_permission(doctype, "read", print_logs=False):
-            return {"message": ""}
+            return {"message": "", "doctype": doctype, "documents": [], "more": 0}
     except Exception:
-        return {"message": ""}
+        return {"message": "", "doctype": doctype, "documents": [], "more": 0}
 
     count = _count_readable(doctype, [["status", "=", "Overdue"]])
 
     if not count:
-        return {"message": ""}
+        return {"message": "", "doctype": doctype, "documents": [], "more": 0}
+
+    documents = _readable_documents(doctype, [["status", "=", "Overdue"]])
 
     # The numbers go into the string *after* the translation, never
     # through it: ``frappe._`` takes a language as its second argument,
@@ -115,5 +179,8 @@ def nudge_for_page(doctype: str) -> dict[str, Any]:
         "message": frappe._("{0} overdue {1} — want me to draft reminders?").format(
             count,
             doctype,
-        )
+        ),
+        "doctype": doctype,
+        "documents": documents,
+        "more": max(0, count - len(documents)),
     }
