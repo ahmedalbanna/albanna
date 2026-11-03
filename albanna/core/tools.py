@@ -280,9 +280,12 @@ LIST_DOCS = ToolSpec(
                 "type": "array",
                 "description": (
                     "Fieldnames of that DocType to return — the exact "
-                    "fieldnames, not labels. Omit to get the DocType's "
-                    "default title fields, which are usually enough to "
-                    "identify a document."
+                    "fieldnames, not labels. Omit to get the document's "
+                    "name and the DocType's title field — the name the "
+                    "reader sees, which is usually enough to identify a "
+                    "document. The title field is added to any list of "
+                    "fields you ask for, so the name the reader sees is "
+                    "in the answer either way."
                 ),
                 "items": {"type": "string"},
             },

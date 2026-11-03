@@ -202,6 +202,17 @@ the card carries its own **"type your own answer"** box.
   reminders?" is the chat's way of asking, not a question a person would
   have typed.  The hint now carries a question of its own, in the
   reader's language, and that is what the button sends.
+- **The listing tool returned the series number and nothing else.**  The
+  manifest promises the DocType's title fields when the model asks for
+  no fields, and the promise was not kept: a listing came back with
+  `name` alone — "ف-2026-0011" — so the assistant could only answer
+  with a number, and a reader told a number has to look it up.  It
+  could not say "the invoice for أحمد محمد عبدربه", which is the name
+  the reader sees in the list.
+  A listing now carries the document's name and the DocType's title
+  field — the customer on an invoice, the item's name on an item — and
+  the title is added to any list of fields the model asks for, so the
+  name the reader sees is in the answer either way.
 
 ### Added
 

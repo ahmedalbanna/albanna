@@ -163,6 +163,56 @@ class TestToolPath(AlbannaTestCase):
 
         self.assertTrue(result.ok, result.content)
 
+    # -- the listing says which document ------------------------------------
+
+    def test_a_listing_carries_the_name_the_reader_sees(self):
+        """A listing names the documents the way the reader names them.
+
+        The manifest promises the DocType's title fields when the model
+        asks for no fields, and the promise was not kept: the listing
+        came back with the series number and nothing else.  So the
+        assistant could say "ITEM-0001" — a number the reader has to look
+        up — and never the item's own name, which is the name the reader
+        sees in the list.
+        """
+        context = self._context(self.sales_user)
+
+        result = self.backend.call(
+            TOOL_MANIFEST.get("list_docs"),
+            {"doctype": "Item", "limit": 5},
+            context,
+        )
+
+        self.assertTrue(result.ok, result.content)
+        rows = result.data or []
+        self.assertTrue(rows, f"the site needs an item: {result.content}")
+        for row in rows:
+            self.assertTrue(row.get("name"), f"a row without a name: {row}")
+            self.assertTrue(row.get("item_name"), f"a row without the title the reader sees: {row}")
+
+    def test_the_title_is_in_the_listing_the_model_asked_for(self):
+        """The title is added to the fields the model asked for.
+
+        The model asked for one field; the answer carries that field and
+        the name the reader sees, because a row without it is a row the
+        assistant cannot put a name to.
+        """
+        context = self._context(self.sales_user)
+
+        result = self.backend.call(
+            TOOL_MANIFEST.get("list_docs"),
+            {"doctype": "Item", "fields": ["item_code"], "limit": 5},
+            context,
+        )
+
+        self.assertTrue(result.ok, result.content)
+        rows = result.data or []
+        self.assertTrue(rows, f"the site needs an item: {result.content}")
+        for row in rows:
+            self.assertTrue(row.get("item_code"), f"the field asked for is missing: {row}")
+            self.assertTrue(row.get("name"), f"a row without a name: {row}")
+            self.assertTrue(row.get("item_name"), f"a row without the title the reader sees: {row}")
+
     # -- the per-call-user marker ------------------------------------------
 
     def test_a_write_runs_as_the_calling_user_not_as_administrator(self):

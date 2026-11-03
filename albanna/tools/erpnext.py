@@ -182,6 +182,26 @@ def _validate_fields(meta, doctype: str, fields: list[str]) -> str | None:
     )
 
 
+def _title_field(meta) -> str:
+    """The DocType's title field — the name the reader sees.
+
+    It is the field a list view puts first, and the one a reader
+    recognises a document by.  A DocType whose title field is its own
+    name has nothing to add, and a DocType with no title field at all
+    has nothing to show.
+    """
+    try:
+        title_field = meta.get_title_field()
+    except Exception:
+        return ""
+
+    if not title_field or title_field == "name":
+        return ""
+    if not meta.has_field(title_field):
+        return ""
+    return title_field
+
+
 def _savepoint(label: str) -> str:
     """Take a savepoint for this write, and name it.
 
@@ -356,6 +376,16 @@ def list_docs(
         invalid = _validate_fields(meta, doctype, field_list)
         if invalid:
             return invalid
+
+    # Every listing carries the document's name and the DocType's title
+    # field.  The name is the document's identity — the Desk shows it in
+    # every list, and the app's citations link by it — and the title is
+    # the name the reader sees: the customer on an invoice.  A model
+    # that sees only "ف-2026-0011" cannot say "the invoice for أحمد محمد
+    # عبدربه", and a reader told a series number has to look it up.
+    for field in ("name", _title_field(meta)):
+        if field and field not in field_list:
+            field_list.append(field)
 
     try:
         limit = max(1, min(int(limit or 20), MAX_LIMIT))
