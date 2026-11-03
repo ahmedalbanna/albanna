@@ -1396,6 +1396,21 @@ body.albanna-side-chat-docked-inline-start {
 	color: var(--albanna-muted, #6c7680);
 }
 
+/* The pinned group: pinned conversations always sit at the top of the
+   drawer, no matter how old they are.  The accent is a fill, so the ink
+   is the link colour — in the dark theme the accent is a dark grey and
+   a title painted with it cannot be read. */
+.albanna-drawer__group--pinned .albanna-drawer__group-title {
+	color: var(--albanna-link, #171717);
+}
+
+/* A pinned conversation carries a small mark so the reader can scan the
+   list and tell at a glance which threads are pinned. */
+.albanna-drawer__item--pinned .albanna-drawer__title {
+	color: var(--albanna-link, #171717);
+	font-weight: 600;
+}
+
 .albanna-drawer__group-list {
 	list-style: none;
 	margin: 0;
@@ -2006,78 +2021,101 @@ body.albanna-side-chat-docked-inline-start {
 	color: var(--albanna-text, #1f2328);
 }
 
-/* Composer image attach. */
-.albanna-chat__attach-preview {
-	position: relative;
-	display: inline-block;
+/* Composer attachment chips.  One chip per attached file: an icon, the
+   name, the size, and a remove button.  Chips wrap so a reader who
+   attaches several files can still see them all. */
+.albanna-chat__attach-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
 	margin: 0 0 6px;
+	align-items: center;
 }
 
-.albanna-chat__attach-thumb {
-	max-height: 80px;
-	max-width: 100%;
-	border-radius: 8px;
+.albanna-chat__attach-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	height: 26px;
+	padding: 0 8px 0 6px;
 	border: 1px solid var(--albanna-border, #ededed);
-	box-shadow: var(--albanna-shadow, 0 2px 8px rgba(0, 0, 0, 0.1));
+	border-radius: 13px;
+	background: var(--albanna-hover, #f3f3f3);
+	font-size: 11px;
+	color: var(--albanna-text, #1f2328);
+	max-width: 180px;
 }
 
-.albanna-chat__attach-remove {
-	position: absolute;
-	top: 4px;
-	inset-inline-end: 4px;
-	width: 22px;
-	height: 22px;
-	border: 0;
-	border-radius: 50%;
-	background: rgba(0, 0, 0, 0.65);
-	color: var(--albanna-on-accent, #ffffff);
-	cursor: pointer;
-	font-size: 14px;
-	line-height: 1;
-	padding: 0;
+[data-theme="dark"] .albanna-chat__attach-chip {
+	background: var(--albanna-bubble, #232323);
+	color: var(--albanna-text, var(--gray-200, #e2e2e2));
+	border-color: var(--albanna-border, var(--gray-800, #232323));
+}
+
+.albanna-chat__attach-chip-icon {
+	flex: none;
+	width: 16px;
+	height: 16px;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	border-radius: 50%;
+	font-size: 12px;
+	line-height: 1;
 }
 
-.albanna-chat__attach-remove:hover {
-	background: rgba(0, 0, 0, 0.8);
+.albanna-chat__attach-chip-icon--image {
+	background: color-mix(in srgb, var(--albanna-accent, #171717) 12%, var(--albanna-surface, #ffffff));
 }
 
-.albanna-chat__attach {
+[data-theme="dark"] .albanna-chat__attach-chip-icon--image {
+	background: color-mix(in srgb, var(--albanna-accent, var(--gray-700, #383838)) 18%, var(--albanna-surface, #1f1f1f));
+}
+
+.albanna-chat__attach-chip-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 120px;
+}
+
+/* The size of the attached file.  The reader is about to send it, and a
+   file that is bigger than they thought is a file they want to know
+   about before the turn goes. */
+.albanna-chat__attach-chip-size {
+	flex: none;
+	font-size: 10px;
+	opacity: 0.8;
+	color: var(--albanna-muted, #6c7680);
+	white-space: nowrap;
+}
+
+.albanna-chat__attach-chip-remove {
 	border: 0;
 	background: transparent;
 	color: var(--albanna-muted, #6c7680);
 	cursor: pointer;
-	padding: 6px;
 	border-radius: 50%;
+	padding: 0;
+	width: 20px;
+	height: 20px;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	min-width: 32px;
-	min-height: 32px;
-	transition: background 120ms ease, color 120ms ease;
+	font-size: 13px;
+	line-height: 1;
+	flex: none;
 }
 
-.albanna-chat__attach:hover {
-	color: var(--albanna-text, #1f2328);
+.albanna-chat__attach-chip-remove:hover {
 	background: var(--albanna-hover, #f3f3f3);
+	color: var(--albanna-danger, #c0392b);
 }
 
-.albanna-chat__attach:disabled {
-	opacity: 0.4;
-	cursor: not-allowed;
-}
-
-.albanna-chat__attach-file {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	padding: 4px 8px;
-	font-size: 12px;
-	color: var(--albanna-text, #1f2328);
-	background: var(--albanna-hover, #f3f3f3);
-	border-radius: 6px;
+[data-theme="dark"] .albanna-chat__attach-chip-remove:hover {
+	background: var(--albanna-hover, var(--gray-800, #232323));
 }
 
 .albanna-chat__attach-uploading {
@@ -2088,6 +2126,12 @@ body.albanna-side-chat-docked-inline-start {
 
 .albanna-chat__file-input {
 	display: none;
+}
+
+.albanna-chat__attach-notice {
+	font-size: 12px;
+	color: var(--text-muted);
+	padding-left: 4px;
 }
 
 /* Voice input. */
@@ -2131,13 +2175,23 @@ body.albanna-side-chat-docked-inline-start {
 	50% { transform: scale(1.08); opacity: 0.85; }
 }
 
+/* What the reader attached, above their words.  Every attachment is
+   shown: a reader who sent three pictures sees three pictures. */
+.albanna-chat__user-attachments {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+	align-items: flex-start;
+	margin: 0 0 4px;
+}
+
 /* Image attached to a user question. */
 .albanna-chat__user-image {
 	max-height: 120px;
 	max-width: 100%;
 	border-radius: 6px;
 	display: block;
-	margin: 0 0 4px;
+	margin: 0;
 }
 
 /* A file attached to a user question.  The paperclip is an icon, so it
@@ -2158,4 +2212,149 @@ body.albanna-side-chat-docked-inline-start {
 	font-size: 12px;
 	color: var(--text-muted);
 	padding-left: 4px;
+}
+
+/* A chip whose file has already been stored under Home/Albanna. */
+.albanna-chat__attach-chip--stored {
+	border-color: var(--albanna-accent, #171717);
+}
+
+[data-theme="dark"] .albanna-chat__attach-chip--stored {
+	border-color: var(--albanna-accent, var(--gray-700, #383838));
+}
+
+.albanna-chat__attach-chip-stored {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--albanna-link, #171717);
+}
+
+[data-theme="dark"] .albanna-chat__attach-chip-stored {
+	color: var(--albanna-link, var(--gray-300, #a1a1aa));
+}
+
+/* Upload to Frappé Files — a card above the composer, not a modal over
+   the Desk.  The reader is choosing where a file goes while still
+   reading the thread, the way the approval card does, so the thread
+   keeps its place.  The composer is the positioned parent, and the card
+   sits above it: a card below the composer would be off the panel. */
+.albanna-chat__upload-dialog {
+	position: absolute;
+	inset-block-end: 100%;
+	inset-inline-end: 0;
+	z-index: 4;
+	width: min(280px, 100%);
+	padding-block-end: 6px;
+}
+
+.albanna-chat__upload-panel {
+	position: relative;
+	z-index: 2;
+	width: 100%;
+	background: var(--albanna-surface, #ffffff);
+	border: 1px solid var(--albanna-border, #ededed);
+	border-radius: 10px;
+	box-shadow: var(--albanna-shadow);
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 14px;
+}
+
+[data-theme="dark"] .albanna-chat__upload-panel {
+	background: var(--albanna-surface, #1f1f1f);
+	border-color: var(--albanna-border, var(--gray-800, #232323));
+	box-shadow: var(--albanna-shadow);
+}
+
+.albanna-chat__upload-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.albanna-chat__upload-title {
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--albanna-text, #1f2328);
+}
+
+.albanna-chat__upload-close {
+	border: 0;
+	background: transparent;
+	color: var(--albanna-muted, #6c7680);
+	cursor: pointer;
+	padding: 4px;
+	border-radius: 6px;
+	line-height: 1;
+	font-size: 20px;
+}
+
+.albanna-chat__upload-close:hover {
+	color: var(--albanna-text, #1f2328);
+	background: var(--albanna-hover, #f3f3f3);
+}
+
+.albanna-chat__upload-destination {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--albanna-muted, #6c7680);
+}
+
+.albanna-chat__upload-label {
+	font-weight: 600;
+}
+
+.albanna-chat__upload-path {
+	color: var(--albanna-link, #171717);
+}
+
+.albanna-chat__upload-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.albanna-chat__upload-btn {
+	border: 1px solid var(--albanna-border, #ededed);
+	background: var(--albanna-surface, #ffffff);
+	color: var(--albanna-text, #1f2328);
+	border-radius: 8px;
+	padding: 10px 14px;
+	font-size: 14px;
+	font-weight: 600;
+	text-align: start;
+	cursor: pointer;
+	transition: background 120ms ease, border-color 120ms ease;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+[data-theme="dark"] .albanna-chat__upload-btn {
+	background: var(--albanna-bubble, #232323);
+	color: var(--albanna-text, var(--gray-200, #e2e2e2));
+	border-color: var(--albanna-border, var(--gray-800, #232323));
+}
+
+.albanna-chat__upload-btn:hover:not([disabled]) {
+	background: var(--albanna-hover, #f3f3f3);
+	border-color: var(--albanna-border, #ededed);
+}
+
+[data-theme="dark"] .albanna-chat__upload-btn:hover:not([disabled]) {
+	background: var(--albanna-hover, var(--gray-800, #232323));
+	border-color: var(--albanna-border, var(--gray-700, #383838));
+}
+
+/* The composer is the positioned parent of the upload card, so the card
+   sits above the composer rather than over the whole Desk. */
+.albanna-chat__composer {
+	position: relative;
 }

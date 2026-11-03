@@ -118,7 +118,7 @@ const props = defineProps({
 const state = reactive(initialState());
 
 const draft = ref("");
-const attachedImage = ref("");
+const attachedFiles = ref([]);
 const conversationId = ref("");
 const transcriptEl = ref(null);
 /** What a screen reader is told, once a turn is over. */
@@ -735,6 +735,9 @@ function makeMessage(role, content, at) {
 		// millisecond, so a formatter per message per token is a
 		// millisecond and a half of work per token, for a clock.
 		time: "",
+		// The attachments on the reader's question, as data URLs.  Empty
+		// for an answer and for a text-only question.
+		images: [],
 		// Whether the answer holds a table that can be taken away.
 		hasTable: false,
 		// What the turn's tool calls did, in one line.
@@ -816,7 +819,11 @@ function messageFromServer(message) {
 	// conversation grows.
 	item.name = message.name || "";
 	item.rating = message.rating || "";
-	item.image = message.image || "";
+	// Every attachment the question carried, as the addresses they have
+	// on this site.  The reader sees them; the model is told about them
+	// in words, because a path on this site is not a picture a provider
+	// can fetch.
+	item.images = message.images || [];
 	// The stored index, which is how the panel asks for the page of
 	// messages behind this one.  A message that has not been stored yet
 	// has no index, and it is the newest one.
@@ -1453,18 +1460,19 @@ function decideWrite(streamId, decision) {
  */
 async function send(question) {
 	const text = String(question || draft.value || "").trim();
-	if (!text && !attachedImage.value) return;
+	if (!text && !attachedFiles.value.length) return;
 	if (!maySend.value) return;
 
-	const image = attachedImage.value || "";
-	attachedImage.value = "";
+	const images = attachedFiles.value.map((file) => file.dataUrl);
+	const imageUrls = attachedFiles.value.map((file) => file.fileUrl || "");
+	attachedFiles.value = [];
 
 	draft.value = "";
 	followBottom.value = true;
 	showScrollButton.value = false;
 
 	const asked = makeMessage("user", text);
-	if (image) asked.image = image;
+	if (images.length) asked.images = images;
 	const answer = makeMessage("assistant", "");
 	answer.pending = true;
 
@@ -1502,7 +1510,8 @@ async function send(question) {
 	try {
 		result = await runTurn({
 			question: text,
-			image: image,
+			images: images,
+			imageUrls: imageUrls,
 			conversationId: conversationId.value,
 			page: page,
 			pageContext: {
@@ -2759,39 +2768,52 @@ onBeforeUnmount(() => {
 					<!-- The user's own words are shown literally: `{{ }}` escapes
 					     them, and a user who types `**` meant a literal `**`. -->
 					<div
-						v-if="message.role === 'user' && (message.content || message.image)"
+						v-if="
+							message.role === 'user' &&
+							(message.content || (message.images && message.images.length))
+						"
 						class="albanna-chat__bubble albanna-chat__bubble--plain"
 					>
-						<img
-							v-if="message.image && isImageSrc(message.image)"
-							:src="message.image"
-							alt=""
-							class="albanna-chat__user-image"
-						/>
-						<span v-else-if="message.image" class="albanna-chat__user-file">
-							<!-- The paperclip is decoration: the words beside it
-							     say what the attachment is, so the icon is for the
-							     eye and not for a screen reader.  An emoji here
-							     would have been an image of a different set of
-							     instructions, in a font the browser picks. -->
-							<svg
-								width="13"
-								height="13"
-								viewBox="0 0 24 24"
-								fill="none"
-								aria-hidden="true"
-								class="albanna-chat__user-file-icon"
-							>
-								<path
-									d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
-									stroke="currentColor"
-									stroke-width="1.8"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-								/>
-							</svg>
-							{{ __("Attached file") }}
-						</span>
+						<!-- What the reader attached, above their words.  The list
+						     holds every attachment, so a reader who sent three
+						     pictures sees three pictures. -->
+						<div
+							v-if="message.images && message.images.length"
+						class="albanna-chat__user-attachments"
+						>
+						<template v-for="(image, index) in message.images" :key="index">
+							<img
+								v-if="isImageSrc(image)"
+								:src="image"
+								alt=""
+								class="albanna-chat__user-image"
+							/>
+							<span v-else class="albanna-chat__user-file">
+								<!-- The paperclip is decoration: the words beside it
+								     say what the attachment is, so the icon is for the
+								     eye and not for a screen reader.  An emoji here
+								     would have been an image of a different set of
+								     instructions, in a font the browser picks. -->
+								<svg
+									width="13"
+									height="13"
+									viewBox="0 0 24 24"
+									fill="none"
+									aria-hidden="true"
+									class="albanna-chat__user-file-icon"
+								>
+									<path
+										d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+										stroke="currentColor"
+										stroke-width="1.8"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								</svg>
+								{{ __("Attached file") }}
+							</span>
+						</template>
+						</div>
 						<span v-if="message.content">{{ message.content }}</span>
 					</div>
 					<!-- The assistant's answer is markdown.  `renderMarkdown`
@@ -3257,12 +3279,12 @@ onBeforeUnmount(() => {
 		<Composer
 			v-if="view === 'chat' && !locked"
 			v-model="draft"
-			:image="attachedImage"
+			:files="attachedFiles"
 			:image-support="config && config.image_support"
 			:max-image-size-kb="config && config.max_image_size_kb"
 			:busy="busy"
 			:can-chat="canChat"
-			@update:image="attachedImage = $event"
+			@update:files="attachedFiles = $event"
 			@send="send"
 			@stop="stop"
 		/>

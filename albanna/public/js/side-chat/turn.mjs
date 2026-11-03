@@ -261,7 +261,8 @@ export function subscribe(streamId, handler) {
  */
 export async function runTurn({
 	question,
-	image,
+	images,
+	imageUrls,
 	conversationId,
 	page,
 	pageContext,
@@ -275,7 +276,8 @@ export async function runTurn({
 
 	const queued = await call(ASK_ENDPOINT, {
 		question,
-		image: image || "",
+		image: JSON.stringify(images || []),
+		image_urls: JSON.stringify(imageUrls || []),
 		conversation_id: conversationId || "",
 		page: page || "",
 		page_context: pageContext ? JSON.stringify(pageContext) : "",

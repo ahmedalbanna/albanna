@@ -6,7 +6,7 @@
 // not "a day ago".
 
 import assert from "node:assert";
-import { GROUPS, groupByDate } from "./groups.mjs";
+import { GROUPS, PINNED_GROUP, groupByDate } from "./groups.mjs";
 
 /** A moment, as epoch seconds. */
 function at(date) {
@@ -122,6 +122,61 @@ const now = new Date("2026-10-21T15:00:00");
 // The groups are in a fixed order.
 {
 	assert.deepEqual(GROUPS, ["today", "yesterday", "week", "earlier"]);
+}
+
+// A pinned conversation is pulled out of the date buckets and shown in
+// its own group at the top, so it stays visible however old it is.
+{
+	const groups = groupByDate(
+		[
+			{ name: "pinned-old", pinned: 1, last_activity_ts: daysAgo(now, 40) },
+			{ name: "today", last_activity_ts: daysAgo(now, 0) },
+			{ name: "pinned-new", pinned: 1, last_activity_ts: daysAgo(now, 2) },
+		],
+		now.getTime(),
+	);
+	assert.deepEqual(
+		groups.map((group) => group.key),
+		[PINNED_GROUP, "today"],
+	);
+	assert.deepEqual(
+		groups[0].conversations.map((conversation) => conversation.name),
+		["pinned-old", "pinned-new"],
+	);
+}
+
+// A pinned conversation is in the pinned group and not in a date group
+// as well: the reader must not see the same thread twice.
+{
+	const groups = groupByDate(
+		[
+			{ name: "pinned", pinned: 1, last_activity_ts: daysAgo(now, 0) },
+			{ name: "plain", last_activity_ts: daysAgo(now, 0) },
+		],
+		now.getTime(),
+	);
+	const names = groups.flatMap((group) => group.conversations.map((c) => c.name));
+	assert.deepEqual(names.sort(), ["pinned", "plain"]);
+	assert.equal(names.filter((name) => name === "pinned").length, 1);
+}
+
+// The pinned group is left out when nothing is pinned.
+{
+	const groups = groupByDate([{ name: "today", last_activity_ts: daysAgo(now, 0) }], now.getTime());
+	assert.deepEqual(
+		groups.map((group) => group.key),
+		["today"],
+	);
+}
+
+// A pinned conversation that says nothing about when it was used is
+// still pinned: pinning is the reader's decision, not the clock's.
+{
+	const groups = groupByDate([{ name: "pinned", pinned: 1 }], now.getTime());
+	assert.deepEqual(
+		groups.map((group) => group.key),
+		[PINNED_GROUP],
+	);
 }
 
 console.log("groups: all assertions passed");

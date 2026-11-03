@@ -9,7 +9,7 @@
  */
 import { computed, nextTick, ref, watch } from "vue";
 import { readablePage, relativeTime } from "./format.mjs";
-import { groupByDate } from "./groups.mjs";
+import { groupByDate, PINNED_GROUP } from "./groups.mjs";
 
 const props = defineProps({
 	/** The conversations, newest first. */
@@ -62,6 +62,8 @@ const groups = computed(() => groupByDate(props.conversations));
  */
 function groupLabel(key) {
 	switch (key) {
+		case PINNED_GROUP:
+			return __("Pinned");
 		case "today":
 			return __("Today");
 		case "yesterday":
@@ -153,7 +155,12 @@ function commitRename(conversation, event) {
 		</div>
 
 		<div v-if="!loading && conversations.length" class="albanna-drawer__list">
-			<section v-for="group in groups" :key="group.key" class="albanna-drawer__group">
+			<section
+				v-for="group in groups"
+				:key="group.key"
+				class="albanna-drawer__group"
+				:class="{ 'albanna-drawer__group--pinned': group.key === PINNED_GROUP }"
+			>
 				<h3 class="albanna-drawer__group-title">{{ groupLabel(group.key) }}</h3>
 				<ul class="albanna-drawer__group-list">
 					<li
@@ -162,6 +169,7 @@ function commitRename(conversation, event) {
 						class="albanna-drawer__item"
 						:class="{
 							'albanna-drawer__item--active': conversation.name === props.active,
+							'albanna-drawer__item--pinned': conversation.pinned,
 						}"
 					>
 						<div class="albanna-drawer__item-main">

@@ -14,11 +14,20 @@
 /** The groups, in the order they are shown. */
 export const GROUPS = ["today", "yesterday", "week", "earlier"];
 
+/** The group key for pinned conversations, which always show first. */
+export const PINNED_GROUP = "pinned";
+
 /**
  * Group the conversations by the day they were last used.
  *
- * The conversations keep their order inside a group, so the newest is
- * still first.
+ * Pinned conversations are pulled out first and shown in a dedicated
+ * group at the top, so a pinned conversation stays visible at the top of
+ * the drawer no matter how old it is. The rest keep their order inside
+ * their date group, so the newest is still first.
+ *
+ * The server already returns rows ordered `pinned desc, last_activity
+ * desc`, so pinned rows lead the input; we split them off before the
+ * date buckets.
  *
  * @param {object[]} conversations the conversations, newest first
  * @param {number} [now] the moment to judge them against
@@ -26,18 +35,38 @@ export const GROUPS = ["today", "yesterday", "week", "earlier"];
  *   order, with the empty ones left out
  */
 export function groupByDate(conversations, now = Date.now()) {
-	const groups = new Map();
+	const pinned = [];
+	const unpinned = [];
 
 	for (const conversation of conversations || []) {
+		if (conversation && conversation.pinned) {
+			pinned.push(conversation);
+		} else {
+			unpinned.push(conversation);
+		}
+	}
+
+	const groups = new Map();
+
+	for (const conversation of unpinned) {
 		const key = groupKey(conversation && conversation.last_activity_ts, now);
 		if (!groups.has(key)) groups.set(key, []);
 		groups.get(key).push(conversation);
 	}
 
-	return GROUPS.filter((key) => groups.has(key)).map((key) => ({
-		key,
-		conversations: groups.get(key),
-	}));
+	const result = [];
+
+	if (pinned.length) {
+		result.push({ key: PINNED_GROUP, conversations: pinned });
+	}
+
+	for (const key of GROUPS) {
+		if (groups.has(key)) {
+			result.push({ key, conversations: groups.get(key) });
+		}
+	}
+
+	return result;
 }
 
 /**

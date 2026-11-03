@@ -104,6 +104,57 @@ global.window = {
 	assert.equal(result.reply, "24");
 }
 
+// A turn carries its attachments as a list, and the addresses of the
+// files that were already stored, so the worker does not write the same
+// bytes twice.
+{
+	asked = null;
+	answered = null;
+
+	const pending = runTurn({
+		question: "what is this?",
+		images: ["data:image/png;base64,AAAA", "data:application/pdf;base64,BBBB"],
+		imageUrls: ["/private/files/albanna-8f2a1c.png", ""],
+		conversationId: "",
+		page: "",
+		pageContext: null,
+	});
+
+	await new Promise((resolve) => setTimeout(resolve, 10));
+	answered({ event: "done", stream_id: "stream-1", result: { status: "ok", reply: "a picture" } });
+	await pending;
+
+	assert.deepEqual(JSON.parse(asked.args.image), [
+		"data:image/png;base64,AAAA",
+		"data:application/pdf;base64,BBBB",
+	]);
+	assert.deepEqual(JSON.parse(asked.args.image_urls), [
+		"/private/files/albanna-8f2a1c.png",
+		"",
+	]);
+}
+
+// A turn with no attachments still sends the fields, as empty lists: the
+// endpoint reads one shape, not two.
+{
+	asked = null;
+	answered = null;
+
+	const pending = runTurn({
+		question: "which orders are open?",
+		conversationId: "",
+		page: "",
+		pageContext: null,
+	});
+
+	await new Promise((resolve) => setTimeout(resolve, 10));
+	answered({ event: "done", stream_id: "stream-1", result: { status: "ok", reply: "24" } });
+	await pending;
+
+	assert.deepEqual(JSON.parse(asked.args.image), []);
+	assert.deepEqual(JSON.parse(asked.args.image_urls), []);
+}
+
 console.log("turn: all assertions passed");
 
 // The cadence of the guarantee: how long the next poll waits.
