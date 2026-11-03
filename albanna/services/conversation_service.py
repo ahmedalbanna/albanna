@@ -29,6 +29,7 @@ from typing import Any
 import frappe
 from frappe import _
 
+from albanna.core.attachments import read_attachment_list
 from albanna.core.messages import Message, ToolCall, attachment_note
 from albanna.core.undo import is_undoable
 
@@ -215,25 +216,6 @@ def _next_index(conversation: str) -> int:
     return int(current[0][0]) + 1 if current else 1
 
 
-def _stored_images(value: str) -> list[str]:
-    """The attachment URLs stored on a message row, as a list.
-
-    A row carries them as a JSON-encoded list; a legacy row carries a
-    single bare URL.  Both are accepted.
-    """
-    if not value:
-        return []
-    try:
-        parsed = json.loads(value)
-    except (json.JSONDecodeError, ValueError):
-        return [value]
-    if isinstance(parsed, list):
-        return [str(x) for x in parsed if isinstance(x, str) and x]
-    if isinstance(parsed, str) and parsed:
-        return [parsed]
-    return []
-
-
 def load_messages(conversation: str, limit: int = 20) -> list[Message]:
     """The last *limit* messages of a conversation, oldest first.
 
@@ -293,7 +275,7 @@ def load_messages(conversation: str, limit: int = 20) -> list[Message]:
         #
         # The widget's own view of the thread keeps the URLs
         # (:func:`load_transcript`), and the reader sees the picture.
-        stored = _stored_images(row.image_url or "")
+        stored, _readable = read_attachment_list(row.image_url or "")
         content = row.content or ""
         if stored and role == "user":
             content += attachment_note(stored)
@@ -404,7 +386,7 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
                 "idx": int(row.idx or 0),
                 "role": role,
                 "content": row.content or "",
-                "images": _stored_images(row.image_url or ""),
+                "images": read_attachment_list(row.image_url or "")[0],
                 "rating": row.rating or "",
                 "tools": tools,
                 # When it was said, so that the transcript can say so.

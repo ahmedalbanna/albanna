@@ -20,6 +20,7 @@ from typing import Any
 import frappe
 from frappe import _
 
+from albanna.core.attachments import ATTACHABLE_TYPES, decode_data_url
 from albanna.core.authority import Authority
 from albanna.permissions import require_chat_access
 from albanna.privacy import redacted_request_text
@@ -51,8 +52,6 @@ def upload_file(file_data_url: str = "") -> dict[str, Any]:
     """
     require_chat_access()
     from albanna.services.chat_service import (
-        ATTACHABLE,
-        decode_attachment,
         max_attachment_bytes,
         store_attached_bytes,
     )
@@ -68,10 +67,10 @@ def upload_file(file_data_url: str = "") -> dict[str, Any]:
             frappe.ValidationError,
         )
 
-    raw, mime = decode_attachment(file_data_url)
+    raw, mime = decode_data_url(file_data_url)
     if not raw:
         frappe.throw(_("The file could not be read."), frappe.ValidationError)
-    if mime not in ATTACHABLE:
+    if mime not in ATTACHABLE_TYPES:
         # The types are named, because "only images" is not an answer a
         # reader can act on: an SVG *is* an image, and an SVG cannot be
         # stored, because it executes as HTML.

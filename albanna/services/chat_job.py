@@ -27,7 +27,6 @@ Two details make this reliable rather than merely clever:
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from typing import Any
@@ -35,6 +34,7 @@ from typing import Any
 import frappe
 
 from albanna.api.chat import STALE_GRACE_SECONDS, STREAM_EVENT, TURN_CACHE_KEY
+from albanna.core.attachments import read_attachment_list
 from albanna.core.errors import reader_message
 
 logger = logging.getLogger(__name__)
@@ -50,38 +50,6 @@ def _reader_error(exc: BaseException) -> str:
         return frappe._(message)
     except Exception:
         return message
-
-
-def _json_list(value: Any) -> list[str]:
-    """The attachments a parked marker holds, read back as a list.
-
-    The marker parks them as a JSON list.  A turn queued before that
-    change parks a single bare data URL, so a bare string is read as a
-    list of one.  Anything else is no attachment: a turn that cannot
-    read its own attachments must still answer.
-
-    A string that tries to be JSON and is not is rubbish, not an
-    attachment: ``"[not json"`` is a broken marker, and reading it as a
-    file name would put a broken path into a turn.
-    """
-    if not value:
-        return []
-    if isinstance(value, list):
-        return [str(item) for item in value if isinstance(item, str) and item]
-    if not isinstance(value, str):
-        return []
-    try:
-        parsed = json.loads(value)
-    except (TypeError, ValueError):
-        text = str(value).strip()
-        if text.startswith(("[", "{")):
-            return []
-        parsed = text
-    if isinstance(parsed, list):
-        return [str(item) for item in parsed if isinstance(item, str) and item]
-    if isinstance(parsed, str) and parsed:
-        return [parsed]
-    return []
 
 
 def run_turn_job(
@@ -119,8 +87,12 @@ def run_turn_job(
         )
         question = str(parked.get("question") or "")
         page_context = str(parked.get("page_context") or "")
-        images = _json_list(parked.get("images") or parked.get("image"))
-        image_urls = _json_list(parked.get("image_urls"))
+        # The marker parks them as a JSON list.  A turn queued before
+        # that parks a single bare data URL, and a bare string is read as
+        # a list of one.  Anything else is no attachment: a turn that
+        # cannot read its own attachments must still answer.
+        images, _readable = read_attachment_list(parked.get("images") or parked.get("image"))
+        image_urls, _readable = read_attachment_list(parked.get("image_urls"))
 
     try:
         outcome = ChatService().run(

@@ -23,7 +23,6 @@ long will have it cut off.  The worker moves the wait off the request.
 
 from __future__ import annotations
 
-import base64
 import json
 import logging
 import time
@@ -33,6 +32,12 @@ from typing import Any
 import frappe
 from frappe import _
 
+from albanna.core.attachments import (
+    DISABLED,
+    TOO_LARGE,
+    check_attachments,
+    read_attachment_list,
+)
 from albanna.core.prompt import build_page_context
 from albanna.permissions import require_chat_access
 from albanna.privacy import redacted_request_text
@@ -58,70 +63,67 @@ TURN_CACHE_KEY = "albanna:turn:{stream_id}"
 
 
 def _prepare_image(image: str, settings: Any) -> tuple[list[str], str]:
-    """Validate attached images against the site's settings.
+    """The attachments a question carries, and why they may not be carried.
 
     ``image`` may be a single base64 data URL or a JSON-encoded list of
-    them.  Returns ``(images, error)``.  When ``error`` is empty the images
-    are ready to use; otherwise the turn must not start, and the error is
-    shown to the caller — dropping an attachment silently would leave the
-    reader believing the model saw a picture it never received.
+    them.  Returns ``(images, reason)``.  When ``reason`` is empty the
+    images are ready to use; otherwise the turn must not start, and
+    :func:`_attachment_error` says why.
 
-    An error returns **no** images, not the ones read so far.  A turn that
-    carried two pictures and could not read the second must not reach the
-    model carrying the first: the reader attached both, and the model
-    would answer about half of what it was given.
+    The reason is a code and not a sentence because this function is
+    reached by the domain suite, which has no language to say a sentence
+    in.  The wording lives with the endpoint that shows it.
     """
-    images: list[str] = []
     if not image:
-        return images, ""
+        return [], ""
     if not getattr(settings, "image_support", False):
         # The site has images switched off.  Saying so is the whole point:
         # dropping the attachment quietly leaves the reader believing the
         # model saw a picture it never received, and the model — which
         # really did receive nothing — says exactly that.
-        return images, "Image attachments are not enabled on this site."
-    try:
-        parsed = json.loads(image)
-    except (ValueError, TypeError):
-        parsed = image
-    if isinstance(parsed, str):
-        parsed = [parsed]
-    if not isinstance(parsed, list):
-        return [], "The attached file could not be read."
+        return [], DISABLED
     max_bytes = int(getattr(settings, "max_image_size_kb", 0) or 0) * 1024
-    for entry in parsed:
-        if not isinstance(entry, str) or not entry:
-            return [], "The attached file could not be read."
-        try:
-            payload = entry.split(",", 1)[-1]
-            raw = base64.b64decode(payload, validate=True)
-        except Exception:
-            return [], "The attached file could not be read."
-        if max_bytes and len(raw) > max_bytes:
-            return [], (
-                f"The attached image is too large. The maximum is "
-                f"{getattr(settings, 'max_image_size_kb', 0)} KB."
-            )
-        images.append(entry)
-    return images, ""
+    return check_attachments(image, max_bytes)
 
 
-def _parse_image_urls(value: str) -> list[str]:
-    """A JSON-encoded list of pre-stored file URLs, parallel to ``images``.
+def _read_attachments(
+    image: str, image_urls: str, settings: Any
+) -> tuple[list[str], list[str], str]:
+    """The attachments a question carries, and why they may not be carried.
 
-    ``upload_file`` returns one URL per attached file; the composer sends
-    them back with the turn so the worker reuses them instead of storing
-    the same bytes again.
+    Returns ``(images, stored_urls, error)``.  ``error`` is empty when the
+    turn may go ahead.
+
+    ``images`` are the bytes, as data URLs, for the model to read.
+    ``stored_urls`` are the addresses the bytes were already written
+    under, so the turn reuses the file instead of writing it twice.  A
+    field of stored addresses that cannot be read is read as no addresses:
+    the turn then stores the bytes itself, which is the safe answer to a
+    field it does not understand.
     """
-    if not value:
-        return []
-    try:
-        parsed = json.loads(value)
-    except (ValueError, TypeError):
-        return []
-    if not isinstance(parsed, list):
-        return []
-    return [str(x) for x in parsed if isinstance(x, str) and x]
+    images, reason = _prepare_image(image, settings)
+    if reason:
+        return [], [], _attachment_error(reason, settings)
+    stored, _readable = read_attachment_list(image_urls)
+    return images, stored, ""
+
+
+def _attachment_error(reason: str, settings: Any) -> str:
+    """The sentence a refusal is shown to the reader in.
+
+    The same sentences the upload endpoint says, so a reader refused here
+    and allowed there cannot tell which rule they broke.
+    """
+    if reason == DISABLED:
+        return _("Image attachments are not enabled on this site.")
+    if reason == TOO_LARGE:
+        # The number is a placeholder, not part of the sentence: a
+        # sentence with a number baked into it is a sentence the
+        # translator cannot translate.
+        return _("The file is larger than {0} KB.").format(
+            getattr(settings, "max_image_size_kb", 0)
+        )
+    return _("The file could not be read.")
 
 
 #: Where a finished turn is parked for the polling fallback.
@@ -234,11 +236,9 @@ def ask(
     from albanna.services.settings_service import get_settings
 
     settings = get_settings()
-    images, error = _prepare_image(image, settings)
+    images, stored_urls, error = _read_attachments(image, image_urls, settings)
     if error:
         return {"status": "error", "error": error}
-
-    stored_urls = _parse_image_urls(image_urls)
 
     request = TurnRequest(
         question=question or "",
@@ -277,11 +277,9 @@ def ask_stream(
     check_turn_allowed(str(frappe.session.user or ""), SURFACE_STREAM)
 
     settings = get_settings()
-    images, error = _prepare_image(image, settings)
+    images, stored_urls, error = _read_attachments(image, image_urls, settings)
     if error:
         return {"status": "error", "error": error}
-
-    stored_urls = _parse_image_urls(image_urls)
 
     stream_id = uuid.uuid4().hex
 

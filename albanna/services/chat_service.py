@@ -48,6 +48,7 @@ from typing import Any
 import frappe
 from frappe import _
 
+from albanna.core.attachments import ATTACHABLE_TYPES, decode_data_url
 from albanna.core.authority import Authority
 from albanna.core.cost import cost_of_turn
 from albanna.core.errors import (
@@ -327,18 +328,6 @@ def turn_payload(outcome: TurnOutcome) -> dict[str, Any]:
 #: The folder attachments are stored under.
 ALBANNA_FOLDER = "Home/Albanna"
 
-#: The file types an attachment may carry.  Anything else is rejected
-#: rather than stored with a guessed extension — a broad accept would
-#: happily file away ``image/svg+xml`` (which executes as HTML) or
-#: ``text/html`` under a ``.bin`` name the chromium postfix would not.
-ATTACHABLE = {
-    "image/png": ".png",
-    "image/jpeg": ".jpg",
-    "image/webp": ".webp",
-    "image/gif": ".gif",
-    "application/pdf": ".pdf",
-}
-
 
 def _ensure_albanna_folder() -> str:
     """Ensure the 'Home/Albanna' folder exists and return its name."""
@@ -375,26 +364,6 @@ def max_attachment_bytes() -> int:
         return 0
 
 
-def decode_attachment(data_url: str) -> tuple[bytes, str]:
-    """The bytes and the type of a data URL.
-
-    Returns ``(b"", "")`` when the payload cannot be read.  The type is
-    the one the URL claims, and it is only a claim: whether it may be
-    stored is :data:`ATTACHABLE`'s decision, not this function's.
-    """
-    if not data_url:
-        return b"", ""
-    try:
-        import base64
-
-        header, payload = (data_url.split(",", 1) + [""])[:2]
-        raw = base64.b64decode(payload, validate=True)
-    except Exception:
-        return b"", ""
-    mime = header.split(";")[0].split(":")[-1].strip() if header.startswith("data:") else ""
-    return raw, mime
-
-
 def store_attached_bytes(raw: bytes, mime: str, user: str) -> dict[str, str] | None:
     """Store bytes as a private Frappe File, and say where they went.
 
@@ -402,7 +371,7 @@ def store_attached_bytes(raw: bytes, mime: str, user: str) -> dict[str, str] | N
     file cannot be stored.  The file is private so that only the
     uploader's session can read it.
     """
-    ext = ATTACHABLE.get(mime)
+    ext = ATTACHABLE_TYPES.get(mime)
     if ext is None:
         logger.warning("Rejected an attached file of unsupported type %r", mime or "(none)")
         return None
@@ -446,7 +415,7 @@ def store_attached_file(data_url: str, user: str) -> dict[str, str] | None:
     """
     if not data_url:
         return None
-    raw, mime = decode_attachment(data_url)
+    raw, mime = decode_data_url(data_url)
     if not raw:
         return None
     max_bytes = max_attachment_bytes()
@@ -541,15 +510,12 @@ class ChatService:
         # only; what is stored is the files, not the chat.
         image_urls, extra = self._store_attachments(request, principal.user)
         if extra:
-            request = TurnRequest(
-                question=request.question,
-                conversation_id=request.conversation_id,
-                page=request.page,
+            # The request is whole after this, not a half of one.  It is
+            # copied by the dataclass rather than field by field, so a
+            # field added to the request cannot be forgotten here.
+            request = replace(
+                request,
                 page_context=(request.page_context or "") + extra,
-                stream=request.stream,
-                images=request.images,
-                # The addresses the files were stored under.  The request
-                # is whole after the turn, not a half of one.
                 image_urls=image_urls,
             )
 
@@ -687,12 +653,7 @@ class ChatService:
                 written = append_messages(
                     conversation,
                     [
-                        {
-                            "role": "user",
-                            "content": question,
-                            "round_no": 0,
-                            "image_url": json.dumps(image_urls),
-                        },
+                        self._user_row(question, image_urls),
                         {
                             "role": "assistant",
                             "content": reply,
@@ -796,12 +757,7 @@ class ChatService:
         written = append_messages(
             conversation,
             [
-                {
-                    "role": "user",
-                    "content": question,
-                    "round_no": 0,
-                    "image_url": json.dumps(image_urls),
-                },
+                self._user_row(question, image_urls),
                 {"role": "assistant", "content": reply, "round_no": rounds},
             ],
         )
@@ -927,6 +883,21 @@ class ChatService:
         return completion
 
     # -- the tools --------------------------------------------------------
+
+    def _user_row(self, question: str, image_urls: list[str]) -> dict[str, Any]:
+        """The row that holds the reader's question.
+
+        It is built in one place, because a turn that writes the
+        question and a turn that writes it differently are two records of
+        the same question — and the difference shows up as an attachment
+        the reader sent and the transcript does not have.
+        """
+        return {
+            "role": "user",
+            "content": question,
+            "round_no": 0,
+            "image_url": json.dumps(image_urls),
+        }
 
     def _store_attachments(self, request: TurnRequest, user: str) -> tuple[list[str], str]:
         """Store the turn's attachments, and say where they went.
