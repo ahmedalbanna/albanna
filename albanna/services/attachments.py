@@ -30,6 +30,7 @@ from albanna.core.attachments import (
     TOO_LARGE,
     UNREADABLE,
     UNSUPPORTED_TYPE,
+    attachable_names,
     attachable_type,
     check_attachment,
     decode_data_url,
@@ -155,7 +156,12 @@ def refusal_sentence(reason: str, max_kb: int = 0) -> str:
         # reader can act on: an SVG *is* an image, and an SVG cannot be
         # stored, because it executes as HTML.
         #
-        return _("Only PNG, JPEG, WebP, GIF and PDF files can be attached.")
+        # The names are a list and not part of the sentence.  They are
+        # product names, they do not change with the language, and a
+        # sentence that carried them would be a sentence the translator
+        # could not translate.  And they are the site's own list, so the
+        # sentence cannot name types the site no longer takes.
+        return _("Only {0} files can be attached.").format(", ".join(attachable_names()))
     if reason == TOO_LARGE:
         # The number is a placeholder, not part of the sentence: a
         # sentence with a number baked into it is a sentence the

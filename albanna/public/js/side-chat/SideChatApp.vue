@@ -3282,6 +3282,7 @@ onBeforeUnmount(() => {
 			:files="attachedFiles"
 			:image-support="config && config.image_support"
 			:max-image-size-kb="config && config.max_image_size_kb"
+			:attachable-types="(config && config.attachable_types) || []"
 			:busy="busy"
 			:can-chat="canChat"
 			@update:files="attachedFiles = $event"

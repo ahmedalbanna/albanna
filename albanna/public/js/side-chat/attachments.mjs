@@ -4,24 +4,16 @@
 // rule that lives in a component is a rule nobody can test: this file is
 // read by plain node, with no Vue and no Desk.
 //
-// The list is the server's list.  A browser that accepts an SVG and a
-// server that refuses it is a reader who chose a file, waited for the
-// upload, and was then told the file they chose could not be attached.
-
-/**
- * The types an attachment may carry.
- *
- * Five, and no more.  An SVG is an image and cannot be here: it
- * executes as HTML in a browser.  A PDF is not an image and can: a
- * reader attaches the invoice they were asked about.
- */
-export const ATTACHABLE_TYPES = [
-	"image/png",
-	"image/jpeg",
-	"image/webp",
-	"image/gif",
-	"application/pdf",
-];
+// The list is the server's list, and the server publishes it: the browser
+// is told which types the site takes rather than keeping a copy of them.
+// A browser that accepts an SVG and a server that refuses it is a reader
+// who chose a file, waited for the upload, and was then told the file
+// they chose could not be attached.
+//
+// So this file has no list of its own.  A browser that keeps a copy of
+// the server's list is a browser whose copy goes stale the day the
+// server's changes, and a stale list is a browser that accepts a file
+// the server refuses.
 
 /** The file is not one of the types that may be attached. */
 export const REFUSED_TYPE = "type";
@@ -35,12 +27,14 @@ export const REFUSED_SIZE = "size";
  * @param {{type?: string, size?: number}} file the file the reader chose
  * @param {{types?: string[], maxBytes?: number}} rules the site's rules —
  *   the types that may be attached, and the ceiling in bytes.  A ceiling
- *   of zero means no ceiling.
+ *   of zero means no ceiling.  No types means the site has not said, and
+ *   nothing may be attached: a browser that guesses is a browser that
+ *   guesses wrong.
  * @returns {{ok: boolean, reason: string}} whether it may be attached, and
  *   why it may not
  */
 export function checkAttachment(file, rules = {}) {
-	const types = rules.types || ATTACHABLE_TYPES;
+	const types = rules.types || [];
 	const maxBytes = Number(rules.maxBytes || 0);
 	const type = String((file && file.type) || "");
 

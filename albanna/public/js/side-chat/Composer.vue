@@ -2,7 +2,7 @@
 /**
  * The composer: the question box, the send button, and the hint.
  */
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { checkAttachment, REFUSED_SIZE } from "./attachments.mjs";
 import { MAX_SESSION_MS, mergeTranscript, readResults, voiceErrorText } from "./voice.mjs";
@@ -17,6 +17,11 @@ const props = defineProps({
 	files: { type: Array, default: () => [] },
 	imageSupport: { type: Boolean, default: false },
 	maxImageSizeKb: { type: Number, default: 0 },
+	//: The types the site attaches, as the site publishes them: a list of
+	//: ``{ mime, name }``.  The browser keeps no copy of its own — a
+	//: browser that accepts a file the server would refuse is a reader
+	//: who waited for an upload that was going to be refused.
+	attachableTypes: { type: Array, default: () => [] },
 });
 
 const emit = defineEmits([
@@ -28,6 +33,15 @@ const emit = defineEmits([
 
 const inputEl = ref(null);
 const fileInput = ref(null);
+
+//: The types the site takes, as the browser sends them.
+const attachableMimes = computed(() => props.attachableTypes.map((type) => type.mime));
+
+//: The names the site calls those types by, for the refusal that names
+//: them.  They are the site's names and not the browser's: a sentence
+//: that named types of its own would be a sentence that could name types
+//: the site no longer takes.
+const attachableNames = computed(() => props.attachableTypes.map((type) => type.name));
 
 const speechSupported = ref(
 	typeof window !== "undefined" && !!(window.SpeechRecognition || window.webkitSpeechRecognition),
@@ -211,14 +225,18 @@ async function onPaste(event) {
 	if (!items) return;
 	for (let i = 0; i < items.length; i++) {
 		const item = items[i];
-		if (item.kind === "file" && (item.type.startsWith("image/") || item.type === "application/pdf")) {
-			const file = item.getAsFile();
-			if (file) {
-				event.preventDefault();
-				await attachFiles([file]);
-				return;
-			}
-		}
+		// A pasted *file* is a file the reader wants attached, and the
+		// rule decides whether it may be — the same rule the picker and
+		// the drop use, so a file refused in one of them is refused in
+		// all of them.  A pasted *text* is a different thing: the
+		// browser puts it in the question box as text, which is what the
+		// reader meant.
+		if (item.kind !== "file") continue;
+		const file = item.getAsFile();
+		if (!file) continue;
+		event.preventDefault();
+		await attachFiles([file]);
+		return;
 	}
 }
 
@@ -294,17 +312,21 @@ function readAsDataUrl(file) {
  * @returns {Promise<object|null>} the attachment, or null when it was refused
  */
 async function storeFile(file) {
-	if (!props.imageSupport) {
+	if (!props.imageSupport || !props.attachableTypes.length) {
+		// The site has not said which files it takes, so there is no file
+		// this browser may attach.  The sentence is the site's own: from
+		// the reader's side, a site that cannot attach is a site where
+		// attachments are not enabled.
 		noticeText.value = __("Image attachments are not enabled on this site.");
 		return null;
 	}
 	const maxBytes = props.maxImageSizeKb > 0 ? props.maxImageSizeKb * 1024 : 0;
-	const refusal = checkAttachment(file, { maxBytes });
+	const refusal = checkAttachment(file, { types: attachableMimes.value, maxBytes });
 	if (!refusal.ok) {
 		noticeText.value =
 			refusal.reason === REFUSED_SIZE
 				? __("The file is larger than {0} KB.", [props.maxImageSizeKb])
-				: __("Only PNG, JPEG, WebP, GIF and PDF files can be attached.");
+				: __("Only {0} files can be attached.", [attachableNames.value.join(", ")]);
 		return null;
 	}
 

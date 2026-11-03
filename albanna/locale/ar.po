@@ -1130,8 +1130,8 @@ msgstr "لم يتمكّن من قراءة الملف."
 msgid "The file could not be stored."
 msgstr "لم يتمكّن من تخزين الملف."
 
-msgid "Only PNG, JPEG, WebP, GIF and PDF files can be attached."
-msgstr "يمكن إرفاق ملفات PNG وJPEG وWebP وGIF وPDF فقط."
+msgid "Only {0} files can be attached."
+msgstr "يمكن إرفاق ملفات {0} فقط."
 
 msgid "The file is larger than {0} KB."
 msgstr "حجم الملف أكبر من {0} كيلوبايت."

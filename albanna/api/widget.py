@@ -21,6 +21,7 @@ import frappe
 from frappe import _
 
 from albanna.core.attachments import (
+    ATTACHABLE_TYPES,
     DISABLED,
     NOT_STORED,
     REQUIRED,
@@ -126,4 +127,11 @@ def options() -> dict[str, Any]:
         "tools": tools,
         "image_support": settings.image_support,
         "max_image_size_kb": settings.max_image_size_kb,
+        # The types the site attaches, published so the browser does not
+        # keep a copy of them.  A browser that keeps a copy is a browser
+        # whose copy goes stale, and a stale copy is a browser that
+        # accepts a file the server refuses.
+        "attachable_types": [
+            {"mime": candidate.mime, "name": candidate.name} for candidate in ATTACHABLE_TYPES
+        ],
     }
