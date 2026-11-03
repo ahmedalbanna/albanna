@@ -41,7 +41,9 @@
  *  - ``examples.mjs``     — the empty-state suggestions, per page;
  *  - ``recent-questions.mjs``, ``retry.mjs``, ``page.mjs``, ``format.mjs``
  *                         — recent asks, the retried question, route
- *                           watching, clocks.
+ *                           watching, clocks;
+ *  - ``tool-labels.mjs``   — what a tool call is called, in the reader's
+ *                           language.
  */
 import {
 	computed,
@@ -63,6 +65,7 @@ import { hasTable, renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js"
 import { watchRoute } from "./page.mjs";
 import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
 import { takeRetryQuestion } from "./retry.mjs";
+import { describeTool, statusLabel, toolLabel, toolSummary } from "./tool-labels.mjs";
 import { waitsOfConversation, waitsOfPage } from "./turn-waits.mjs";
 import { createRenderThrottle, scheduleRender } from "./render-throttle.mjs";
 import {
@@ -881,76 +884,6 @@ function onContextChanged(context) {
 	props.onContext(context);
 }
 
-/**
- * The status the turn is in, in the reader's language.
- *
- * The server sends a *code*, not a sentence: the turn runs in a worker, and
- * a worker has no user's language to render a label in.  Only the reader
- * has one.
- *
- * @param {string} code the status code
- * @returns {string} the label
- */
-function statusLabel(code) {
-	if (code === "thinking") return __("Thinking");
-	return "";
-}
-
-/**
- * What a tool call is called, in the reader's language.
- *
- * The tool's *name* — `list_docs`, `run_report` — is the model's name for
- * it, and it is not the reader's.  A person wants to know that the
- * assistant is looking something up, not which function it reached for.
- * The name is still available, on demand, in the summary under the
- * answer.
- *
- * @param {string} name the tool's name
- * @returns {string} the label
- */
-function describeTool(name, toolArguments) {
-	const label = toolLabel(name);
-	const doctype = String((toolArguments && toolArguments.doctype) || "").trim();
-	// What is being looked at, not only how: "Searching Sales Order" tells
-	// the reader the question is being answered against the right thing.
-	if (!doctype) return label;
-	return `${label} ${doctype}`;
-}
-
-function toolLabel(name) {
-	switch (name) {
-		case "list_docs":
-			return __("Searching");
-		case "get_doc":
-			return __("Reading");
-		case "get_doctype_meta":
-			return __("Checking fields");
-		case "run_report":
-			return __("Running a report");
-		case "create_doc":
-			return __("Creating");
-		default:
-			return __("Working");
-	}
-}
-
-/**
- * The one line that says what the turn did.
- *
- * The count is of *distinct* tools and of *calls*, because "3 tools" and
- * "7 calls" are different questions and the reader may want either.  The
- * model's own names are behind the disclosure, for the reader who wants
- * them.
- *
- * @param {object} message the message
- * @returns {string} the summary
- */
-function toolSummary(message) {
-	const tools = message.tools || [];
-	if (!tools.length) return "";
-	const distinct = new Set(tools.map((tool) => tool.name)).size;
-	return __("Tools used: {0} · Calls: {1}", [distinct, tools.length]);
-}
 
 /**
  * When a message was said.
