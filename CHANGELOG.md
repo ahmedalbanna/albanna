@@ -191,6 +191,17 @@ the card carries its own **"type your own answer"** box.
   count and the doctype, in the reader's own language.  Tests pin the
   number, the translation, and the two cases where the hint must not
   appear at all: nothing overdue, and a reader the chat is closed for.
+- **The hint spoke half a language.**  In an Arabic interface the hint
+  said "1 overdue Sales Invoice — want me to draft reminders?": the
+  sentence was translated and the DocType's name was not, because
+  ERPNext ships no Arabic catalogue of its own.  The app now carries the
+  two invoice names it uses, so the whole sentence is in the reader's
+  language.
+  And the "Go" button sent that sentence as the reader's question: a
+  sentence that says "3 overdue Sales Invoice — want me to draft
+  reminders?" is the chat's way of asking, not a question a person would
+  have typed.  The hint now carries a question of its own, in the
+  reader's language, and that is what the button sends.
 
 ### Added
 

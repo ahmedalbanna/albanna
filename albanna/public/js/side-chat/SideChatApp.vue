@@ -185,6 +185,9 @@ const doctypeCount = ref(null);
 /** A non-intrusive nudge for the current list page, if any. */
 const nudgeMessage = ref("");
 
+/** The question the nudge's button asks, in the reader's language. */
+const nudgeQuestion = ref("");
+
 /** The documents the nudge names, as the panel draws them. */
 const nudgeDocuments = ref([]);
 
@@ -196,6 +199,7 @@ watch(currentPage, async () => {
 	if (!context || !context.doctype || context.name) {
 		doctypeCount.value = null;
 		nudgeMessage.value = "";
+		nudgeQuestion.value = "";
 		nudgeDocuments.value = [];
 		nudgeMoreText.value = "";
 		return;
@@ -213,10 +217,12 @@ watch(currentPage, async () => {
 			doctype: context.doctype,
 		});
 		nudgeMessage.value = (result && result.message) || "";
+		nudgeQuestion.value = (result && result.question) || "";
 		nudgeDocuments.value = namedDocuments(result);
 		nudgeMoreText.value = moreText(unnamedCount(result));
 	} catch (failure) {
 		nudgeMessage.value = "";
+		nudgeQuestion.value = "";
 		nudgeDocuments.value = [];
 		nudgeMoreText.value = "";
 	}
@@ -2797,7 +2803,7 @@ onBeforeUnmount(() => {
 							<button
 								type="button"
 								class="albanna-chat__nudge-ask"
-								@click="ask(nudgeMessage)"
+								@click="ask(nudgeQuestion || nudgeMessage)"
 							>
 								{{ __("Go") }}
 							</button>

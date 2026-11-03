@@ -112,7 +112,9 @@ class TestTheLiveHint(AlbannaTestCase):
 
         The translation is a sentence with two holes in it as well, so
         translating without filling would show the reader
-        ``{0} متأخر {1}`` — the same defect in the other language.
+        ``{0}: {1} منها متأخرة`` — the same defect in the other
+        language.  The second hole is the DocType's name, which is
+        translated as well.
         """
         former = frappe.local.lang
         frappe.local.lang = "ar"
@@ -124,7 +126,7 @@ class TestTheLiveHint(AlbannaTestCase):
 
         message = result["message"]
         assert "3" in message
-        assert "Sales Invoice" in message
+        assert "فاتورة المبيعات" in message
         assert "{" not in message
         assert "}" not in message
         # The sentence is the Arabic one, not the English one.
@@ -136,6 +138,57 @@ class TestTheLiveHint(AlbannaTestCase):
             result = context_api.nudge_for_page("Sales Invoice")
 
         assert result["message"] == ""
+        assert result["question"] == ""
+
+    def test_the_hint_names_the_doctype_in_the_readers_language(self):
+        """The DocType's name is in the reader's language too.
+
+        An interface in Arabic that says "Sales Invoice" is half in
+        Arabic.  ERPNext ships no Arabic catalogue of its own, so the
+        app carries the two invoice names the hint uses.
+        """
+        former = frappe.local.lang
+        frappe.local.lang = "ar"
+        try:
+            with patch.object(context_api, "_count_readable", return_value=1):
+                result = context_api.nudge_for_page("Sales Invoice")
+        finally:
+            frappe.local.lang = former
+
+        message = result["message"]
+        assert "فاتورة المبيعات" in message
+        assert "Sales Invoice" not in message
+
+    def test_the_go_button_sends_a_question_of_its_own(self):
+        """The question is a question, and it is not the hint.
+
+        The hint is the chat's way of saying something.  A reader who
+        presses "Go" means "yes, do that", and the sentence that says
+        "3 overdue Sales Invoice — want me to draft reminders?" is not
+        what the reader would have typed.
+        """
+        with patch.object(context_api, "_count_readable", return_value=1):
+            result = context_api.nudge_for_page("Sales Invoice")
+
+        question = result["question"]
+        assert question
+        assert question != result["message"]
+        assert question.endswith("?")
+        assert "overdue invoices" in question
+
+    def test_the_question_is_in_the_readers_language(self):
+        """The question the button sends is a question in Arabic too."""
+        former = frappe.local.lang
+        frappe.local.lang = "ar"
+        try:
+            with patch.object(context_api, "_count_readable", return_value=1):
+                result = context_api.nudge_for_page("Sales Invoice")
+        finally:
+            frappe.local.lang = former
+
+        question = result["question"]
+        assert "هل يمكنك" in question
+        assert "overdue invoices" not in question
 
     def test_no_hint_for_a_doctype_the_chat_does_not_nudge(self):
         """The nudge is for the two invoice lists and nothing else."""

@@ -1031,7 +1031,16 @@ msgid "When on, write tools run their validation and report what they would do, 
 msgstr "عند التفعيل، تنفذ أدوات الكتابة التحقق وتُبلّغ بما ستفعله، لكن لا يُحفظ شيء. استخدمها لاختبار المطالبات أو تدريب المستخدمين دون المساس بالبيانات."
 
 msgid "{0} overdue {1} — want me to draft reminders?"
-msgstr "{0} متأخر {1} — هل تريد مني صياغة تذكيرات؟"
+msgstr "{1}: {0} منها متأخرة. هل تريد مني صياغة تذكيرات؟"
+
+msgid "Can you draft reminders for the overdue invoices?"
+msgstr "هل يمكنك صياغة تذكيرات للفواتير المتأخرة؟"
+
+msgid "Sales Invoice"
+msgstr "فاتورة المبيعات"
+
+msgid "Purchase Invoice"
+msgstr "فاتورة المشتريات"
 
 
 msgid "Dry run — nothing was saved."

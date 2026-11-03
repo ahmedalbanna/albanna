@@ -106,6 +106,22 @@ def _readable_documents(
     return documents
 
 
+def _doctype_label(doctype: str) -> str:
+    """The DocType's name, in the reader's language.
+
+    ERPNext ships no Arabic catalogue of its own, so the two invoice
+    names the hint uses are translated by the app's own catalogue.  They
+    are written out rather than read from a table, so that the catalogue
+    check can see that the app uses them — a translation nobody can see
+    being used is a translation nobody knows is there.
+    """
+    if doctype == "Sales Invoice":
+        return frappe._("Sales Invoice")
+    if doctype == "Purchase Invoice":
+        return frappe._("Purchase Invoice")
+    return frappe._(doctype)
+
+
 @frappe.whitelist()
 def count_doctype(doctype: str) -> dict[str, Any]:
     """How many documents of *doctype* the caller may see.
@@ -133,40 +149,57 @@ def count_doctype(doctype: str) -> dict[str, Any]:
     return {"count": _count_readable(doctype)}
 
 
+def _empty_nudge(doctype: str) -> dict[str, Any]:
+    """The nudge when there is nothing to nudge about."""
+    return {
+        "message": "",
+        "question": "",
+        "doctype": doctype,
+        "documents": [],
+        "more": 0,
+    }
+
+
 @frappe.whitelist()
 def nudge_for_page(doctype: str) -> dict[str, Any]:
     """A non-intrusive nudge for the list page, if any.
 
-    Returns ``{"message": "...", "doctype": ..., "documents": [...],
-    "more": 0}`` — or the same shape with an empty message, so that the
-    caller never has to guess which keys are there.  Only a small number
-    of high-value cases are nudged, so the chat does not become a
-    notification system.
+    Returns ``{"message": "...", "question": "...", "doctype": ...,
+    "documents": [...], "more": 0}`` — or the same shape with an empty
+    message, so that the caller never has to guess which keys are there.
+    Only a small number of high-value cases are nudged, so the chat does
+    not become a notification system.
 
     The number in the nudge is the caller's own count: a reader who may
     not see an invoice does not get told that one is overdue.  The names
     are the caller's own rows too, drawn from the same query as the
     count — a count with no names is a number the reader has to look up,
     and a name the reader may not see is a leak.
+
+    The ``question`` is what the reader's "Go" button sends.  It is a
+    question of its own, in the reader's language: the message is the
+    chat's way of saying something, and a sentence that says "3 overdue
+    Sales Invoice — want me to draft reminders?" is not a question the
+    reader would have typed.
     """
     require_chat_access()
 
     doctype = (doctype or "").strip()
     if doctype not in ("Sales Invoice", "Purchase Invoice"):
-        return {"message": "", "doctype": doctype, "documents": [], "more": 0}
+        return _empty_nudge(doctype)
 
     try:
         from frappe.permissions import has_permission as _has_permission
 
         if not _has_permission(doctype, "read", print_logs=False):
-            return {"message": "", "doctype": doctype, "documents": [], "more": 0}
+            return _empty_nudge(doctype)
     except Exception:
-        return {"message": "", "doctype": doctype, "documents": [], "more": 0}
+        return _empty_nudge(doctype)
 
     count = _count_readable(doctype, [["status", "=", "Overdue"]])
 
     if not count:
-        return {"message": "", "doctype": doctype, "documents": [], "more": 0}
+        return _empty_nudge(doctype)
 
     documents = _readable_documents(doctype, [["status", "=", "Overdue"]])
 
@@ -174,12 +207,15 @@ def nudge_for_page(doctype: str) -> dict[str, Any]:
     # through it: ``frappe._`` takes a language as its second argument,
     # and it never fills a ``{0}`` on its own.  So the message is
     # translated first and formatted second — otherwise the reader is
-    # shown ``{0} overdue {1}`` and the count is nowhere.
+    # shown ``{0} overdue {1}`` and the count is nowhere.  The DocType's
+    # name is translated too, because an interface in Arabic that says
+    # "Sales Invoice" is half in Arabic.
     return {
         "message": frappe._("{0} overdue {1} — want me to draft reminders?").format(
             count,
-            doctype,
+            _doctype_label(doctype),
         ),
+        "question": frappe._("Can you draft reminders for the overdue invoices?"),
         "doctype": doctype,
         "documents": documents,
         "more": max(0, count - len(documents)),
