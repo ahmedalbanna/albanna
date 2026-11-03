@@ -35,14 +35,14 @@ it pinned; unanswered questions **expire** at an operator-set bound; and
 the card carries its own **"type your own answer"** box.
 
 The last read the attachment path — the paperclip, the paste, the drop,
-the file kept on the site — against three qualities: that it reads
-clearly, that it can be changed without touching half the app, and that
-it can be tested without a site.  What it found was that the rules an
-attachment follows were written four times and meant four different
-things.  They are written once now, on each side of the wire: the
-browser is told the site's rule rather than keeping a copy of it, the
-turn and the upload ask the same rule, and every refusal a reader can
-get is said in one table of sentences.
+the file kept on the site — and the pinned conversations beside it,
+against three qualities: that it reads clearly, that it can be changed
+without touching half the app, and that it can be tested without a site.
+What it found was that the rules an attachment follows were written four
+times and meant four different things.  They are written once now, on
+each side of the wire: the browser is told the site's rule rather than
+keeping a copy of it, the turn and the upload ask the same rule, and
+every refusal a reader can get is said in one table of sentences.
 
 ### Added
 
@@ -139,7 +139,24 @@ get is said in one table of sentences.
   that *wrote* it, so a caller that reached the write directly filled
   the disk with whatever it liked.
 
+- **The panel now says a failure in one place.**  Fifteen actions caught
+  a failure the same way, in fifteen copies of the same three lines, and
+  the copies were not the same: the sentence each action had written for
+  the case where the server said nothing came *after* the failure
+  itself, which is always there — so the sentence could never be read,
+  and a reader was shown `Error` instead of it.  The unwrapping is one
+  function now, with a test, and the copies are calls.
+
 ### Fixed
+
+- **A pin that failed said nothing.**  Pinning a conversation was the
+  only action in the drawer whose failure was swallowed: the icon went
+  back to what it was and nothing said why, so a reader who pinned a
+  conversation and watched the icon spring back could not tell whether
+  the pin had not taken or the panel had not noticed yet.  It says what
+  happened now, in the server's words when the server said something and
+  in the panel's own sentence when it did not, like every other action
+  in the drawer.
 
 - **Every streaming turn failed.**  The worker read the turn's
   attachments out of the marker the endpoint leaves behind, and the
