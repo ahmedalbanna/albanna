@@ -36,7 +36,18 @@ from albanna.core.secrets import REDACTED
 #:
 #: One list, because the set is the policy: a new endpoint that takes
 #: the user's text adds its field here rather than inventing a rule.
-REQUEST_TEXT_FIELDS = ("message", "messages_json", "question", "page_context", "image")
+#:
+#: ``file_data_url`` is in the list because it carries the reader's
+#: whole file: the bytes of a picture are the reader's business, and the
+#: log is read by operators and copied off the host.
+REQUEST_TEXT_FIELDS = (
+    "message",
+    "messages_json",
+    "question",
+    "page_context",
+    "image",
+    "file_data_url",
+)
 
 
 def redact_request_text(*fields: str) -> None:
