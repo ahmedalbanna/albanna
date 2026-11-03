@@ -80,6 +80,7 @@ import {
 	turnsForPage,
 } from "./inflight.mjs";
 import { canDecide, remainingSeconds } from "./approval.mjs";
+import { turnAttachments } from "./attachments.mjs";
 import { documentRoute, moreText, namedDocuments, unnamedCount } from "./nudge.mjs";
 import { answerMessage, canAnswer, questionCard } from "./question.mjs";
 import { mergeOlder, oldestIdx, olderRequest, windowRequest } from "./window.mjs";
@@ -1463,8 +1464,9 @@ async function send(question) {
 	if (!text && !attachedFiles.value.length) return;
 	if (!maySend.value) return;
 
-	const images = attachedFiles.value.map((file) => file.dataUrl);
-	const imageUrls = attachedFiles.value.map((file) => file.fileUrl || "");
+	// The bytes the model reads, and the addresses they were stored
+	// under.  The two are parallel, and the server relies on that.
+	const { images, imageUrls } = turnAttachments(attachedFiles.value);
 	attachedFiles.value = [];
 
 	draft.value = "";

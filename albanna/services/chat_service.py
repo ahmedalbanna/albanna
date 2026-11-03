@@ -48,6 +48,7 @@ from typing import Any
 import frappe
 from frappe import _
 
+from albanna.core.attachments import paired_addresses
 from albanna.core.authority import Authority
 from albanna.core.cost import cost_of_turn
 from albanna.core.errors import (
@@ -810,7 +811,10 @@ class ChatService:
         if not request.images:
             return [], ""
 
-        pre_stored = request.image_urls or []
+        # The addresses and the bytes are parallel lists.  They are used
+        # only when they can be matched: an address that belongs to
+        # another picture is worse than storing the same bytes twice.
+        pre_stored = paired_addresses(len(request.images), request.image_urls or [])
         urls: list[str] = []
         for index, image in enumerate(request.images):
             reuse = pre_stored[index] if index < len(pre_stored) else ""

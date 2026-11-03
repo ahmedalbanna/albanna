@@ -258,6 +258,29 @@ def check_attachments(value: Any, max_bytes: int = 0) -> tuple[list[str], str]:
     return images, ""
 
 
+def paired_addresses(count: int, urls: list[str]) -> list[str]:
+    """The stored addresses that can be matched to the turn's pictures.
+
+    The addresses and the bytes are parallel lists: the address at one
+    place is the address of the bytes at the same place.  The turn reuses
+    a file rather than storing its bytes again, and reusing the *wrong*
+    address is worse than storing the bytes twice — the model would be
+    asked about one picture and pointed at another.
+
+    So the addresses are used only when there is one for every picture.  A
+    client that sends fewer, or more, has not said which address belongs
+    to which picture, and the bytes are stored again instead.
+
+    :param count how many pictures the turn carries
+    :param urls the addresses the client sent
+    :returns the addresses to reuse, in order, or an empty list when they
+        cannot be told apart
+    """
+    if len(urls) != count:
+        return []
+    return list(urls)
+
+
 def _strings(items: list[Any]) -> tuple[list[str], bool]:
     """The string entries of a list, and whether they all were strings.
 

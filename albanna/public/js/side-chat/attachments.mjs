@@ -1,8 +1,11 @@
-// The rules for an attachment, before the bytes leave the browser.
+// The rules for an attachment, before the bytes leave the browser, and
+// the shape an attachment takes on its way.
 //
 // The rule is here and not in the composer because it *is* a rule, and a
 // rule that lives in a component is a rule nobody can test: this file is
-// read by plain node, with no Vue and no Desk.
+// read by plain node, with no Vue and no Desk.  The shape is here for
+// the same reason, and because two files use it: the composer builds an
+// attachment and the panel reads it.
 //
 // The list is the server's list, and the server publishes it: the browser
 // is told which types the site takes rather than keeping a copy of them.
@@ -48,4 +51,67 @@ export function checkAttachment(file, rules = {}) {
 	}
 
 	return { ok: true, reason: "" };
+}
+
+/**
+ * One attachment, as the composer holds it and the panel sends it.
+ *
+ * The six fields are the attachment: the bytes the model reads, the name
+ * the reader recognises, the type the site checks, the size the reader
+ * is shown, the address the file was stored under, and whether it was.
+ *
+ * @param {{dataUrl?: string, name?: string, type?: string, size?: number,
+ *          fileUrl?: string, stored?: boolean}} parts the attachment's parts
+ * @returns {object} the attachment
+ */
+export function makeAttachment(parts = {}) {
+	return {
+		dataUrl: parts.dataUrl || "",
+		name: parts.name || "",
+		type: parts.type || "",
+		size: Number(parts.size || 0),
+		fileUrl: parts.fileUrl || "",
+		stored: parts.stored !== false,
+	};
+}
+
+/**
+ * Store every file, and write the list of them once.
+ *
+ * The list is written once, at the end, with every file that was stored.
+ * Writing it after each file lets a later upload overwrite an earlier
+ * one, and a reader who dropped three pictures finds one of them gone.
+ *
+ * @param {Array} files the files the reader chose
+ * @param {(file: *) => Promise<object|null>} store the store to use
+ * @param {(added: object[]) => void} write the one write of the list
+ * @returns {Promise<object[]>} the attachments that were stored, in order
+ */
+export async function storeAll(files, store, write) {
+	const added = [];
+	for (const file of files) {
+		const entry = await store(file);
+		if (entry) added.push(entry);
+	}
+	if (added.length) write(added);
+	return added;
+}
+
+/**
+ * What a turn carries for its attachments: the bytes, and the addresses
+ * they were stored under.
+ *
+ * The two lists are parallel: the address at one place is the address of
+ * the bytes at the same place.  The server relies on that to reuse the
+ * file instead of writing the same bytes twice, so the two are built
+ * together and never apart.
+ *
+ * @param {object[]} files the attachments
+ * @returns {{images: string[], imageUrls: string[]}} what the turn carries
+ */
+export function turnAttachments(files) {
+	return {
+		images: files.map((file) => file.dataUrl || ""),
+		imageUrls: files.map((file) => file.fileUrl || ""),
+	};
 }

@@ -33,6 +33,7 @@ from albanna.core.attachments import (
     check_attachment,
     check_attachments,
     decode_data_url,
+    paired_addresses,
     read_attachment_list,
 )
 from albanna.services.chat_service import ChatService
@@ -280,6 +281,32 @@ def test_the_marker_reads_nothing_as_nothing():
     assert read_attachment_list(None)[0] == []
     assert read_attachment_list(7)[0] == []
     assert read_attachment_list("[not json")[0] == []
+
+
+# -- the addresses and the bytes are parallel --------------------------
+
+
+def test_the_addresses_are_used_when_there_is_one_for_every_picture():
+    urls = ["/private/files/a.png", "/private/files/b.png"]
+    assert paired_addresses(2, urls) == urls
+
+
+def test_addresses_that_do_not_line_up_are_not_used():
+    """A client that sends fewer addresses than pictures has not said
+    which address belongs to which picture.
+
+    The wrong picture being described is worse than the same bytes being
+    stored twice, so the addresses are dropped and the bytes are stored
+    again.
+    """
+    assert paired_addresses(2, ["/private/files/a.png"]) == []
+    assert paired_addresses(1, ["/a.png", "/b.png"]) == []
+    assert paired_addresses(2, []) == []
+
+
+def test_a_turn_with_no_pictures_reuses_nothing():
+    assert paired_addresses(0, []) == []
+    assert paired_addresses(0, ["/a.png"]) == []
 
 
 # -- the storage allow-list ---------------------------------------------

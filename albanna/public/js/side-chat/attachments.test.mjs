@@ -15,7 +15,14 @@
 // could not be attached.
 
 import assert from "node:assert";
-import { REFUSED_SIZE, REFUSED_TYPE, checkAttachment } from "./attachments.mjs";
+import {
+	REFUSED_SIZE,
+	REFUSED_TYPE,
+	checkAttachment,
+	makeAttachment,
+	storeAll,
+	turnAttachments,
+} from "./attachments.mjs";
 
 // The types the site publishes.  They arrive with the widget's options.
 const TYPES = [
@@ -127,6 +134,109 @@ const RULES = { types: TYPES };
 	const result = checkAttachment({ type: "image/png", size: 1024 });
 	assert.equal(result.ok, false);
 	assert.equal(result.reason, REFUSED_TYPE);
+}
+
+// -- the shape of an attachment -----------------------------------------
+
+// An attachment carries the bytes, the name, the type, the size and the
+// address it was stored under.
+{
+	const file = makeAttachment({
+		dataUrl: "data:image/png;base64,AAAA",
+		name: "a.png",
+		type: "image/png",
+		size: 12,
+		fileUrl: "/private/files/a.png",
+	});
+	assert.deepEqual(file, {
+		dataUrl: "data:image/png;base64,AAAA",
+		name: "a.png",
+		type: "image/png",
+		size: 12,
+		fileUrl: "/private/files/a.png",
+		stored: true,
+	});
+}
+
+// An attachment with nothing in it still has every field.
+{
+	const file = makeAttachment();
+	assert.deepEqual(Object.keys(file).sort(), [
+		"dataUrl",
+		"fileUrl",
+		"name",
+		"size",
+		"stored",
+		"type",
+	]);
+}
+
+// -- the list is written once --------------------------------------------
+
+// Three files, one refused: two attachments, in order, and the list is
+// written once.
+//
+// The write is the part that matters.  A list written after each file
+// lets a later upload overwrite an earlier one, and a reader who
+// dropped three pictures finds one of them gone.
+{
+	const written = [];
+	const store = async (file) => (file.name === "b.txt" ? null : { name: file.name });
+	const added = await storeAll(
+		[{ name: "a.png" }, { name: "b.txt" }, { name: "c.pdf" }],
+		store,
+		(entries) => written.push(entries),
+	);
+	assert.equal(added.length, 2);
+	assert.deepEqual(added.map((entry) => entry.name), ["a.png", "c.pdf"]);
+	assert.equal(written.length, 1);
+	assert.deepEqual(written[0], added);
+}
+
+// Every file is stored, one after the other: an upload that finished
+// late must not overwrite an upload that finished early.
+{
+	const order = [];
+	const store = async (file) => {
+		order.push(file.name);
+		return { name: file.name };
+	};
+	await storeAll([{ name: "a" }, { name: "b" }], store, () => {});
+	assert.deepEqual(order, ["a", "b"]);
+}
+
+// Nothing was stored, so nothing is written.
+{
+	const written = [];
+	const added = await storeAll([{ name: "a" }], async () => null, (entries) =>
+		written.push(entries),
+	);
+	assert.deepEqual(added, []);
+	assert.equal(written.length, 0);
+}
+
+// -- what a turn carries -------------------------------------------------
+
+// The bytes and the addresses are parallel: the address at one place is
+// the address of the bytes at the same place.
+{
+	const files = [
+		makeAttachment({ dataUrl: "data:image/png;base64,AAAA", fileUrl: "/private/files/a.png" }),
+		makeAttachment({ dataUrl: "data:image/png;base64,BBBB", fileUrl: "/private/files/b.png" }),
+	];
+	const { images, imageUrls } = turnAttachments(files);
+	assert.deepEqual(images, [
+		"data:image/png;base64,AAAA",
+		"data:image/png;base64,BBBB",
+	]);
+	assert.deepEqual(imageUrls, ["/private/files/a.png", "/private/files/b.png"]);
+}
+
+// A question with no attachments carries none.
+{
+	const { images, imageUrls } = turnAttachments([]);
+	assert.deepEqual(images, []);
+	assert.deepEqual(imageUrls, []);
 }
 
 console.log("attachments: all assertions passed");

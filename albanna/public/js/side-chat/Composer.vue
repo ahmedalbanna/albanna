@@ -4,7 +4,7 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
-import { checkAttachment, REFUSED_SIZE } from "./attachments.mjs";
+import { checkAttachment, makeAttachment, REFUSED_SIZE, storeAll } from "./attachments.mjs";
 import { serverMessage } from "./errors.mjs";
 import { MAX_SESSION_MS, mergeTranscript, readResults, voiceErrorText } from "./voice.mjs";
 
@@ -346,14 +346,14 @@ async function storeFile(file) {
 		const fileUrl = message && message.file_url;
 		if (!fileUrl) throw new Error(__("The file could not be stored."));
 
-		return {
+		return makeAttachment({
 			dataUrl,
 			name: file.name || __("Attached file"),
 			type: file.type || "",
 			size: file.size || 0,
 			fileUrl,
 			stored: true,
-		};
+		});
 	} catch (error) {
 		noticeText.value = serverMessage(error) || __("The file could not be stored.");
 		return null;
@@ -378,13 +378,14 @@ async function storeFile(file) {
  * @param {File[]} fileList the files the reader chose
  */
 async function attachFiles(fileList) {
-	const added = [];
-	for (const file of fileList) {
-		const entry = await storeFile(file);
-		if (entry) added.push(entry);
-	}
+	const added = await storeAll(fileList, storeFile, (entries) => {
+		// The composer's own list is read once, here, and written once,
+		// with every file that was stored.  A list written after each
+		// file lets a later upload overwrite an earlier one, and a reader
+		// who dropped three pictures finds one of them gone.
+		emit("update:files", [...props.files, ...entries]);
+	});
 	if (!added.length) return;
-	emit("update:files", [...props.files, ...added]);
 	// The reader has attached their files and is about to ask about
 	// them, so the question box is where the cursor belongs.
 	nextTick(() => {
