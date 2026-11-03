@@ -63,6 +63,32 @@ export function serverMessage(source) {
 }
 
 /**
+ * The text a failure is shown to the reader in.
+ *
+ * A failure carries what the server said, and the caller carries what to
+ * say when the server said nothing.  The server's text comes first,
+ * because it is the reason; the caller's sentence comes second, because
+ * it is the only thing there is when there is no reason.
+ *
+ * This was written fifteen times in the panel, and the copies were not
+ * the same: each one fell back to the failure itself, which is
+ * `Error` or `[object Object]`, rather than to the sentence the caller
+ * had written for exactly that case.  The sentence could therefore never
+ * be read.
+ *
+ * @param {Error|object} failure the failure
+ * @param {string} [fallback] the sentence to use when the failure carries
+ *   no text of its own
+ * @returns {string} the text
+ */
+export function failureText(failure, fallback = "") {
+	const message = failure && failure.message;
+	if (message) return String(message);
+	if (fallback) return fallback;
+	return failure ? String(failure) : "";
+}
+
+/**
  * The text inside a server message, whatever shape it arrives in.
  *
  * A server message is an *envelope* — the text is in its `message`, and the

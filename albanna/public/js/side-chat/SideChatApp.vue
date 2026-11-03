@@ -68,6 +68,7 @@ import { watchRoute } from "./page.mjs";
 import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
 import { takeRetryQuestion } from "./retry.mjs";
 import { describeTool, statusLabel, toolAction, toolLabel, toolSummary } from "./tool-labels.mjs";
+import { failureText } from "./errors.mjs";
 import { noticeText } from "./notices.mjs";
 import { destructiveConsequence, isDestructiveTool } from "./write-safety.mjs";
 import { waitsOfConversation, waitsOfPage } from "./turn-waits.mjs";
@@ -473,9 +474,7 @@ async function submitSet(set) {
 		if (combined) await send(combined);
 	} catch (failure) {
 		for (const card of set.questions) pendingQuestions.set(card.name, card);
-		state.error = String(
-			(failure && failure.message) || failure || __("The answer could not be recorded."),
-		);
+		state.error = failureText(failure, __("The answer could not be recorded."));
 	} finally {
 		state.submitting = false;
 	}
@@ -669,9 +668,7 @@ async function undoTurn(message) {
 			hasOlder.value = !!(result && result.has_more);
 		}
 	} catch (failure) {
-		state.error = String(
-			(failure && failure.message) || failure || __("Could not undo this turn."),
-		);
+		state.error = failureText(failure, __("Could not undo this turn."));
 	}
 }
 const expandedSources = ref(new Set());
@@ -1029,7 +1026,7 @@ function followTurn(entry, asked, answer, approval = null) {
 			// A detached answer is not on screen, and its failure is not
 			// this thread's failure to report.
 			if (attached(answer)) {
-				failTurn(state, answer, String((failure && failure.message) || failure));
+				failTurn(state, answer, failureText(failure));
 				removeMessage(answer);
 				refreshPhase();
 			}
@@ -1559,11 +1556,7 @@ async function send(question) {
 
 		applyTurnResult(result, asked, answer);
 	} catch (failure) {
-		failTurn(
-			state,
-			answer,
-			String((failure && failure.message) || failure || __("Something went wrong.")),
-		);
+		failTurn(state, answer, failureText(failure, __("Something went wrong.")));
 		removeMessage(answer);
 	} finally {
 		answer.pending = false;
@@ -1612,9 +1605,7 @@ async function loadEarlier() {
 		await nextTick();
 		if (el) el.scrollTop += el.scrollHeight - before;
 	} catch (failure) {
-		state.error = String(
-			(failure && failure.message) || failure || __("Could not load the earlier messages."),
-		);
+		state.error = failureText(failure, __("Could not load the earlier messages."));
 	} finally {
 		loadingOlder.value = false;
 	}
@@ -1668,9 +1659,7 @@ async function loadPendingQuestions(conversation) {
 			rememberQuestion(raw);
 		}
 	} catch (failure) {
-		state.error = String(
-			(failure && failure.message) || failure || __("Could not load the questions."),
-		);
+		state.error = failureText(failure, __("Could not load the questions."));
 	}
 }
 
@@ -1702,9 +1691,7 @@ async function answerQuestion(card, option) {
 		// the reader can choose again: a choice that was recorded nowhere
 		// is a choice the reader has to make again.
 		pendingQuestions.set(card.name, card);
-		state.error = String(
-			(failure && failure.message) || failure || __("The answer could not be recorded."),
-		);
+		state.error = failureText(failure, __("The answer could not be recorded."));
 		return;
 	}
 
@@ -1929,9 +1916,7 @@ async function escalateConversation() {
 			state.error = "";
 		}
 	} catch (failure) {
-		state.error = String(
-			(failure && failure.message) || failure || __("Could not escalate the conversation."),
-		);
+		state.error = failureText(failure, __("Could not escalate the conversation."));
 	}
 }
 
@@ -1952,9 +1937,7 @@ async function showHistory(searchTerm = "") {
 		historyOffset.value = rows.length;
 		historyHasMore.value = rows.length >= 30;
 	} catch (failure) {
-		state.error = String(
-			(failure && failure.message) || failure || __("Could not load the conversations."),
-		);
+		state.error = failureText(failure, __("Could not load the conversations."));
 	} finally {
 		historyLoading.value = false;
 	}
@@ -1994,9 +1977,7 @@ async function loadMoreConversations() {
 		historyOffset.value += rows.length;
 		historyHasMore.value = rows.length >= 30;
 	} catch (failure) {
-		state.error = String(
-			(failure && failure.message) || failure || __("Could not load the conversations."),
-		);
+		state.error = failureText(failure, __("Could not load the conversations."));
 	} finally {
 		historyLoadingMore.value = false;
 	}
@@ -2040,9 +2021,7 @@ async function openConversation(conversation) {
 		stopOtherWaits();
 		attachRunningTurns(conversation.name);
 	} catch (failure) {
-		state.error = String(
-			(failure && failure.message) || failure || __("Could not open that conversation."),
-		);
+		state.error = failureText(failure, __("Could not open that conversation."));
 	}
 }
 
@@ -2058,9 +2037,7 @@ async function renameConversation(name, title) {
 		const item = conversations.value.find((conversation) => conversation.name === name);
 		if (item) item.title = title;
 	} catch (failure) {
-		state.error = String(
-			(failure && failure.message) || failure || __("Could not rename that conversation."),
-		);
+		state.error = failureText(failure, __("Could not rename that conversation."));
 	}
 }
 
@@ -2102,9 +2079,7 @@ async function regenerateLast() {
 		for (const message of messages) state.messages.push(message);
 		draft.value = question;
 	} catch (failure) {
-		state.error = String(
-			(failure && failure.message) || failure || __("Could not regenerate."),
-		);
+		state.error = failureText(failure, __("Could not regenerate."));
 	}
 }
 
@@ -2195,9 +2170,7 @@ async function deleteTurn(message) {
 		hasOlder.value = !!(result && result.has_more);
 		state.notice = "removed";
 	} catch (failure) {
-		state.error = String(
-			(failure && failure.message) || failure || __("Something went wrong."),
-		);
+		state.error = failureText(failure, __("Something went wrong."));
 	}
 }
 
@@ -2245,9 +2218,7 @@ async function deleteConversation(conversation) {
 			state.notice = "deleted";
 		}
 	} catch (failure) {
-		state.error = String(
-			(failure && failure.message) || failure || __("Could not delete that conversation."),
-		);
+		state.error = failureText(failure, __("Could not delete that conversation."));
 	}
 }
 

@@ -11,7 +11,7 @@
 // These are the tests both copies now share.
 
 import assert from "node:assert";
-import { lastLine, messageText, serverMessage } from "./errors.mjs";
+import { failureText, lastLine, messageText, serverMessage } from "./errors.mjs";
 
 // The Desk's own envelope: the text is in its `message`.
 const envelope = (text) => JSON.stringify({ message: text });
@@ -120,6 +120,28 @@ const envelope = (text) => JSON.stringify({ message: text });
 	assert.equal(lastLine("ValueError: it broke"), "it broke");
 	assert.equal(lastLine(""), "");
 	assert.equal(lastLine(null), "");
+}
+
+// What the server said is what the reader is shown.
+{
+	assert.equal(failureText(new Error("You may not do that.")), "You may not do that.");
+	assert.equal(failureText({ message: "It broke." }), "It broke.");
+}
+
+// A failure that says nothing is shown the sentence the caller wrote for
+// exactly that case -- and not the word "Error".
+{
+	assert.equal(failureText(new Error(""), "Could not rename that conversation."), "Could not rename that conversation.");
+	assert.equal(failureText({}, "Could not rename that conversation."), "Could not rename that conversation.");
+	assert.equal(failureText(null, "Could not rename that conversation."), "Could not rename that conversation.");
+	assert.equal(failureText(undefined, "Could not rename that conversation."), "Could not rename that conversation.");
+}
+
+// With no sentence of its own, the failure is what there is.
+{
+	assert.equal(failureText(new Error("")), "Error");
+	assert.equal(failureText(null), "");
+	assert.equal(failureText(undefined), "");
 }
 
 console.log("errors: all assertions passed");
