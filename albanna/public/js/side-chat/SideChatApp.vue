@@ -44,7 +44,8 @@
  *                           watching, clocks;
  *  - ``tool-labels.mjs``   — what a tool call is called, in the reader's
  *                           language;
- *  - ``notices.mjs``       — the sentences the panel says in passing.
+ *  - ``notices.mjs``       — the sentences the panel says in passing;
+ *  - ``write-safety.mjs``  — which writes are destructive, and what they cost.
  */
 import {
 	computed,
@@ -68,6 +69,7 @@ import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
 import { takeRetryQuestion } from "./retry.mjs";
 import { describeTool, statusLabel, toolLabel, toolSummary } from "./tool-labels.mjs";
 import { noticeText } from "./notices.mjs";
+import { destructiveConsequence, isDestructiveTool } from "./write-safety.mjs";
 import { waitsOfConversation, waitsOfPage } from "./turn-waits.mjs";
 import { createRenderThrottle, scheduleRender } from "./render-throttle.mjs";
 import {
@@ -1416,34 +1418,6 @@ function applyTurnResult(result, asked, answer) {
  * @param {string} streamId the turn whose write is waiting
  * @param {string} decision "approve" or "reject"
  */
-/**
- * Whether a tool's approval is destructive — cancelling or deleting a
- * document.  Destructive approvals get a danger style and a consequence
- * line so the reader is not asked to confirm a JSON blob.
- *
- * @param {string} toolName the tool that proposed the write
- * @returns {boolean}
- */
-function isDestructiveTool(toolName) {
-	return toolName === "cancel_doc" || toolName === "delete_doc";
-}
-
-/**
- * The consequence line shown on a destructive approval card.
- *
- * @param {string} toolName the tool that proposed the write
- * @returns {string}
- */
-function destructiveConsequence(toolName) {
-	if (toolName === "delete_doc") {
-		return __("This removes the document. It cannot be undone from here.");
-	}
-	if (toolName === "cancel_doc") {
-		return __("This cancels the submitted document.");
-	}
-	return "";
-}
-
 function decideWrite(streamId, decision) {
 	const pending = streamId ? pendingApprovals.get(streamId) : null;
 	if (!pending) return;
