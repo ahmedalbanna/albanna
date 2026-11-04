@@ -747,7 +747,7 @@ class TestPermissionParity(AlbannaTestCase):
         from frappe.utils.file_manager import get_content_hash, save_file
 
         content = f"payroll {frappe.generate_hash(length=12)}".encode()
-        saved = save_file("albanna-parity-payroll.pdf", content, "Contact", theirs, is_private=1)
+        saved = save_file("albanna-parity-payroll.png", content, "Contact", theirs, is_private=1)
         url = str(getattr(saved, "file_url", "") or "")
         self.assertTrue(url.startswith("/private/files/"))
 
