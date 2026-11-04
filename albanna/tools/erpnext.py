@@ -760,12 +760,13 @@ def _report_refusal(report_doc, report: str) -> str | None:
 
     The same access the desk applies before it runs one: the report's own
     role restriction, the report permission on the DocType it is about, and
-    the disabled flag.
+    the disabled flag.  A role check that cannot answer has not said yes.
     """
     try:
-        permitted = report_doc.is_permitted()
+        permitted = bool(report_doc.is_permitted())
     except Exception:
-        permitted = True
+        logger.exception("Could not check the roles that may run report %s", report)
+        permitted = False
     if not permitted:
         return error(
             f"You do not have access to report '{report}'",
@@ -779,6 +780,13 @@ def _report_refusal(report_doc, report: str) -> str | None:
             f"You do not have permission to run reports on '{ref_doctype}'",
             report=report,
             ref_doctype=ref_doctype,
+        )
+
+    if report_doc.get("disabled"):
+        return error(
+            f"Report '{report}' is disabled",
+            report=report,
+            actionable="An administrator has turned this report off.",
         )
     return None
 
