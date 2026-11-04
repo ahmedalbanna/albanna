@@ -568,7 +568,7 @@ panel opens and a question asked in it answers with its sources and its
 links; the Error Log holds no row since the deploy; the worker error log
 is empty.
 
-### In this pass (unreleased — the gates, and the drafts that were reviewed)
+### Shipped in this pass (v0.2.7, the gates, and the drafts that were reviewed)
 
 Nothing here changes what the app does.  Two things happened: the
 repository's own gates were repaired, and the feature drafts an agent
@@ -688,7 +688,7 @@ tests, the CI's own site script, this document — so it needed no second
 one: no build, no migrate, no worker restart.  The bench still runs the
 suite the same way it did, and now the CI runs it too.
 
-### In this pass (unreleased — the question the assistant asks)
+### Shipped in this pass (v0.2.7, the question the assistant asks)
 
 The assistant runs out of road in one way only: it needs something the
 reader has and it does not — which customer, which item, which of two
@@ -768,6 +768,92 @@ the thread that was asked in, and clicking an option recorded the
 answer and sent it on as the reader's next message.  Both questions
 read `Answered`, each naming the turn that asked it; the Error Log
 holds no row since the deploy.
+
+### Shipped in this pass (v0.2.7, the attachment)
+
+The assistant could read a picture that arrived as a path on the site, and
+nothing else.  The reader's file was not a file: it was a base64 string
+that the browser had to build, that the site had to guess the type of, and
+that was thrown away when the turn ended — so the reader could attach the
+same picture twice, and the second turn of every conversation with a
+picture died on it.
+
+**The file is a file on the site.**  It is stored as a private Frappe File
+under `Home/Albanna`, with a hashed name, and its address goes to the
+model *in words*.  It does not go as an image part, because a vision
+provider cannot fetch `/private/files/albanna-8f2a1c.png`: the request is
+refused, and the second turn of every conversation with an attachment dies
+with it.  The address outlives the request that made it, so the file is
+still there after a reload, and the same file can be attached to two
+records without being uploaded twice.
+
+**The reader attaches a file with the paperclip, a paste, or a drop.**  The
+composer takes the file the reader gave it and nothing else.  The upload
+dialog is gone: it was a second interface to the same thing, with a
+different set of rules, and the reader chose between two ways to do one
+job.
+
+**Several files at once, and all of them are shown.**  The composer took
+one picture at a time, and the list it kept was written after each file,
+so a later upload overwrote an earlier one — the reader's third picture
+disappeared.  A turn that carried two pictures and could not read the
+second is refused outright rather than reaching the model carrying the
+first: the reader attached both, and the model would answer about half of
+what it was given.
+
+**The reader's bytes stay out of the log.**  The endpoint that uploaded
+the file wrote the whole request into the error log when it refused one,
+which is a reader's file in a file the reader cannot see and nobody
+deletes.
+
+**Every streaming turn failed.**  The worker read the turn's attachments
+out of the marker the endpoint leaves behind, and the function that reads
+them was never written — so every question the side chat was asked ended
+with *"the turn could not finish"*.
+
+### Shipped in this pass (v0.2.7, the review of the attachment path)
+
+The attachment path was read against three questions: does it read clearly,
+can it be changed without touching half the app, and can it be tested
+without a site.  It did not answer them well, and what it found was
+concentrated in one place: **the rules an attachment follows were written
+four times and meant four different things.**
+
+* **Four parsers for one shape.**  "A list of strings, JSON-encoded or
+  bare" was read four ways, and a non-streaming turn and a streaming turn
+  disagreed about the same payload.  There is one reader now, in the core
+  layer, and it is reached by the domain suite.
+* **The file rules lived in the turn.**  A 1251-line orchestrator was
+  changed for two unrelated reasons, and the upload endpoint had to reach
+  into the orchestrator for the rules it followed.  The rules moved to the
+  service that owns them, and the ceiling they set is now enforced where
+  the bytes are *written*, not only where they are asked for.
+* **The type list was written in the browser and in the server, and
+  nothing compared them.**  The site publishes the types it takes now and
+  the browser asks; the browser keeps no copy of its own, and the picker's
+  offer comes from the same list.  The paste had a second, looser rule of
+  its own — it is the one rule now.
+* **The refusal was said in several places.**  The rules return a *reason*
+  and one table says what each reason means, so the turn, the upload and
+  the browser refuse in the same words — and the sentence cannot name a
+  type the site no longer takes, because the names come out of the site's
+  own list.
+* **The failure was unwrapped fifteen times**, in copies that were not the
+  same, and the sentence each action had written for the case where the
+  server said nothing could never be read: the failure itself came first.
+  One function now, with a test, and the server's words come first.
+
+And the things that were only written down wrong: four comments named an
+upload dialog that was removed two releases ago, the spec described a v3
+the code had outgrown, the notes the model reads said *"1 attachment(s)
+were stored as Frappe File(s)"*, and the panel's own error said `Error`
+where it meant to say what happened.
+
+The whole of it is in CONTEXT 88, 89 and 90.  It was checked live on the
+production site: the site publishes its five types, the picker offers
+exactly those five, a picture attaches and the model sees it, a text file
+is refused in the site's own words before its bytes move, and a pin that
+fails says so.
 
 ### Later (v3) — §3, only with a named customer
 

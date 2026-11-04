@@ -2007,6 +2007,111 @@ reader the question names may answer it, the first answer is the answer,
 and an answer the reader was never offered is refused.  The whole of it
 is in `docs/adr/0011-the-question-is-asked-in-the-chat.md`.
 
+### 88. The attachment is one thing, and the rule that judges it is written once
+
+A file attached to a question arrives twice — as the bytes a vision-capable
+provider can read, and as the address the site keeps it under — and the two
+were built in one file and read in another, as six stringly-typed keys with
+no definition of their own.  The shape is written down now, in
+`core/attachments.py`, and both ends use it: the composer builds an
+attachment through it, and the panel reads the turn's attachments through
+it, so the bytes a turn carries and the addresses those bytes were stored
+under are built together and never apart.
+
+**The rule is a code and not a sentence.**  The rule — which types may be
+attached, how large one may be, whether its bytes are readable — returns a
+*reason*: `disabled`, `unreadable`, `unsupported_type`, `too_large`,
+`required`, `not_stored`.  A reason is a fact about the file; a sentence is
+a fact about the reader, and the reader's language is not the rule's
+business.  A rule that carries its own wording has to be translated in
+every place it is used, and a rule translated in one place and not in the
+next is a rule the reader cannot predict.  So the reason travels, and the
+sentence is drawn from one table when it is shown.
+
+**The core layer holds the rule because the core layer has no language.**
+`core/attachments.py` imports no Frappe, so the rule is reached by the
+domain suite — the tests that run on a machine with no bench, no site and
+no network.  A rule that lives beside the code that needs a database is a
+rule that can only be tested where a database is.  The half that does need
+the framework — the folder, the write, the sentences — is in
+`services/attachments.py`, and the two halves meet at the reason.
+
+**The ceiling is enforced where the bytes are written.**  The size of a
+file was checked at the two doors that *asked* for one and not at the door
+that *wrote* one, so a caller that reached the write directly filled the
+disk with whatever it liked.  The write now asks the same rule.
+
+**The bytes are stored once, and the address is paired with the bytes it
+belongs to.**  A turn reuses the file the reader already uploaded instead
+of writing the same bytes twice — but only when there is an address for
+every file.  An address that belongs to another picture is worse than
+storing the same bytes again, because the model would be asked about one
+picture and pointed at another.  So the addresses are used only when they
+can be paired, and the bytes are stored again when they cannot: wasteful,
+and correct.
+
+### 89. The browser is told which files the site takes, and keeps no list of its own
+
+The types a site accepts were written three times — in the browser, in the
+server's table, and in the endpoint's checks — and nothing compared them.
+A browser that accepts an SVG and a server that refuses it is a reader who
+chose a file, waited for the upload, and was then told the file they chose
+could not be attached.
+
+So the list is the site's, and it is published: `options()` says which
+types it takes, and the browser asks.  The browser keeps **no list of its
+own** — not even a fallback — because a copy is a copy that goes stale the
+day the site's changes, and a stale list is a browser that lets a file
+through.  The picker is told the same list, so the files it offers are the
+files the site takes; the rule is still the rule, and the drop and the
+paste do not consult the picker.
+
+**The refusal names the types, and they come out of the site's own list.**
+"Only images can be attached" is not an answer a reader can act on: an SVG
+*is* an image, and an SVG cannot be stored, because it executes as HTML in
+a browser.  So the sentence names the types, and the names are a list
+inside the sentence rather than part of it — they are product names, they
+do not change with the language, and a sentence that carried them would be
+a sentence the translator could not translate.  The list itself is the
+site's, so the sentence cannot name a type the site has stopped taking.
+
+**A pasted file is judged by the same rule as a dropped one.**  The paste
+had a second rule of its own, which was looser — any image and any PDF —
+so a pasted SVG was taken by the composer and refused by the server, after
+the upload.  The paste now intercepts any pasted *file* and lets the one
+rule decide; pasted text still pastes as text.
+
+### 90. A failure is unwrapped in one place, and the server's words come first
+
+Fifteen actions in the panel caught a failure the same way, in fifteen
+copies of the same three lines, and the copies were not the same: each one
+fell back to the failure itself *before* the sentence the action had
+written for exactly that case.  A failure is always there, so the sentence
+could never be read, and a reader was shown `Error`.
+
+The unwrapping is one function now — `failureText`, in the module that
+already holds the server's message — and it is tested.  The server's text
+comes first, because it is the reason; the caller's sentence comes second,
+because it is the only thing there is when there is no reason.
+
+**A refusal arrives in three shapes, and every one of them is handled
+rather than assumed.**  A rejected request carries its body as JSON; a
+response body carries `_server_messages`; a traceback arrives as a list of
+lines.  The Desk's envelope is three levels deep — the text is in its
+`message`, the envelopes come as a list, and each envelope has been
+serialised to a string inside the list — so the text is dug out rather
+than picked.  The copy of this that lived in the composer had no test, so
+a change in the shape a refusal arrives in was a change half the panel
+noticed; it is one function now, and the test covers all three shapes.
+
+**A failure that is swallowed is a failure the reader cannot see.**  Every
+action in the drawer says what happened when it did not — except one,
+which put the icon back and said nothing, so a reader who pinned a
+conversation and watched the icon spring back could not tell whether the
+pin had not taken or the panel had not noticed yet.  The panel says it now,
+in the server's words when the server said something and in the panel's
+own sentence when it did not.
+
 ## What is deliberately not here
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.
   It is a good feature and it is a separate one; v1 has no retrieval.
