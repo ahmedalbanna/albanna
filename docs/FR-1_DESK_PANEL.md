@@ -50,11 +50,11 @@ record beside the answer.
 **Status.** Shipped, with the exclusions in §Deliberate exclusions.
 
 **Evidence.**
-- `albanna/public/js/albanna-side-chat.bundle.js:232-246` — `DOCK_CLASS`
+- `albanna/public/js/albanna-side-chat.bundle.js:240-246` — `DOCK_CLASS`
   maps the logical side to `albanna-side-chat-docked-inline-end` /
   `albanna-side-chat-docked-inline-start`, toggled from the single
   `setDock` call so it cannot drift from the panel's visibility.
-- `albanna/public/js/albanna-side-chat.bundle.js:328-342` — `setDock`
+- `albanna/public/js/albanna-side-chat.bundle.js:334-342` — `setDock`
   adds and removes the class on `<body>`, because a margin there is the
   only thing that moves the whole Desk (Frappe's reset ships
   `body { padding: 0 !important }`).
@@ -89,7 +89,7 @@ sensible range, and the width survives a reload on the same browser.
   `KEYBOARD_STEP` (24), `DEFAULT_WIDTH` (400), `WIDTH_KEY`
   (`albanna.side-chat.width`).  The handle is a splitter moved with the
   arrow keys, Home and End.
-- `albanna/public/js/albanna-side-chat.bundle.js:250-260` — `setWidth`
+- `albanna/public/js/albanna-side-chat.bundle.js:252-264` — `setWidth`
   clamps, writes the CSS variable, updates the ARIA values, and persists
   to `localStorage` inside a try/catch.
 - `albanna/public/js/albanna-side-chat.bundle.js:272` — `setWidth(readStoredWidth(window.localStorage))`
@@ -118,10 +118,10 @@ panel header.
 **Status.** Shipped, with the exclusions in §Deliberate exclusions.
 
 **Evidence.**
-- `albanna/public/js/albanna-side-chat.bundle.js:195-210` — the launcher
+- `albanna/public/js/albanna-side-chat.bundle.js:210-221` — the launcher
   button is created with `aria-label`, `aria-expanded`, `aria-controls`,
   and the launcher SVG.
-- `albanna/public/js/albanna-side-chat.bundle.js:344-360` — `setOpen`
+- `albanna/public/js/albanna-side-chat.bundle.js:344` — `setOpen`
   toggles `launcher.hidden = open`, so the launcher disappears while the
   panel is open.
 - `albanna/hooks.py:46-52` — the launcher bundle is a global include.

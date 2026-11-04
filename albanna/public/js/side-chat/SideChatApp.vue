@@ -481,25 +481,6 @@ async function submitSet(set) {
 }
 
 /**
- * The document the widget is looking at, if it is looking at one.
- *
- * A *form* is a document, and the document's name and type are known
- * exactly.  A list is a route, and the route's last segment is a slug
- * rather than a name — "erpnext/sales-order" is not "Sales Order" — so
- * a list is not named here.  Better to say nothing than to say a slug.
- */
-const openDocument = computed(() => {
-	// `currentPage` is read so that this is recomputed when the page
-	// changes: `resolveContext` reads globals that Vue cannot see.
-	const page = currentPage.value;
-	if (!page) return null;
-
-	const context = resolveContext();
-	if (!context.doctype || !context.name) return null;
-	return { doctype: context.doctype, name: context.name };
-});
-
-/**
  * What the empty state says it is asking about.
  *
  * The widget's whole claim is that it knows what page you are looking
