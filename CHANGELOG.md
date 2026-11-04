@@ -9,6 +9,15 @@ and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Setting an image could publish somebody else's private file.**  An
+  Attach field set to a `/private/files/` URL was copied into a public
+  `/files/` file, which anybody on the internet may download, on the
+  strength of the caller being able to *read* the source.  The copy is
+  now public only when the source already is or the caller uploaded it;
+  otherwise it stays private, attached to the document.  The copy is also
+  made inside the change's savepoint, and a refused or invalid save now
+  removes the bytes it wrote — a savepoint rollback undoes the File row
+  but not the file on disk.
 - **The panel's delete-conversation button could not work.**  Two
   things stood in its way, and both were invisible: the decorator that
   made `delete_conversation` reachable became the decorator of

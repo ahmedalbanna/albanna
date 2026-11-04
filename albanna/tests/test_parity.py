@@ -29,7 +29,8 @@ question, not by using the app:
     document the person may not read, because a write permission is not a
     read permission;
 *   a **private file** belonging to somebody else could be copied into a
-    document and published with it;
+    document and published with it -- including one the caller may read,
+    and including when the save that followed was refused;
 *   a **count** in the empty state was the size of the table, and the
     **catalogue** of DocTypes was the whole site's;
 *   the **confirmation card** named documents the reader may not read,
@@ -719,6 +720,89 @@ class TestPermissionParity(AlbannaTestCase):
             ),
             "the private file was copied into a public file",
         )
+
+    def _contact(self, first_name: str) -> str:
+        contact = frappe.new_doc("Contact")
+        contact.first_name = first_name
+        contact.flags.ignore_permissions = True
+        contact.insert()
+        return contact.name
+
+    def _public_files(self) -> set[str]:
+        import os
+
+        folder = frappe.get_site_path("public", "files")
+        return set(os.listdir(folder)) if os.path.isdir(folder) else set()
+
+    def test_a_readable_private_file_of_somebody_else_is_not_made_public(self):
+        """Reading a private file is not the right to publish it.
+
+        Frappe lets everybody who may read a document read the private
+        files attached to it.  Setting such a file on a document the
+        caller may write must not copy it into ``/files/``, where anybody
+        on the internet may download it without a login.
+        """
+        theirs = self._contact("Albanna Parity Theirs")
+        self._as(self.other_user)
+        from frappe.utils.file_manager import get_content_hash, save_file
+
+        content = f"payroll {frappe.generate_hash(length=12)}".encode()
+        saved = save_file("albanna-parity-payroll.pdf", content, "Contact", theirs, is_private=1)
+        url = str(getattr(saved, "file_url", "") or "")
+        self.assertTrue(url.startswith("/private/files/"))
+
+        target = self._contact("Albanna Parity Target")
+        before = self._public_files()
+        result = self._call(
+            "update_doc",
+            {"doctype": "Contact", "name": target, "data": {"image": url}},
+            self.sales_user,
+        )
+
+        self.assertTrue(result.ok, result.content)
+        self.assertFalse(
+            frappe.db.exists("File", {"content_hash": get_content_hash(content), "is_private": 0}),
+            "the private file was copied into a public file",
+        )
+        self.assertEqual(self._public_files(), before, "a public file was written")
+        self.assertTrue(
+            str(frappe.db.get_value("Contact", target, "image") or "").startswith("/private/files/")
+        )
+
+    def test_a_refused_save_leaves_no_copy_on_disk(self):
+        """A savepoint rollback undoes the File row, not the bytes.
+
+        The caller's own private file may be published, so its copy is
+        written into ``/files/`` before the save runs.  When the save is
+        refused, the copy must not be left behind.
+        """
+        from unittest import mock
+
+        from frappe.model.document import Document
+        from frappe.utils.file_manager import get_content_hash, save_file
+
+        target = self._contact("Albanna Parity Refused")
+        self._as(self.sales_user)
+        content = f"mine {frappe.generate_hash(length=12)}".encode()
+        saved = save_file("albanna-parity-mine.png", content, "User", self.sales_user, is_private=1)
+        url = str(getattr(saved, "file_url", "") or "")
+        self.assertTrue(url.startswith("/private/files/"))
+
+        before = self._public_files()
+        with mock.patch.object(Document, "save", side_effect=frappe.PermissionError("no")):
+            result = self._call(
+                "update_doc",
+                {"doctype": "Contact", "name": target, "data": {"image": url}},
+                self.sales_user,
+            )
+
+        self.assertFalse(result.ok, result.content)
+        self.assertFalse(
+            frappe.db.exists("File", {"content_hash": get_content_hash(content), "is_private": 0}),
+            "the refused change left a public File row",
+        )
+        self.assertEqual(self._public_files(), before, "the refused change left a public file")
+        self.assertTrue(frappe.db.exists("File", {"file_url": url}), "the source was removed")
 
     # -- the catalogue and the page are the reader's too --------------------
 

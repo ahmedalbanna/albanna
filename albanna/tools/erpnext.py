@@ -228,7 +228,8 @@ def _rollback_to(savepoint: str) -> None:
     first, and a failure rolls back to it.
 
     Only the database is undone: a savepoint does not run Frappe's rollback
-    watchers.  Nothing here writes to the filesystem.
+    watchers.  A write that stored a file on disk takes it back itself, with
+    ``_discard_written``.
     """
     try:
         frappe.db.rollback(save_point=savepoint)
@@ -888,15 +889,18 @@ def create_doc(doctype: str, data: Any, submit: bool = False) -> str:
         return refusal
 
     savepoint = _savepoint("create_doc")
+    written: list = []
     try:
         document = frappe.get_doc({"doctype": doctype, **data})
         document.insert()
         # The attachments are adopted now that the document has a name to
         # be attached to.
-        if _adopt_attachments(document, dict(data)):
+        if _adopt_attachments(document, dict(data), written):
             document.save()
     except Exception as exc:
-        return _create_refusal(exc, doctype, savepoint)
+        refusal = _create_refusal(exc, doctype, savepoint)
+        _discard_written(written)
+        return refusal
 
     submitted = False
     if submit:
@@ -958,7 +962,7 @@ def _create_refusal_for(doctype: str, data: Any) -> str | None:
         return protected
 
     # A file the caller may not read is not attached to the new document:
-    # the copy the document owns is a public one.
+    # the document would hand it to its own readers.
     meta = _meta(doctype)
     if isinstance(meta, str):
         return meta
@@ -1031,8 +1035,6 @@ def update_doc(doctype: str, name: str, data: Any, submit: bool = False) -> str:
             doctype=doctype,
             name=name,
         )
-
-    _adopt_attachments(document, changes)
 
     # The values the document held before this change, so that the change
     # can be taken back.  Only the fields that actually changed are kept.
@@ -1134,8 +1136,8 @@ def _load_for_update(doctype: str, name: str, data: dict[str, Any]):
     if refusal:
         return refusal
 
-    # A file the caller may not read is not attached: the copy the
-    # document owns is a public one.
+    # A file the caller may not read is not attached: the document would
+    # hand it to its own readers.
     refusal = _attachment_refusal(meta, doctype, data)
     if refusal:
         return refusal
@@ -1190,13 +1192,49 @@ def _may_read_file(source) -> bool:
         return False
 
 
+def _copy_is_public(source) -> bool:
+    """Whether the document's copy of *source* may be a public file.
+
+    A public file is served to anybody on the internet, without a login.
+    Reading a private file is not the right to publish it: Frappe lets
+    everybody who may read the document a file is attached to read the
+    file, and none of them may make it public on its owner's behalf.  So
+    the copy is public only when the source already is, or when the caller
+    is the one who uploaded it -- the chat's own attachment, say.
+    """
+    if not frappe.utils.cint(getattr(source, "is_private", 1)):
+        return True
+    user = frappe.session.user
+    return bool(user) and user != "Guest" and getattr(source, "owner", None) == user
+
+
+def _discard_written(written: list) -> None:
+    """Take back the files a failed write stored on disk.
+
+    A savepoint rollback undoes the File rows but not the bytes behind
+    them, and a refused change must not leave a copy behind.  A file that
+    another row still points at -- the same bytes, already on the site --
+    is that row's and is left alone.
+    """
+    for owned in written:
+        file_url = str(getattr(owned, "file_url", "") or "")
+        if not file_url:
+            continue
+        try:
+            if frappe.db.exists("File", {"file_url": file_url}):
+                continue
+            owned.delete_file_data_content()
+        except Exception:
+            logger.exception("Could not remove the stored file %s", file_url)
+
+
 def _attachment_refusal(meta, doctype: str, changes: dict[str, Any]) -> str | None:
     """The refusal for a change that attaches a file the caller may not read.
 
-    Adopting a file copies it into the document as a **public** file, so a
-    private file belonging to somebody else would leave its private folder
-    and become the document's own picture — visible to everybody who may
-    read the document.
+    Adopting a file copies it into the document, and the copy is readable
+    by everybody who may read the document.  A private file belonging to
+    somebody else would leave its private folder and become the
+    document's own picture.
 
     So the write is refused rather than half-applied: a document whose
     image points at a file its readers cannot see is a broken document, and
@@ -1225,7 +1263,9 @@ def _attachment_refusal(meta, doctype: str, changes: dict[str, Any]) -> str | No
     return None
 
 
-def _adopt_attachments(document, changes: dict[str, Any]) -> dict[str, Any]:
+def _adopt_attachments(
+    document, changes: dict[str, Any], written: list | None = None
+) -> dict[str, Any]:
     """Make every attached file the document's own, as an upload would.
 
     A file the chat stored is private and attached to the person who
@@ -1235,15 +1275,20 @@ def _adopt_attachments(document, changes: dict[str, Any]) -> dict[str, Any]:
     document's picture, and it has to render for everyone who may read
     the document.
 
-    So the document gets its own copy: the same bytes, a public file
-    attached to this document, which is what a person uploading through
-    the form produces.  Frappe's own attach hook then finds that row
-    already attached to this document and leaves it alone -- without
-    this, the hook makes a second copy of its own and the field is left
-    holding the private URL that does not render.
+    So the document gets its own copy: the same bytes, a file attached to
+    this document, which is what a person uploading through the form
+    produces.  Frappe's own attach hook then finds that row already
+    attached to this document and leaves it alone -- without this, the
+    hook makes a second copy of its own and the field is left holding the
+    private URL that does not render.
+
+    The copy is public only when ``_copy_is_public`` says so: a private
+    file somebody else uploaded stays private, attached to the document,
+    so the document's readers may read it and the internet may not.
 
     The chat's own attachment is left as it is: private, and the
-    uploader's.  Only the copy the document owns is public.
+    uploader's.  Every File this stores is appended to *written*, so a
+    write that fails afterwards can take the bytes back.
     """
     for fieldname, value in list(changes.items()):
         if not isinstance(value, str) or not value.startswith(("/files/", "/private/files/")):
@@ -1254,6 +1299,7 @@ def _adopt_attachments(document, changes: dict[str, Any]) -> dict[str, Any]:
         source = _file_for_url(value)
         if source is None or not _may_read_file(source):
             continue
+        is_private = 0 if _copy_is_public(source) else 1
         try:
             content = source.get_content()
             if isinstance(content, str):
@@ -1267,7 +1313,7 @@ def _adopt_attachments(document, changes: dict[str, Any]) -> dict[str, Any]:
                     "attached_to_doctype": document.doctype,
                     "attached_to_name": document.name,
                     "attached_to_field": fieldname,
-                    "is_private": 0,
+                    "is_private": is_private,
                     "content_hash": frappe.utils.file_manager.get_content_hash(content),
                 },
                 "file_url",
@@ -1275,15 +1321,29 @@ def _adopt_attachments(document, changes: dict[str, Any]) -> dict[str, Any]:
             if owned_url:
                 changes[fieldname] = owned_url
                 continue
-            owned = frappe.utils.file_manager.save_file(
-                source.file_name,
-                content,
-                document.doctype,
-                document.name,
-                folder="Home/Attachments",
-                is_private=0,
-                df=fieldname,
+            # The File itself writes the bytes, once, and says where.
+            owned = frappe.get_doc(
+                {
+                    "doctype": "File",
+                    "file_name": source.file_name,
+                    "content": content,
+                    "attached_to_doctype": document.doctype,
+                    "attached_to_name": document.name,
+                    "attached_to_field": fieldname,
+                    "folder": "Home/Attachments",
+                    "is_private": is_private,
+                }
             )
+            try:
+                owned.insert(ignore_permissions=True)
+            except frappe.DuplicateEntryError:
+                owned = frappe.get_doc("File", owned.duplicate_entry)
+            except Exception:
+                # The bytes may be on disk already, with no row to own them.
+                _discard_written([owned])
+                raise
+            if written is not None:
+                written.append(owned)
         except Exception:
             # A file that cannot be copied still saves as a value: the
             # reader sees the URL and the image may not render, which is
@@ -1300,14 +1360,26 @@ def _apply_update(document, changes: dict[str, Any], doctype: str, name: str) ->
     failure the model cannot act on is a failure it will retry identically.
     """
     savepoint = _savepoint("update_doc")
+    written: list = []
     try:
         # `update` assigns `name` first when it is present, so it is never
         # present: the protected fields were refused above.
         document.reload()
+        # Inside the savepoint, so a save that is refused takes back the
+        # files the change stored as well as its rows.
+        _adopt_attachments(document, changes, written)
         document.update(changes)
         document.save()
-    except frappe.PermissionError as exc:
+    except Exception as exc:
         _rollback_to(savepoint)
+        _discard_written(written)
+        return _update_refusal(exc, doctype, name)
+    return None
+
+
+def _update_refusal(exc: Exception, doctype: str, name: str) -> str:
+    """The envelope for a change that could not be saved."""
+    if isinstance(exc, frappe.PermissionError):
         return error(
             f"Failed to update {doctype} '{name}': {exc}",
             doctype=doctype,
@@ -1318,17 +1390,13 @@ def _apply_update(document, changes: dict[str, Any], doctype: str, name: str) ->
                 "that as a fact about the account, and do not apologise for it."
             ),
         )
-    except frappe.ValidationError as exc:
-        _rollback_to(savepoint)
+    if isinstance(exc, frappe.ValidationError):
         return error(
             f"Validation failed for {doctype} '{name}': {exc}",
             doctype=doctype,
             name=name,
         )
-    except Exception as exc:
-        _rollback_to(savepoint)
-        return error(f"Failed to update {doctype} '{name}': {exc}", doctype=doctype, name=name)
-    return None
+    return error(f"Failed to update {doctype} '{name}': {exc}", doctype=doctype, name=name)
 
 
 def _submit_update(document, doctype: str, name: str) -> str | None:
@@ -1776,6 +1844,7 @@ def _bulk_change_one(doctype: str, name: str, data: dict[str, Any]) -> tuple[boo
     changed does not undo the ones that were.
     """
     savepoint = _savepoint("bulk_update_doc")
+    written: list = []
     try:
         document = frappe.get_doc(doctype, name)
         if not may_read(document):
@@ -1787,12 +1856,13 @@ def _bulk_change_one(doctype: str, name: str, data: dict[str, Any]) -> tuple[boo
         changes = _actual_changes(document, data)
         if not changes:
             return False, ""
-        _adopt_attachments(document, changes)
+        _adopt_attachments(document, changes, written)
         document.update(changes)
         document.save()
         return True, ""
     except Exception as exc:
         _rollback_to(savepoint)
+        _discard_written(written)
         return False, str(exc)
 
 
