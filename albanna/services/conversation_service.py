@@ -734,6 +734,17 @@ def delete_conversation(conversation: str) -> None:
     """
     assert_owns(conversation, frappe.session.user or "")
     frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
+    # The audit trail is the operator's, not the reader's: the chat is the
+    # reader's and goes when the reader says so, and the ledger is what
+    # the operator reads about what the assistant did.  So the ledger row
+    # stays and loses its link — and it has to lose it, because a link to
+    # a thread that is being deleted stops the thread from being deleted
+    # at all.  Every thread that had a turn in it had a ledger row, so
+    # without this the button in the drawer failed on every click.
+    frappe.db.sql(
+        "update `tabAlbanna Chat Log` set conversation = null where conversation = %s",
+        (conversation,),
+    )
     # The questions asked in this thread go with it.  They hold what the
     # assistant was looking for and what the reader was being asked to
     # choose, and a thread the reader asked to be gone is a thread whose

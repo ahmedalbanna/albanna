@@ -5,6 +5,23 @@ All notable changes to Albanna are recorded here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **The panel's delete-conversation button could not work.**  Two
+  things stood in its way, and both were invisible: the decorator that
+  made `delete_conversation` reachable became the decorator of
+  `escalate_conversation` when the escalate feature was added, and the
+  ledger row a turn leaves behind links to the thread, so the delete
+  stopped on the link.  The decorator is back, and the ledger row now
+  loses its link instead of blocking the delete — the audit trail is
+  the operator's, and the chat is the reader's, so the thread goes and
+  the record of it stays.  A test now reads the panel's calls out of
+  the front-end and checks each one against the server's own source, so
+  a method the panel names and the server does not expose is caught
+  before it ships.
+
 ## [0.2.7] — 2026-11-04
 
 The passes are recorded here in the order they happened.

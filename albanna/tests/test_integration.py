@@ -572,6 +572,34 @@ class TestConversationOwnership(AlbannaTestCase):
         self._as(self.owner)
         self.assertTrue(frappe.db.exists("Albanna Conversation", conversation))
 
+    def test_a_thread_that_has_a_turn_in_the_ledger_can_be_deleted(self):
+        """The ledger links to the thread, and a link stops the delete.
+
+        The audit trail is the operator's — the chat is the reader's and
+        goes when the reader says so — so the ledger row survives the
+        thread and loses its link.  Without that, every thread that had
+        a turn in it could not be deleted at all, and the button in the
+        drawer failed on every click.
+        """
+        self._as(self.owner)
+        conversation = ensure_conversation(self.owner, "test|ledger|")
+        append_messages(conversation, [{"role": "user", "content": "a question"}])
+
+        # The row a turn leaves behind, written the way the turn writes it.
+        log = frappe.new_doc("Albanna Chat Log")
+        log.user = self.owner
+        log.conversation = conversation
+        log.status = "ok"
+        log.insert(ignore_permissions=True)
+
+        delete_conversation(conversation=conversation)
+
+        self.assertFalse(frappe.db.exists("Albanna Conversation", conversation))
+
+        # The ledger is the operator's, and it is still there.
+        self.assertTrue(frappe.db.exists("Albanna Chat Log", log.name))
+        self.assertIsNone(frappe.db.get_value("Albanna Chat Log", log.name, "conversation"))
+
     def test_the_service_itself_refuses_another_users_conversation(self):
         """The check is in the service, and not only in the endpoint.
 

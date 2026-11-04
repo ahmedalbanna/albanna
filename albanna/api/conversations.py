@@ -345,6 +345,7 @@ def undo_turn(conversation: str = "", message: str = "") -> dict:
     }
 
 
+@frappe.whitelist()
 def delete_conversation(conversation: str = "") -> dict:
     """Delete a conversation and its messages."""
     require_chat_access()
