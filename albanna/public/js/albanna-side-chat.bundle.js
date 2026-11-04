@@ -24,6 +24,7 @@
 // nothing.
 
 import { publishAccess } from "./side-chat/access.mjs";
+import { WIDTH_KEY, MIN_WIDTH, MAX_WIDTH, KEYBOARD_STEP, clampWidth, readStoredWidth, sideFor, pinnedRight as pinnedRightEdge } from "./side-chat/launcher.mjs";
 
 const OPTIONS_ENDPOINT = "albanna.api.widget.options";
 // The key is the bundle's name in `frappe.boot.assets_json`.  The build
@@ -44,11 +45,6 @@ const PANEL_ID = "albanna-side-chat-panel";
  * is genuinely wide, and the reader is left scrolling it sideways inside
  * a 400px window.  The panel can be dragged wider, and the Desk gives up
  * the space, because the Desk is already giving it up. */
-const WIDTH_KEY = "albanna.side-chat.width";
-const MIN_WIDTH = 320;
-const MAX_WIDTH = 720;
-const KEYBOARD_STEP = 24;
-
 const LAUNCHER_SVG =
 	'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
 	'<path d="M20 4H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3v3l4-3h9a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Z" ' +
@@ -176,10 +172,7 @@ async function boot() {
 	// browser.
 	const position = config.position || config.position_default || "bottom-right";
 	const floating = position === "floating";
-	const side =
-		position === "bottom-left"
-			? "inline-start"
-			: "inline-end";
+	const side = sideFor(position);
 
 	const root = document.createElement("div");
 	root.id = ROOT_ID;
@@ -257,7 +250,7 @@ async function boot() {
 	 * Desk's margin are written against it: a wider panel takes more of
 	 * the Desk's width, which is what the dock means. */
 	const setWidth = (width) => {
-		const clamped = Math.round(Math.min(Math.max(width, MIN_WIDTH), MAX_WIDTH));
+		const clamped = clampWidth(width);
 		document.documentElement.style.setProperty("--albanna-panel-width", `${clamped}px`);
 		resize.setAttribute("aria-valuenow", String(clamped));
 		resize.setAttribute("aria-valuemin", String(MIN_WIDTH));
@@ -270,18 +263,13 @@ async function boot() {
 		}
 	};
 
-	const currentWidth = () => {
-		const stored = Number.parseInt(window.localStorage.getItem(WIDTH_KEY) || "", 10);
-		return Number.isFinite(stored) && stored >= MIN_WIDTH && stored <= MAX_WIDTH ? stored : 400;
-	};
-
 	/* The panel is pinned to one edge of the screen, and the handle is on
 	 * the other one.  Which physical edge it is depends on the direction
 	 * as well as on the side, so it is worked out here rather than read
 	 * from the DOM. */
-	const pinnedRight = side === "inline-end" ? !isRtl : isRtl;
+	const pinnedRight = pinnedRightEdge(side, isRtl);
 
-	setWidth(currentWidth());
+	setWidth(readStoredWidth(window.localStorage));
 
 	let dragging = false;
 
@@ -320,7 +308,7 @@ async function boot() {
 		// of the screen.
 		const grow = pinnedRight ? "ArrowLeft" : "ArrowRight";
 		const shrink = pinnedRight ? "ArrowRight" : "ArrowLeft";
-		const width = currentWidth();
+		const width = readStoredWidth(window.localStorage);
 
 		if (event.key === grow) {
 			setWidth(width + KEYBOARD_STEP);

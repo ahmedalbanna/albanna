@@ -210,16 +210,18 @@ msgid "Enter to send · Shift+Enter for a new line"
 msgstr "Enter للإرسال · Shift+Enter لسطر جديد"
 
 
-msgid "Which Sales Orders are still open?"
-msgstr "ما أوامر البيع التي ما زالت مفتوحة؟"
 
 
-msgid "What is the total value of open orders?"
-msgstr "ما القيمة الإجمالية للأوامر المفتوحة؟"
 
 
 msgid "How many customers are there?"
 msgstr "كم عدد العملاء؟"
+
+msgid "How many open Issues are there?"
+msgstr "كم عدد المشاكل المفتوحة؟"
+
+msgid "Which Issues are still open?"
+msgstr "أي المشاكل لا تزال مفتوحة؟"
 
 
 msgid "A new conversation was started."
@@ -321,6 +323,12 @@ msgstr "خطأ غير معروف."
 
 msgid "Asking about {0} {1}"
 msgstr "أسأل عن {0} {1}"
+
+msgid "Asking about the {0} list"
+msgstr "أسأل عن قائمة {0}"
+
+msgid "Asking about the {0} report"
+msgstr "أسأل عن تقرير {0}"
 
 msgid "Summarise this {0}"
 msgstr "لخّص {0}"

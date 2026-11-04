@@ -64,3 +64,28 @@ def test_every_global_include_names_a_file_that_exists():
         if not source.exists():
             source = APP_ROOT / "public" / "css" / entry
         assert source.exists(), f"{entry!r} is included globally but does not exist."
+
+
+def test_the_launcher_is_registered_globally():
+    """The rule is only worth having if the entry points are registered.
+
+    An empty ``app_include_js`` passes every test above, so a deletion of
+    the launcher from ``hooks.py`` would remove the widget from every page
+    and the whole suite would stay green.  The entry points themselves
+    must be asserted to be *present*, not merely well-formed.
+    """
+    scripts = _hook("app_include_js")
+    styles = _hook("app_include_css")
+
+    for entry in (
+        "albanna-side-chat.bundle.js",
+        "albanna-form-button.bundle.js",
+        "albanna-error-button.bundle.js",
+    ):
+        assert entry in scripts, (
+            f"{entry!r} is not in app_include_js, so the widget is not registered on any page."
+        )
+
+    assert "albanna-side-chat.bundle.css" in styles, (
+        "albanna-side-chat.bundle.css is not in app_include_css, so the panel ships unstyled."
+    )

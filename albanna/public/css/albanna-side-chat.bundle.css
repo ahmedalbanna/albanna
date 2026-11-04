@@ -82,7 +82,6 @@
 	--albanna-border: var(--gray-800, #232323);
 	--albanna-hover: var(--gray-800, #232323);
 	--albanna-bubble: var(--gray-800, #232323);
-	--albanna-bubble: var(--gray-800, #232323);
 	--albanna-accent-soft: var(--gray-800, #232323);
 	--albanna-accent: var(--gray-700, #383838);
 	/* A link has to be ink, not a fill: on the dark surfaces of this
@@ -1535,9 +1534,6 @@ body.albanna-side-chat-docked-inline-start {
 		max-width: 100% !important;
 	}
 
-	body.albanna-docked {
-		margin-inline-end: 0 !important;
-	}
 }
 
 
@@ -1771,9 +1767,14 @@ body.albanna-side-chat-docked-inline-start {
 }
 
 .albanna-chat__question-option.is-selected {
-	background: var(--albanna-primary, #2490ef);
-	color: #ffffff;
-	border-color: var(--albanna-primary, #2490ef);
+	/* --albanna-primary is referenced here and declared nowhere in the
+	   app: an undefined token silently becomes its fallback, and a
+	   fallback is a colour that follows nothing.  Every other filled
+	   state uses --albanna-accent with --albanna-on-accent as its ink,
+	   so this one does too. */
+	background: var(--albanna-accent, #171717);
+	color: var(--albanna-on-accent, #ffffff);
+	border-color: var(--albanna-accent, #171717);
 }
 
 .albanna-chat__question-progress {
@@ -2195,7 +2196,7 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__attach-notice {
 	font-size: 12px;
 	color: var(--text-muted);
-	padding-left: 4px;
+	padding-inline-start: 4px;
 }
 
 /* Voice input. */

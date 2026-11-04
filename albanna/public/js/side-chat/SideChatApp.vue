@@ -60,7 +60,7 @@ import {
 import Composer from "./Composer.vue";
 import ConversationDrawer from "./ConversationDrawer.vue";
 import { pageIdentity, resolveContext } from "./context.mjs";
-import { exampleSet, openDocumentFrom } from "./examples.mjs";
+import { examplesFor } from "./examples.mjs";
 import { clockTime } from "./format.mjs";
 import { conversationToMarkdown, exportFilename } from "./export.mjs";
 import { hasTable, renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js";
@@ -507,9 +507,21 @@ const openDocument = computed(() => {
  * wonder whether it does.
  */
 const pageContext = computed(() => {
-	const document = openDocument.value;
-	if (!document) return "";
-	return __("Asking about {0} {1}", [document.doctype, document.name]);
+	// `currentPage` is read so that this is recomputed when the page
+	// changes: `resolveContext` reads globals that Vue cannot see.
+	const page = currentPage.value;
+	const context = resolveContext();
+
+	if (context.doctype && context.name) {
+		return __("Asking about {0} {1}", [context.doctype, context.name]);
+	}
+	if (context.report) {
+		return __("Asking about the {0} report", [context.report]);
+	}
+	if (context.doctype) {
+		return __("Asking about the {0} list", [context.doctype]);
+	}
+	return "";
 });
 
 /**
@@ -529,75 +541,18 @@ const examples = computed(() => {
 	// changes: `resolveContext` reads globals that Vue cannot see.
 	const page = currentPage.value;
 	const context = resolveContext();
-	const set = exampleSet(context);
 
-	if (set === "form") {
-		const document = openDocumentFrom(context);
-		if (document && document.doctype === "Issue") {
-			return [
-				__("What is the customer asking for?"),
-				__("What has already been done?"),
-				__("What is still open?"),
-			];
+	let party = "";
+	try {
+		const frm = window.cur_frm;
+		if (frm && frm.doc) {
+			party = frm.doc.customer || frm.doc.supplier || frm.doc.party || "";
 		}
-		if (document) {
-			return [
-				__("Summarise this {0}", [document.doctype]),
-				__("What is the status of this {0}?", [document.doctype]),
-				__("What is the total of this {0}?", [document.doctype]),
-			];
-		}
-		// A brand-new document: offer to seed it from the last similar one.
-		let party = "";
-		try {
-			const frm = window.cur_frm;
-			if (frm && frm.doc) {
-				party = frm.doc.customer || frm.doc.supplier || frm.doc.party || "";
-			}
-		} catch (error) {
-			party = "";
-		}
-		if (party && context.doctype) {
-			return [
-				__("Copy this {0} from the last one for {1}", [context.doctype, party]),
-				__("What fields are required for this {0}?", [context.doctype]),
-			];
-		}
-		return [__("What fields are required for this {0}?", [context.doctype])];
+	} catch (error) {
+		party = "";
 	}
 
-	if (set === "list" && context.doctype) {
-		if (context.doctype === "Issue") {
-			return [
-				__("What is the customer asking for?"),
-				__("What has already been done?"),
-				__("What is still open?"),
-				__("Show my open tickets"),
-			];
-		}
-		if (doctypeCount.value === 0) {
-			return [__("Create a {0}", [context.doctype])];
-		}
-		return [
-			__("How many {0} are there?", [context.doctype]),
-			__("Which {0} are still open?", [context.doctype]),
-			__("What is the total value of these {0}?", [context.doctype]),
-		];
-	}
-
-	if (set === "report" && context.report) {
-		return [
-			__("Summarise this report"),
-			__("What are the totals in this report?"),
-			__("Which rows stand out?"),
-		];
-	}
-
-	return [
-		__("Which Sales Orders are still open?"),
-		__("What is the total value of open orders?"),
-		__("How many customers are there?"),
-	];
+	return examplesFor(context, doctypeCount.value, party);
 });
 
 function isImageSrc(src) {
