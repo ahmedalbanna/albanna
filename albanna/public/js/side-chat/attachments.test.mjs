@@ -25,13 +25,7 @@ import {
 } from "./attachments.mjs";
 
 // The types the site publishes.  They arrive with the widget's options.
-const TYPES = [
-	"image/png",
-	"image/jpeg",
-	"image/webp",
-	"image/gif",
-	"application/pdf",
-];
+const TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"];
 
 // The site's rules, as the browser is given them.
 const RULES = { types: TYPES };
@@ -80,20 +74,14 @@ const RULES = { types: TYPES };
 
 // A file over the site's ceiling is refused, and the reason says which.
 {
-	const result = checkAttachment(
-		{ type: "image/png", size: 5000 },
-		{ ...RULES, maxBytes: 4096 },
-	);
+	const result = checkAttachment({ type: "image/png", size: 5000 }, { ...RULES, maxBytes: 4096 });
 	assert.equal(result.ok, false);
 	assert.equal(result.reason, REFUSED_SIZE);
 }
 
 // A file exactly on the ceiling may be attached.
 {
-	const result = checkAttachment(
-		{ type: "image/png", size: 4096 },
-		{ ...RULES, maxBytes: 4096 },
-	);
+	const result = checkAttachment({ type: "image/png", size: 4096 }, { ...RULES, maxBytes: 4096 });
 	assert.equal(result.ok, true);
 }
 
@@ -108,10 +96,7 @@ const RULES = { types: TYPES };
 
 // The site may narrow the list.
 {
-	const result = checkAttachment(
-		{ type: "image/gif", size: 10 },
-		{ types: ["image/png"] },
-	);
+	const result = checkAttachment({ type: "image/gif", size: 10 }, { types: ["image/png"] });
 	assert.equal(result.ok, false);
 	assert.equal(result.reason, REFUSED_TYPE);
 }
@@ -188,7 +173,10 @@ const RULES = { types: TYPES };
 		(entries) => written.push(entries),
 	);
 	assert.equal(added.length, 2);
-	assert.deepEqual(added.map((entry) => entry.name), ["a.png", "c.pdf"]);
+	assert.deepEqual(
+		added.map((entry) => entry.name),
+		["a.png", "c.pdf"],
+	);
 	assert.equal(written.length, 1);
 	assert.deepEqual(written[0], added);
 }
@@ -208,8 +196,10 @@ const RULES = { types: TYPES };
 // Nothing was stored, so nothing is written.
 {
 	const written = [];
-	const added = await storeAll([{ name: "a" }], async () => null, (entries) =>
-		written.push(entries),
+	const added = await storeAll(
+		[{ name: "a" }],
+		async () => null,
+		(entries) => written.push(entries),
 	);
 	assert.deepEqual(added, []);
 	assert.equal(written.length, 0);
@@ -225,10 +215,7 @@ const RULES = { types: TYPES };
 		makeAttachment({ dataUrl: "data:image/png;base64,BBBB", fileUrl: "/private/files/b.png" }),
 	];
 	const { images, imageUrls } = turnAttachments(files);
-	assert.deepEqual(images, [
-		"data:image/png;base64,AAAA",
-		"data:image/png;base64,BBBB",
-	]);
+	assert.deepEqual(images, ["data:image/png;base64,AAAA", "data:image/png;base64,BBBB"]);
 	assert.deepEqual(imageUrls, ["/private/files/a.png", "/private/files/b.png"]);
 }
 

@@ -21,6 +21,13 @@ and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
   the front-end and checks each one against the server's own source, so
   a method the panel names and the server does not expose is caught
   before it ships.
+- **The repository's own gate had been red on every push since the
+  third of November.**  Two failures, both invisible locally: the
+  front-end files were not in the shape the formatter asks for, and a
+  test named a field that ERPNext has since taken away — the invoice's
+  title — so the server suite failed on the framework the CI installs
+  rather than on the framework this bench has.  The test asks the
+  DocType for its title field now, and the files are formatted.
 
 ## [0.2.7] — 2026-11-04
 

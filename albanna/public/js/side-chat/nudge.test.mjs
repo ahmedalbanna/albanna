@@ -19,10 +19,7 @@ const { documentRoute, moreText, namedDocuments, unnamedCount } = await import("
 /* The Desk's own convention: the DocType's slug, then the document's name.
    The name is percent-encoded, so an Arabic name is a URL the Desk can
    still route to. */
-assert.equal(
-	documentRoute("Sales Invoice", "ف-2026-0011"),
-	"/app/sales-invoice/%D9%81-2026-0011",
-);
+assert.equal(documentRoute("Sales Invoice", "ف-2026-0011"), "/app/sales-invoice/%D9%81-2026-0011");
 assert.equal(documentRoute("Purchase Invoice", "PI-0001"), "/app/purchase-invoice/PI-0001");
 
 /* -- the names ---------------------------------------------------------- */

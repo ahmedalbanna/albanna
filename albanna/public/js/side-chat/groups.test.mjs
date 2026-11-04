@@ -162,7 +162,10 @@ const now = new Date("2026-10-21T15:00:00");
 
 // The pinned group is left out when nothing is pinned.
 {
-	const groups = groupByDate([{ name: "today", last_activity_ts: daysAgo(now, 0) }], now.getTime());
+	const groups = groupByDate(
+		[{ name: "today", last_activity_ts: daysAgo(now, 0) }],
+		now.getTime(),
+	);
 	assert.deepEqual(
 		groups.map((group) => group.key),
 		["today"],

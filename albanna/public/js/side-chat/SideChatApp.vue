@@ -893,7 +893,6 @@ function onContextChanged(context) {
 	props.onContext(context);
 }
 
-
 /**
  * Open a link in the answer in a new tab.
  *
@@ -2661,10 +2660,7 @@ onBeforeUnmount(() => {
 								<a class="albanna-chat__nudge-link" :href="document.url">
 									{{ document.label }}
 								</a>
-								<span
-									v-if="document.title"
-									class="albanna-chat__nudge-reference"
-								>
+								<span v-if="document.title" class="albanna-chat__nudge-reference">
 									{{ document.name }}
 								</span>
 							</li>
@@ -2756,40 +2752,40 @@ onBeforeUnmount(() => {
 						     pictures sees three pictures. -->
 						<div
 							v-if="message.images && message.images.length"
-						class="albanna-chat__user-attachments"
+							class="albanna-chat__user-attachments"
 						>
-						<template v-for="(image, index) in message.images" :key="index">
-							<img
-								v-if="isImageSrc(image)"
-								:src="image"
-								alt=""
-								class="albanna-chat__user-image"
-							/>
-							<span v-else class="albanna-chat__user-file">
-								<!-- The paperclip is decoration: the words beside it
+							<template v-for="(image, index) in message.images" :key="index">
+								<img
+									v-if="isImageSrc(image)"
+									:src="image"
+									alt=""
+									class="albanna-chat__user-image"
+								/>
+								<span v-else class="albanna-chat__user-file">
+									<!-- The paperclip is decoration: the words beside it
 								     say what the attachment is, so the icon is for the
 								     eye and not for a screen reader.  An emoji here
 								     would have been an image of a different set of
 								     instructions, in a font the browser picks. -->
-								<svg
-									width="13"
-									height="13"
-									viewBox="0 0 24 24"
-									fill="none"
-									aria-hidden="true"
-									class="albanna-chat__user-file-icon"
-								>
-									<path
-										d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
-										stroke="currentColor"
-										stroke-width="1.8"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/>
-								</svg>
-								{{ __("Attached file") }}
-							</span>
-						</template>
+									<svg
+										width="13"
+										height="13"
+										viewBox="0 0 24 24"
+										fill="none"
+										aria-hidden="true"
+										class="albanna-chat__user-file-icon"
+									>
+										<path
+											d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+											stroke="currentColor"
+											stroke-width="1.8"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
+									{{ __("Attached file") }}
+								</span>
+							</template>
 						</div>
 						<span v-if="message.content">{{ message.content }}</span>
 					</div>
@@ -3032,17 +3028,25 @@ onBeforeUnmount(() => {
 					:aria-label="currentQuestion(set) && currentQuestion(set).question"
 				>
 					<p class="albanna-chat__question-progress">
-						{{ (setFor(set.key).index + 1) }} / {{ set.questions.length }}
+						{{ setFor(set.key).index + 1 }} / {{ set.questions.length }}
 					</p>
 					<template v-if="currentQuestion(set)">
-						<p class="albanna-chat__question-text">{{ currentQuestion(set).question }}</p>
+						<p class="albanna-chat__question-text">
+							{{ currentQuestion(set).question }}
+						</p>
 						<div class="albanna-chat__question-options">
 							<button
 								v-for="option in currentQuestion(set).options"
 								:key="option.value"
 								type="button"
 								class="albanna-chat__question-option"
-								:class="{ 'is-selected': isSelected(set, currentQuestion(set), option.value) }"
+								:class="{
+									'is-selected': isSelected(
+										set,
+										currentQuestion(set),
+										option.value,
+									),
+								}"
 								:disabled="!maySend || setFor(set.key).submitting"
 								@click="toggleChoice(set, currentQuestion(set), option.value)"
 							>
@@ -3056,17 +3060,35 @@ onBeforeUnmount(() => {
 								:placeholder="__('Type your own answer')"
 								:disabled="!maySend || setFor(set.key).submitting"
 								:value="freeDrafts.get(currentQuestion(set).name) || ''"
-								@input="freeDrafts.set(currentQuestion(set).name, $event.target.value)"
-								@keyup.enter="freeChoice(set, currentQuestion(set), freeDrafts.get(currentQuestion(set).name))"
+								@input="
+									freeDrafts.set(currentQuestion(set).name, $event.target.value)
+								"
+								@keyup.enter="
+									freeChoice(
+										set,
+										currentQuestion(set),
+										freeDrafts.get(currentQuestion(set).name),
+									)
+								"
 								:aria-label="__('Type your own answer')"
 							/>
 							<button
 								type="button"
 								class="albanna-chat__question-free-send"
-								:disabled="!maySend || setFor(set.key).submitting || !(freeDrafts.get(currentQuestion(set).name) || '').trim()"
-								@click="freeChoice(set, currentQuestion(set), freeDrafts.get(currentQuestion(set).name))"
+								:disabled="
+									!maySend ||
+									setFor(set.key).submitting ||
+									!(freeDrafts.get(currentQuestion(set).name) || '').trim()
+								"
+								@click="
+									freeChoice(
+										set,
+										currentQuestion(set),
+										freeDrafts.get(currentQuestion(set).name),
+									)
+								"
 							>
-								{{ __('Add') }}
+								{{ __("Add") }}
 							</button>
 						</div>
 					</template>
@@ -3077,15 +3099,18 @@ onBeforeUnmount(() => {
 							:disabled="setFor(set.key).index <= 0 || setFor(set.key).submitting"
 							@click="setFor(set.key).index--"
 						>
-							{{ __('Back') }}
+							{{ __("Back") }}
 						</button>
 						<button
 							type="button"
 							class="albanna-chat__question-nav-btn"
-							:disabled="setFor(set.key).index >= set.questions.length - 1 || setFor(set.key).submitting"
+							:disabled="
+								setFor(set.key).index >= set.questions.length - 1 ||
+								setFor(set.key).submitting
+							"
 							@click="setFor(set.key).index++"
 						>
-							{{ __('Next') }}
+							{{ __("Next") }}
 						</button>
 						<button
 							type="button"
@@ -3093,7 +3118,7 @@ onBeforeUnmount(() => {
 							:disabled="!maySend || setFor(set.key).submitting || !canSubmitSet(set)"
 							@click="submitSet(set)"
 						>
-							{{ setFor(set.key).submitting ? __('Sending…') : __('Submit') }}
+							{{ setFor(set.key).submitting ? __("Sending…") : __("Submit") }}
 						</button>
 					</div>
 				</div>
@@ -3173,11 +3198,10 @@ onBeforeUnmount(() => {
 			aria-live="assertive"
 		>
 			<div class="albanna-chat__confirm-header">
-				<span class="albanna-chat__confirm-action">{{ toolAction(wait.approval.name) }}</span>
-				<span
-					v-if="canDecide(wait.approval, now)"
-					class="albanna-chat__confirm-time"
-				>
+				<span class="albanna-chat__confirm-action">{{
+					toolAction(wait.approval.name)
+				}}</span>
+				<span v-if="canDecide(wait.approval, now)" class="albanna-chat__confirm-time">
 					{{ __("Waiting {0}s", [remainingSeconds(wait.approval, now)]) }}
 				</span>
 			</div>

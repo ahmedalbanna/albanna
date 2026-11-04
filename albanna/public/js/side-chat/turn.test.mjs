@@ -121,17 +121,18 @@ global.window = {
 	});
 
 	await new Promise((resolve) => setTimeout(resolve, 10));
-	answered({ event: "done", stream_id: "stream-1", result: { status: "ok", reply: "a picture" } });
+	answered({
+		event: "done",
+		stream_id: "stream-1",
+		result: { status: "ok", reply: "a picture" },
+	});
 	await pending;
 
 	assert.deepEqual(JSON.parse(asked.args.image), [
 		"data:image/png;base64,AAAA",
 		"data:application/pdf;base64,BBBB",
 	]);
-	assert.deepEqual(JSON.parse(asked.args.image_urls), [
-		"/private/files/albanna-8f2a1c.png",
-		"",
-	]);
+	assert.deepEqual(JSON.parse(asked.args.image_urls), ["/private/files/albanna-8f2a1c.png", ""]);
 }
 
 // A turn with no attachments still sends the fields, as empty lists: the

@@ -27,12 +27,7 @@ const props = defineProps({
 	attachableTypes: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits([
-	"update:modelValue",
-	"update:files",
-	"send",
-	"stop",
-]);
+const emit = defineEmits(["update:modelValue", "update:files", "send", "stop"]);
 
 const inputEl = ref(null);
 const fileInput = ref(null);
@@ -263,7 +258,10 @@ function onDragOver(event) {
 
 function removeFile(index) {
 	noticeText.value = "";
-	emit("update:files", props.files.filter((_, i) => i !== index));
+	emit(
+		"update:files",
+		props.files.filter((_, i) => i !== index),
+	);
 }
 
 /**
@@ -414,7 +412,9 @@ async function onChooseFile() {
 			>
 				<span
 					class="albanna-chat__attach-chip-icon"
-					:class="{ 'albanna-chat__attach-chip-icon--image': file.type.startsWith('image/') }"
+					:class="{
+						'albanna-chat__attach-chip-icon--image': file.type.startsWith('image/'),
+					}"
 					aria-hidden="true"
 				>
 					<svg
@@ -459,8 +459,12 @@ async function onChooseFile() {
 						/>
 					</svg>
 				</span>
-				<span class="albanna-chat__attach-chip-name">{{ file.name.length > 24 ? file.name.slice(0, 24) + '…' : file.name }}</span>
-				<span class="albanna-chat__attach-chip-size">{{ (file.size / 1024).toFixed(1) }} KB</span>
+				<span class="albanna-chat__attach-chip-name">{{
+					file.name.length > 24 ? file.name.slice(0, 24) + "…" : file.name
+				}}</span>
+				<span class="albanna-chat__attach-chip-size"
+					>{{ (file.size / 1024).toFixed(1) }} KB</span
+				>
 				<span
 					v-if="file.stored"
 					class="albanna-chat__attach-chip-stored"
@@ -485,7 +489,9 @@ async function onChooseFile() {
 					×
 				</button>
 			</span>
-			<span v-if="uploading" class="albanna-chat__attach-uploading">{{ __("Uploading…") }}</span>
+			<span v-if="uploading" class="albanna-chat__attach-uploading">{{
+				__("Uploading…")
+			}}</span>
 		</div>
 		<div class="albanna-chat__field" @drop="onDrop" @dragover="onDragOver">
 			<textarea

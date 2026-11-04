@@ -362,7 +362,14 @@ class TestTheHintNamesItsDocuments(AlbannaTestCase):
         """
         customer = self._customer("Albanna Context Untitled")
         invoice = self._overdue_invoice(customer)
-        frappe.db.set_value("Sales Invoice", invoice, "title", "")
+        # The title field is the DocType's own, and ERPNext moves it: the
+        # invoice's title was the customer's, and upstream took the field
+        # away.  So the field is asked for rather than named, and the
+        # document is left with no title either way.
+        meta = frappe.get_meta("Sales Invoice")
+        title_field = meta.get_title_field()
+        if title_field and title_field != "name" and meta.has_field(title_field):
+            frappe.db.set_value("Sales Invoice", invoice, title_field, "")
 
         result = context_api.nudge_for_page("Sales Invoice")
 

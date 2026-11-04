@@ -131,10 +131,22 @@ const envelope = (text) => JSON.stringify({ message: text });
 // A failure that says nothing is shown the sentence the caller wrote for
 // exactly that case -- and not the word "Error".
 {
-	assert.equal(failureText(new Error(""), "Could not rename that conversation."), "Could not rename that conversation.");
-	assert.equal(failureText({}, "Could not rename that conversation."), "Could not rename that conversation.");
-	assert.equal(failureText(null, "Could not rename that conversation."), "Could not rename that conversation.");
-	assert.equal(failureText(undefined, "Could not rename that conversation."), "Could not rename that conversation.");
+	assert.equal(
+		failureText(new Error(""), "Could not rename that conversation."),
+		"Could not rename that conversation.",
+	);
+	assert.equal(
+		failureText({}, "Could not rename that conversation."),
+		"Could not rename that conversation.",
+	);
+	assert.equal(
+		failureText(null, "Could not rename that conversation."),
+		"Could not rename that conversation.",
+	);
+	assert.equal(
+		failureText(undefined, "Could not rename that conversation."),
+		"Could not rename that conversation.",
+	);
 }
 
 // With no sentence of its own, the failure is what there is.
