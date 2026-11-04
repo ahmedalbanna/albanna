@@ -3,9 +3,10 @@
 The rule under test: an image the chat stored is private and the
 uploader's, so it renders in their session and nowhere else.  An image
 set on a document is the document's picture, and it has to render for
-everyone who may read the document — so the document gets a public copy
+everyone who may read the document — so the document gets its own copy
 of the same bytes, attached to it, exactly as a person uploading through
-the form would produce.
+the form would produce.  The copy is public because the uploader is the
+one setting it; somebody else's private file stays private.
 
 The second rule under test is the one the next turn depends on: the
 model's view of a conversation must not carry a stored file's address as
