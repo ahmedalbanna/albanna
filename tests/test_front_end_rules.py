@@ -150,6 +150,35 @@ def test_no_colour_outside_a_token():
     )
 
 
+def test_the_three_attach_paths_route_through_attachFiles():
+    """Paste, drop and the file picker all attach through one function.
+
+    What this proves: each of the three entry points calls ``attachFiles``,
+    so a file refused by the rules is refused in all three rather than in
+    two of them.  What it does *not* prove: that the rules themselves are
+    right, or that a fourth entry point added later will remember to call
+    it.  It is a tripwire, not a proof.
+    """
+    composer = (APP_ROOT / "public" / "js" / "side-chat" / "Composer.vue").read_text(
+        encoding="utf-8"
+    )
+
+    # Each handler must contain a call to attachFiles.  The check is
+    # deliberately textual: a refactor that inlines the rules in one path
+    # and not the others is exactly the regression this guards against.
+    for handler in ("onPaste", "onDrop", "onChooseFile"):
+        start = composer.index(f"function {handler}")
+        # The next top-level function ends the handler.
+        end = composer.find("\nfunction ", start + 1)
+        if end == -1:
+            end = len(composer)
+        body = composer[start:end]
+        assert "attachFiles(" in body, (
+            f"{handler} in Composer.vue does not route through attachFiles; "
+            "a file refused in one path must be refused in all three."
+        )
+
+
 def test_the_front_end_is_actually_being_checked():
     """A check that reads nothing passes everything."""
     names = {path.name for path in SOURCES}

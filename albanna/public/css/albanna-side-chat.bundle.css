@@ -1255,6 +1255,11 @@ body.albanna-side-chat-docked-inline-start {
 	box-shadow: 0 0 0 3px var(--albanna-focus-ring, rgba(23, 23, 23, 0.08));
 }
 
+.albanna-chat__field--dragover {
+	border-color: var(--albanna-accent, #171717);
+	background: var(--albanna-focus-ring, rgba(23, 23, 23, 0.08));
+}
+
 .albanna-chat__input {
 	flex: 1 1 auto;
 	min-width: 0;

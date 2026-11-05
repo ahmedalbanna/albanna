@@ -719,18 +719,42 @@ class ChatService:
         """Call the model, trying the chain and retrying what is worth retrying."""
         failures: list[str] = []
 
+        # Whether any token has already been emitted for this model call.
+        # A retry or a fallback that starts streaming again must not
+        # append to the tokens the reader has already seen: the server is
+        # the only party that knows a round's stream restarted, so it
+        # says so, and the client drops what it accumulated for that
+        # round.  The flag is carried across attempts and providers
+        # inside this call, because a fallback is a second stream of the
+        # same round.
+        any_tokens_emitted = False
+
         for provider_config in config.chain():
             provider = build_provider(provider_config.kind)
             attempt = 0
             reduced = False
 
             while True:
+                attempt_tokens = [False]
                 try:
                     if stream:
-                        return self._stream(provider, provider_config, messages, tools, emit)
+                        # A stream that restarts after tokens were emitted
+                        # must say so first, so the client can drop the
+                        # stale tail before the new deltas arrive.
+                        if any_tokens_emitted:
+                            emit({"event": "reset"})
+                        attempt_tokens = [False]
+                        result = self._stream(
+                            provider, provider_config, messages, tools, emit, attempt_tokens
+                        )
+                        if attempt_tokens[0]:
+                            any_tokens_emitted = True
+                        return result
                     return provider.complete(provider_config, messages, tools)
                 except ProviderBudgetExceeded as exc:
                     affordable = exc.affordable_tokens or 0
+                    if attempt_tokens[0] if stream else False:
+                        any_tokens_emitted = True
                     if affordable and not reduced and affordable < provider_config.max_tokens:
                         # The provider said what it could pay for.  Asking
                         # again with that ceiling is not a retry of a
@@ -747,6 +771,8 @@ class ChatService:
                     failures.append(f"{provider_config.label}: {exc}")
                     break
                 except ProviderError as exc:
+                    if stream and attempt_tokens[0]:
+                        any_tokens_emitted = True
                     failures.append(f"{provider_config.label}: {exc}")
                     if exc.transient and attempt < config.retries:
                         attempt += 1
@@ -754,6 +780,8 @@ class ChatService:
                         continue
                     break
                 except Exception as exc:  # noqa: BLE001 - a provider may raise anything
+                    if stream and attempt_tokens[0]:
+                        any_tokens_emitted = True
                     failures.append(f"{provider_config.label}: {type(exc).__name__}: {exc}")
                     break
 
@@ -766,13 +794,21 @@ class ChatService:
         messages: list[Message],
         tools: list[ToolSpec],
         emit: Emit,
+        emitted: list[bool] | None = None,
     ) -> Completion:
-        """Consume a provider's stream and emit its deltas."""
+        """Consume a provider's stream and emit its deltas.
+
+        ``emitted`` is a one-element list the caller owns: it is set to
+        True the first time a token goes out, so the caller can tell a
+        retry that started streaming from one that never got that far.
+        """
         completion: Completion | None = None
         for event in provider.stream(provider_config, messages, tools):
             if isinstance(event, StreamDone):
                 completion = event.completion
             else:
+                if emitted is not None:
+                    emitted[0] = True
                 emit({"event": "token", "text": event.text})
 
         if completion is None:
@@ -1585,7 +1621,7 @@ def tool_entry(call: ToolCall, result: ToolResult) -> dict[str, Any]:
     return entry
 
 
-def touched_documents(call, result: ToolResult) -> list[dict[str, str]]:
+def touched_documents(call, result: ToolResult) -> list[dict[str, str]]:  # noqa: C901
     """The documents a tool call looked at.
 
     They are what the panel turns into links, so that an answer is a
@@ -1611,7 +1647,10 @@ def touched_documents(call, result: ToolResult) -> list[dict[str, str]]:
             documents.append({"doctype": doctype, "name": name})
 
     if call.name == "get_doc":
-        add(call.arguments.get("name"))
+        # A read that was refused must not leave a link to a document the
+        # reader cannot open — nor tell them, by linking, that it exists.
+        if result.ok and not result.denied:
+            add(call.arguments.get("name"))
     elif call.name == "list_docs":
         for row in result.data or []:
             if isinstance(row, dict):
@@ -1620,8 +1659,11 @@ def touched_documents(call, result: ToolResult) -> list[dict[str, str]]:
         add(_created_name(call, result))
     elif call.name in ("update_doc", "submit_doc", "cancel_doc", "delete_doc"):
         # The document a write touched is a document the answer is about,
-        # and the Sources line is where the reader looks for it.
-        add(call.arguments.get("name"))
+        # and the Sources line is where the reader looks for it.  A write
+        # that was refused (permission, or the reader declined the
+        # approval) touched nothing, so it names nothing.
+        if result.ok and not result.denied:
+            add(call.arguments.get("name"))
     elif call.name == "bulk_update_doc":
         # A bulk change names no document in its arguments — it names a
         # condition — so the documents it touched are the ones the tool
@@ -1632,9 +1674,11 @@ def touched_documents(call, result: ToolResult) -> list[dict[str, str]]:
             add(name)
     elif call.name == "amend_doc":
         # An amendment creates a new document and supersedes the old one;
-        # both are worth naming.
+        # both are worth naming.  The new name comes from the result; the
+        # old one was named in the arguments, so it is gated on success.
         add((result.data or {}).get("amended") if isinstance(result.data, dict) else "")
-        add(call.arguments.get("name"))
+        if result.ok and not result.denied:
+            add(call.arguments.get("name"))
 
     return documents
 

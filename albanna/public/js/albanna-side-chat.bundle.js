@@ -107,6 +107,7 @@ function loadBundle(el, config, options) {
 
 	if (window[MOUNT_FLAG]) {
 		mount(el, config, options);
+		flushPendingAsk();
 		return;
 	}
 
@@ -119,7 +120,10 @@ function loadBundle(el, config, options) {
 
 	const script = document.createElement("script");
 	script.src = url;
-	script.onload = () => mount(el, config, options);
+	script.onload = () => {
+		mount(el, config, options);
+		flushPendingAsk();
+	};
 	script.onerror = () => paintBootError(el, config, options);
 	document.head.appendChild(script);
 }
@@ -131,6 +135,7 @@ function mount(el, config, options) {
 		return;
 	}
 	app.mount(el, { config, onClose: options.onClose, onContext: options.onContext });
+	mounted = true;
 }
 
 async function boot() {
@@ -217,12 +222,32 @@ async function boot() {
 	launcher.setAttribute("aria-controls", PANEL_ID);
 	launcher.innerHTML = LAUNCHER_SVG;
 
+	// A drop anywhere inside the panel must not become the browser's
+	// default — navigating the whole Desk to the file and losing the
+	// conversation, the draft and the reader's place.  The composer's own
+	// drop handler is a descendant of this panel, so it runs first in the
+	// bubble order and its work stands; this guard only catches the drops
+	// that miss it (the transcript, the empty state, the header, the
+	// nudge).  A drop on the Desk *outside* the panel keeps the browser's
+	// ordinary behaviour — the guard covers the panel only.
+	panel.addEventListener("dragover", (event) => {
+		event.preventDefault();
+	});
+	panel.addEventListener("drop", (event) => {
+		event.preventDefault();
+	});
+
 	root.append(panel, launcher);
 	document.body.append(root);
 
 	let open = false;
 	let loaded = false;
+	let mounted = false;
 	let lastContext = null;
+	// A question asked before the Vue app has mounted.  The launcher is
+	// the only party that knows when the app is ready, so it holds the
+	// question and flushes it from loadBundle's onload.
+	let pendingAsk = null;
 
 	/* Side-by-side: while the panel is open the Desk gives up the space
 	 * instead of being covered.  The class lives on <body> because a margin
@@ -379,6 +404,20 @@ async function boot() {
 	 * Clicking the page beside the panel is the user reading the page the
 	 * answer is about — the whole point of the dock — and throwing the answer
 	 * away because they clicked a field is not a dismissal anyone asked for. */
+	// Flush a question that was asked before the Vue app had mounted.
+	// The launcher is the only party that knows when the app is ready, so
+	// the question is held here and dispatched once mount() has run and the
+	// app's `albanna:ask` listener exists.  Dispatching earlier reaches
+	// `document` with nobody listening, and the panel opens empty.
+	const flushPendingAsk = () => {
+		if (pendingAsk === null) return;
+		const question = pendingAsk;
+		pendingAsk = null;
+		window.setTimeout(() => {
+			panel.dispatchEvent(new CustomEvent("albanna:ask", { detail: question, bubbles: true }));
+		}, 0);
+	};
+
 	window.albannaSideChat = {
 		config,
 		panel,
@@ -389,9 +428,11 @@ async function boot() {
 		/** Ask a question in the open (or to-be-opened) panel. */
 		ask: (question) => {
 			setOpen(true);
-			window.setTimeout(() => {
-				panel.dispatchEvent(new CustomEvent("albanna:ask", { detail: String(question || ""), bubbles: true }));
-			}, 0);
+			pendingAsk = String(question || "");
+			// If the app is already mounted, the listener exists now, so
+			// flush immediately instead of waiting for a mount that has
+			// already happened.
+			if (mounted) flushPendingAsk();
 		},
 		/** The page description the widget last derived (diagnostics only). */
 		getContext: () => lastContext,

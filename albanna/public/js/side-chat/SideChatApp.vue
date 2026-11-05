@@ -64,6 +64,7 @@ import { examplesFor } from "./examples.mjs";
 import { clockTime } from "./format.mjs";
 import { conversationToMarkdown, exportFilename } from "./export.mjs";
 import { hasTable, renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js";
+import { stopPlan } from "./stop.mjs";
 import { watchRoute } from "./page.mjs";
 import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
 import { takeRetryQuestion } from "./retry.mjs";
@@ -674,6 +675,10 @@ function makeMessage(role, content, at) {
 		images: [],
 		// Whether the answer holds a table that can be taken away.
 		hasTable: false,
+		// Whether the answer was cut off at the token ceiling.  Carried on
+		// the message, not in the panel's single notice slot, so it
+		// survives the next question and any other notice.
+		truncated: false,
 		// What the turn's tool calls did, in one line.
 		summary: "",
 		// What the turn cost, in the site's currency.  Null until the
@@ -1220,7 +1225,23 @@ function handleTurnEvent(answer, event, streamId = "") {
 		return;
 	}
 	if (event.event === "status") {
+		// The round is about to start streaming.  Remember how much of
+		// the answer is already there, so that a stream that restarts
+		// mid-round (a retry or a fallback) can drop only what this
+		// round added, and keep the earlier rounds' text.
+		answer._roundStart = answer.content.length;
 		setActivity(state, statusLabel(event.code) || event.text || state.activity);
+		return;
+	}
+	if (event.event === "reset") {
+		// A round's stream restarted after tokens had already gone out.
+		// Drop the stale tail of this round; the new stream will
+		// replace it.  Earlier rounds are untouched.
+		const start = typeof answer._roundStart === "number" ? answer._roundStart : 0;
+		answer.content = answer.content.slice(0, start);
+		renderStreamed(answer);
+		scrollToBottom();
+		return;
 	}
 }
 
@@ -1331,7 +1352,7 @@ function applyTurnResult(result, asked, answer) {
 		// — it is unfinished, and the reader is told so, because an
 		// answer that looks complete and is not is worse than one that
 		// says it was cut.
-		if (result.truncated) state.notice = "truncated";
+		if (result.truncated) answer.truncated = true;
 		if (result.dry_run) state.notice = "dry-run";
 		if (result.image_dropped) state.notice = "image-dropped";
 	} else {
@@ -1676,16 +1697,24 @@ function removeMessage(message) {
  * should not have to watch the rest of it arrive.
  */
 function stop() {
-	if (visibleApprovals.value.length) {
-		// A write is waiting for the reader.  Stopping is a decision as
-		// much as a click is, and it is the same decision: not to run it
-		// — for every write this thread is waiting on.
+	const plan = stopPlan({
+		hasApproval: visibleApprovals.value.length > 0,
+		mayStop: mayStop.value,
+	});
+	if (plan.rejectApprovals) {
+		// A write waiting for approval is a turn that is still running:
+		// the worker is blocked on the reader's decision, and rejecting
+		// it only tells the model to carry on to its next round.  So
+		// rejecting the approvals is not enough — the turn has to stop as
+		// well, otherwise it takes a second press.  Rejecting first is
+		// safe, because the rejection is its own request while the abort
+		// only stops the client's waiting; decideWrite already clears
+		// both the live card and the remembered one.
 		for (const wait of visibleApprovals.value) {
 			decideWrite(wait.streamId, "reject");
 		}
-		return;
 	}
-	if (!mayStop.value) return;
+	if (!plan.abortWaits) return;
 	// The waits of the thread being read, and only those: a turn running
 	// in another thread is not the reader's to stop from here, and its
 	// Stop button is not on this screen.
@@ -1731,14 +1760,32 @@ async function copyTable(message) {
 		state.notice = "no-table";
 		return;
 	}
+	// The Clipboard API exists only in a secure context — https, localhost,
+	// or 127.0.0.1.  This site is served over plain HTTP, so in
+	// production `navigator.clipboard` is undefined for every reader, and
+	// calling it throws a TypeError.  The fallback is therefore not an
+	// optional extra here: it is the path that actually runs.  copyAnswer
+	// beside it already guards the same way.
 	try {
-		await navigator.clipboard.writeText(text);
+		if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+			await navigator.clipboard.writeText(text);
+		} else {
+			fallbackCopy(text);
+		}
 		copiedTableId.value = message.id;
 		window.setTimeout(() => {
 			if (copiedTableId.value === message.id) copiedTableId.value = "";
 		}, 1600);
 	} catch (failure) {
-		state.notice = "copy-failed";
+		try {
+			fallbackCopy(text);
+			copiedTableId.value = message.id;
+			window.setTimeout(() => {
+				if (copiedTableId.value === message.id) copiedTableId.value = "";
+			}, 1600);
+		} catch (error) {
+			state.notice = "copy-failed";
+		}
 	}
 }
 
@@ -2766,6 +2813,12 @@ onBeforeUnmount(() => {
 					</div>
 
 					<div class="albanna-chat__footer">
+						<span
+							v-if="message.role === 'assistant' && message.truncated"
+							class="albanna-chat__truncated"
+						>
+							{{ __("The answer was cut off.") }}
+						</span>
 						<span
 							v-if="
 								message.role === 'assistant' &&

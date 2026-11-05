@@ -42,6 +42,16 @@ person could change. A question asked by a user without an accounting role
 cannot surface accounting data, and cannot create a document that role
 would not allow.
 
+## Voice input
+
+The composer's microphone button uses the browser's own speech
+recognition, which is Chrome's Web Speech API. While the microphone is
+open, the reader's audio is sent to Google's servers for transcription;
+the text that comes back is what is placed in the question box. Nothing
+is recorded or stored by Albanna itself, and the audio leaves only while
+the microphone is open. A reader who does not want their voice to leave
+the browser can type instead.
+
 ## What the app does not do
 
 - It does not phone home. There is no telemetry, no analytics and no

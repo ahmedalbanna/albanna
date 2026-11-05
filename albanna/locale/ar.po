@@ -206,8 +206,8 @@ msgid "Jump to the latest"
 msgstr "انتقل إلى الأحدث"
 
 
-msgid "Enter to send · Shift+Enter for a new line"
-msgstr "Enter للإرسال · Shift+Enter لسطر جديد"
+msgid "Enter to send or stop · Shift+Enter for a new line"
+msgstr "Enter للإرسال أو الإيقاف · Shift+Enter لسطر جديد"
 
 
 

@@ -27,6 +27,9 @@ they need to act on the ticket and reply — without leaving the record.
 The Desk panel (FR-1.1 … FR-1.7) is recorded with its evidence in
 `docs/FR-1_DESK_PANEL.md`.
 
+Asking (FR-2.1 … FR-2.11) is recorded with its evidence in
+`docs/FR-2_ASKING.md`.
+
 - Global floating widget (opt-in `floating` mode) + docked default
 - Document-anchored entry point ("Ask Albanna" on every form)
 - Auto-context from route (page identity `form|doctype|name`)

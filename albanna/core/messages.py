@@ -66,14 +66,26 @@ def attachment_note(urls: list[str]) -> str:
     if not urls:
         return ""
     listed = ", ".join(urls)
+    # A PDF is stored and addressed like any other file, but no provider
+    # reads its bytes: it travels as an image part that nothing parses.
+    # Saying so here keeps the model from answering as though it had read
+    # the document — the same "say what it could not read" property the
+    # app ships for refused reads.
+    has_pdf = any(url.lower().endswith(".pdf") for url in urls)
+    caveat = (
+        " A PDF's contents could not be read; only its address is available, "
+        "so do not describe what it says."
+        if has_pdf
+        else ""
+    )
     if len(urls) == 1:
         return (
             f"\n\n1 attachment was stored as a Frappe File: {listed}. "
-            "If the user asks to set it as a document's field, use its URL as the value."
+            "If the user asks to set it as a document's field, use its URL as the value." + caveat
         )
     return (
         f"\n\n{len(urls)} attachments were stored as Frappe Files: {listed}. "
-        "If the user asks to set one as a document's field, use its URL as the value."
+        "If the user asks to set one as a document's field, use its URL as the value." + caveat
     )
 
 

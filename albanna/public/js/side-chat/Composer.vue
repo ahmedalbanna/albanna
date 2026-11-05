@@ -7,6 +7,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { checkAttachment, makeAttachment, REFUSED_SIZE, storeAll } from "./attachments.mjs";
 import { serverMessage } from "./errors.mjs";
 import { MAX_SESSION_MS, mergeTranscript, readResults, voiceErrorText } from "./voice.mjs";
+import { submitDecision } from "./submit.mjs";
 
 const props = defineProps({
 	modelValue: { type: String, default: "" },
@@ -127,7 +128,13 @@ function toggleVoice() {
 			sessionTimer = null;
 		}
 		if (ignoreTranscript) return;
-		emit("update:modelValue", finalText.trim());
+		// The reader may have typed alongside the dictation — a
+		// correction, a second sentence — and that text is theirs, not
+		// the browser's.  onresult already merged it into lastEmitted on
+		// every result event, so emit that, not the raw spoken words:
+		// emitting finalText here would throw away anything typed while
+		// the microphone was open.
+		emit("update:modelValue", (lastEmitted || finalText).trim());
 	};
 	session.onerror = (event) => {
 		listening.value = false;
@@ -179,15 +186,25 @@ onMounted(resize);
 function onKeydown(event) {
 	if (event.key === "Enter" && !event.shiftKey) {
 		event.preventDefault();
-		submit();
+		// Enter sends when idle and stops when busy — exactly what the
+		// button beside the field does.  The key and the button must not
+		// disagree about what the primary key does: a reader who types a
+		// follow-up while a turn runs and presses Enter gets feedback
+		// (a stop) instead of silence.
+		onAction();
 	}
 }
 
 function submit() {
 	noticeText.value = "";
-	if (props.busy || !props.canChat) return;
-	const question = (props.modelValue || "").trim();
-	if (!question && !props.files.length) return;
+	const decision = submitDecision({
+		modelValue: props.modelValue,
+		files: props.files,
+		busy: props.busy,
+		canChat: props.canChat,
+	});
+	if (!decision.ok) return;
+	const question = decision.question;
 	// The question is on its way.  Whatever the microphone says now belongs
 	// to a turn that has already been sent, so it is closed and its
 	// transcript is not allowed back into the composer.
@@ -207,6 +224,12 @@ function onAction() {
 
 const noticeText = ref("");
 const uploading = ref(false);
+// Whether a file is being dragged over the composer's field.  The field
+// is the drop target, and without a visible affordance the reader cannot
+// tell where to aim — especially since a drop that misses it navigates
+// the whole Desk away.
+const dragOver = ref(false);
+let dragCounter = 0;
 //: How many uploads are in flight.  A reader who drops three files has
 //: three uploads, and the flag must not clear when the first one ends
 //: while the other two are still going.
@@ -246,10 +269,24 @@ async function onPaste(event) {
  */
 async function onDrop(event) {
 	event.preventDefault();
+	dragCounter = 0;
+	dragOver.value = false;
 	noticeText.value = "";
 	const files = event.dataTransfer && event.dataTransfer.files;
 	if (!files || !files.length) return;
 	await attachFiles(Array.from(files));
+}
+
+function onDragEnter(event) {
+	event.preventDefault();
+	dragCounter += 1;
+	dragOver.value = true;
+}
+
+function onDragLeave(event) {
+	event.preventDefault();
+	dragCounter = Math.max(0, dragCounter - 1);
+	if (dragCounter === 0) dragOver.value = false;
 }
 
 function onDragOver(event) {
@@ -493,7 +530,14 @@ async function onChooseFile() {
 				__("Uploading…")
 			}}</span>
 		</div>
-		<div class="albanna-chat__field" @drop="onDrop" @dragover="onDragOver">
+		<div
+			class="albanna-chat__field"
+			:class="{ 'albanna-chat__field--dragover': dragOver }"
+			@drop="onDrop"
+			@dragover="onDragOver"
+			@dragenter="onDragEnter"
+			@dragleave="onDragLeave"
+		>
 			<textarea
 				ref="inputEl"
 				class="albanna-chat__input"
@@ -502,6 +546,7 @@ async function onChooseFile() {
 				:placeholder="__('Ask about your data…')"
 				:disabled="!canChat"
 				:aria-label="__('Your question')"
+				aria-describedby="albanna-chat__hint"
 				@input="emit('update:modelValue', $event.target.value)"
 				@keydown="onKeydown"
 				@paste="onPaste"
@@ -628,8 +673,8 @@ async function onChooseFile() {
 				</svg>
 			</button>
 		</div>
-		<p class="albanna-chat__hint">
-			{{ __("Enter to send · Shift+Enter for a new line") }}
+		<p id="albanna-chat__hint" class="albanna-chat__hint">
+			{{ __("Enter to send or stop · Shift+Enter for a new line") }}
 		</p>
 	</div>
 </template>
