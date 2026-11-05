@@ -50,3 +50,58 @@ def test_an_optional_filter_is_not_required():
 
     report = FakeReport([DictRow(fieldname="x", mandatory=1)])
     assert erpnext._missing_mandatory_filters(report, {}) == ["x"]
+
+
+# -- the permission check comes first --------------------------------------
+
+
+class RefusingReport(FakeReport):
+    """A report the caller may not run, which also needs a filter.
+
+    Both facts are true at once, and only one of them may be said: the
+    mandatory filters are the report's own shape, and the shape of a thing
+    the reader cannot reach is the same knowledge the DocType catalogue
+    withholds.
+    """
+
+    def __init__(self, filters):
+        super().__init__(filters)
+        self.ref_doctype = "Salary Slip"
+
+    def is_permitted(self):
+        return False
+
+    def get(self, key, default=None):
+        return getattr(self, key, default)
+
+
+def test_a_refused_report_is_not_told_which_filters_it_takes(monkeypatch):
+    """The refusal names the permission, never the report's shape."""
+    report = RefusingReport([FakeFilter("company", mandatory=1)])
+
+    # The report resolves, the caller may not run it, and it needs a
+    # filter.  The answer must be the refusal.
+    monkeypatch.setattr(erpnext, "_resolve_report", lambda name, filters: (report, {}))
+    monkeypatch.setattr(erpnext, "_report_refusal", lambda doc, name: "refused")
+
+    answer = erpnext.run_report("Salary Register", filters={})
+
+    assert answer == "refused", (
+        "a reader who may not run a report was told which filters it takes before being refused"
+    )
+
+
+def test_a_permitted_report_is_still_told_its_missing_filters(monkeypatch):
+    """The ordering must not cost the reader who *can* run it the hint."""
+    report = FakeReport([FakeFilter("company", mandatory=1)])
+    report.ref_doctype = "Sales Order"
+
+    monkeypatch.setattr(erpnext, "_resolve_report", lambda name, filters: (report, {}))
+    monkeypatch.setattr(erpnext, "_report_refusal", lambda doc, name: None)
+
+    answer = erpnext.run_report("Sales Register", filters={})
+
+    assert "company" in answer, (
+        "the permission check ran first and swallowed the missing-filter hint "
+        "for a reader who may run the report"
+    )

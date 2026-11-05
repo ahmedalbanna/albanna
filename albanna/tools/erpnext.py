@@ -894,6 +894,17 @@ def run_report(
         return resolved
     report_doc, report_filters = resolved
 
+    # The permission check comes first, and the order is the point: a
+    # reader who may not run this report is not told which filters it
+    # takes.  The mandatory filters are the report's own shape, and the
+    # shape of a thing the reader cannot reach is the same knowledge the
+    # DocType catalogue withholds — a model that knew a restricted report
+    # needed a `company` could tell the reader something about it they
+    # could not find out for themselves.
+    refusal = _report_refusal(report_doc, report)
+    if refusal:
+        return refusal
+
     missing = _missing_mandatory_filters(report_doc, report_filters)
     if missing:
         return error(
@@ -902,10 +913,6 @@ def run_report(
             missing_filters=missing,
             actionable="Call run_report again with these filters added.",
         )
-
-    refusal = _report_refusal(report_doc, report)
-    if refusal:
-        return refusal
 
     bounds = _report_bounds(limit, offset)
     if isinstance(bounds, str):
