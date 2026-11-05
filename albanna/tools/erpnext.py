@@ -35,7 +35,7 @@ from typing import Any
 
 import frappe
 
-from albanna.permissions import may_read
+from albanna.permissions import may_read, readable_doctypes
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +180,139 @@ def _validate_fields(meta, doctype: str, fields: list[str]) -> str | None:
         doctype=doctype,
         actionable="Call get_doctype_meta for this DocType to see its fieldnames.",
     )
+
+
+_VALID_FILTER_OPS = frozenset(
+    {"=", "!=", ">", "<", ">=", "<=", "like", "not like", "in", "not in", "is", "between"}
+)
+
+
+def _validate_filters(filters: Any, doctype: str = "") -> str | None:
+    """An error envelope when a filter is malformed, else ``None``."""
+    if not filters:
+        return None
+
+    if isinstance(filters, str):
+        try:
+            filters = json.loads(filters)
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    if isinstance(filters, dict):
+        for key, value in filters.items():
+            if not isinstance(key, str) or not str(key).strip():
+                return error(
+                    f"Filter keys must be fieldnames (strings) for DocType '{doctype}'.",
+                    doctype=doctype,
+                    actionable="Filters are [fieldname, operator, value] triples.",
+                )
+            if not isinstance(value, str):
+                return error(
+                    f"A filter value must be a plain string, not a "
+                    f"{type(value).__name__}. For 'in' or 'not in' write one "
+                    f"condition per value rather than a list.",
+                    doctype=doctype,
+                    actionable="Filters are [fieldname, operator, value] triples; the value is always a plain string.",
+                )
+        return None
+
+    if not isinstance(filters, list):
+        return error(
+            f"Filters must be a list of [fieldname, operator, value] triples "
+            f"for DocType '{doctype}'.",
+            doctype=doctype,
+            actionable="Filters are [fieldname, operator, value] triples; the value is always a plain string.",
+        )
+
+    for condition in filters:
+        if not isinstance(condition, (list, tuple)):
+            return error(
+                f"Each filter must be a three-element list "
+                f"[fieldname, operator, value] for DocType '{doctype}'.",
+                doctype=doctype,
+                actionable="Filters are [fieldname, operator, value] triples; the value is always a plain string.",
+            )
+        if len(condition) != 3:
+            return error(
+                f"A filter must have exactly three elements "
+                f"[fieldname, operator, value]; got {len(condition)}.",
+                doctype=doctype,
+                actionable="Filters are [fieldname, operator, value] triples; the value is always a plain string.",
+            )
+        fieldname, operator, value = condition
+        if not isinstance(fieldname, str) or not str(fieldname).strip():
+            return error(
+                f"A filter's fieldname must be a string for DocType '{doctype}'.",
+                doctype=doctype,
+                actionable="Filters are [fieldname, operator, value] triples; the value is always a plain string.",
+            )
+        if not isinstance(operator, str) or operator not in _VALID_FILTER_OPS:
+            return error(
+                f"Unknown filter operator '{operator}' for DocType '{doctype}'.",
+                doctype=doctype,
+                actionable=(
+                    "Allowed operators: =, !=, >, <, >=, <=, like, not like, "
+                    "in, not in, is, between."
+                ),
+            )
+        if not isinstance(value, str):
+            return error(
+                f"A filter value must be a plain string, not a "
+                f"{type(value).__name__}. For 'in' or 'not in' write one "
+                f"condition per value rather than a list.",
+                doctype=doctype,
+                actionable="Filters are [fieldname, operator, value] triples; the value is always a plain string.",
+            )
+
+    return None
+
+
+def _validate_order_by(meta, doctype: str, order_by: Any) -> str | None:
+    """An error envelope when a sort is not a known field, else ``None``."""
+    if not order_by:
+        return None
+
+    known = _known_fields(meta)
+    text = str(order_by).strip()
+    for chunk in text.split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        tokens = chunk.split()
+        if len(tokens) == 1:
+            field, direction = tokens[0], None
+        elif len(tokens) == 2:
+            field, direction = tokens
+            if str(direction).lower() not in ("asc", "desc"):
+                return error(
+                    f"Unknown sort direction '{direction}' for DocType '{doctype}'.",
+                    doctype=doctype,
+                    actionable="Sort as 'fieldname asc' or 'fieldname desc'.",
+                )
+        else:
+            return error(
+                f"Sort must be 'fieldname' or 'fieldname asc|desc' for DocType '{doctype}'.",
+                doctype=doctype,
+                actionable="Sort as 'fieldname asc' or 'fieldname desc'.",
+            )
+
+        if field.lower() in ("asc", "desc"):
+            return error(
+                f"A sort needs a fieldname, not just a direction, for DocType '{doctype}'.",
+                doctype=doctype,
+                actionable="Sort as 'fieldname asc' or 'fieldname desc'.",
+            )
+
+        if field not in known:
+            matches = difflib.get_close_matches(field, sorted(known), n=3, cutoff=0.45)
+            hint = ", ".join(f"'{match}'" for match in matches) if matches else "none"
+            return error(
+                f"Unknown sort field '{field}' for DocType '{doctype}' (closest: {hint}).",
+                doctype=doctype,
+                actionable="Call get_doctype_meta for this DocType to see its fieldnames.",
+            )
+
+    return None
 
 
 def _title_field(meta) -> str:
@@ -347,6 +480,23 @@ def _load_for_action(doctype: str, name: str):
 # --------------------------------------------------------------------------
 
 
+def _validate_list_docs_inputs(meta, doctype, filters, field_list, order_by):
+    """All of list_docs' argument checks, in one place."""
+    if field_list:
+        invalid = _validate_fields(meta, doctype, field_list)
+        if invalid:
+            return invalid
+    if filters is not None:
+        invalid = _validate_filters(filters, doctype)
+        if invalid:
+            return invalid
+    if order_by:
+        invalid = _validate_order_by(meta, doctype, order_by)
+        if invalid:
+            return invalid
+    return None
+
+
 def list_docs(
     doctype: str,
     filters: Any = None,
@@ -373,10 +523,10 @@ def list_docs(
         return meta
 
     field_list = [str(field).strip() for field in (fields or []) if str(field).strip()]
-    if field_list:
-        invalid = _validate_fields(meta, doctype, field_list)
-        if invalid:
-            return invalid
+
+    invalid = _validate_list_docs_inputs(meta, doctype, filters, field_list, order_by)
+    if invalid:
+        return invalid
 
     # Every listing carries the document's name and the DocType's title
     # field.  The name is the document's identity — the Desk shows it in
@@ -625,7 +775,19 @@ def get_doc(doctype: str, name: str, fields: Any = None) -> str:
             return invalid
         data = {field: document.get(field) for field in field_list if field not in hidden}
         data["name"] = document.name
-        return ok(f"Read {doctype} '{name}'", data=data, doctype=doctype, name=name)
+        hints: list[str] = []
+        if any(field in hidden for field in field_list):
+            hints.append(
+                "one of the fields you asked for is not readable by this "
+                "account and was not returned."
+            )
+        return ok(
+            f"Read {doctype} '{name}'",
+            data=data,
+            doctype=doctype,
+            name=name,
+            hints=hints,
+        )
 
     data = document.as_dict()
     # Frappe's own API leaves a hidden field in the payload with its
@@ -651,6 +813,36 @@ def get_doctype_meta(doctype: str, fields: Any = None) -> str:
         meta = frappe.get_meta(doctype)
     except Exception as exc:
         return error(f"DocType '{doctype}' not found: {exc}", doctype=doctype)
+
+    # The field definitions are the DocType's own, and a DocType the
+    # caller may not read is not theirs to describe: its fieldnames,
+    # labels and Select options are the same knowledge the Desk hides.
+    # Fail closed — a permission engine that cannot answer has not said
+    # yes.
+    try:
+        readable = readable_doctypes(str(frappe.session.user or ""))
+    except Exception:
+        logger.exception("Could not read the readable DocTypes for %s", frappe.session.user)
+        readable = []
+
+    if doctype not in readable:
+        roles = _roles_for(doctype, "read")
+        if roles:
+            actionable = (
+                f"Reading a '{doctype}' is done by these roles: {', '.join(roles)}. "
+                f"Say that as a fact about the account, and do not apologise for it."
+            )
+        else:
+            actionable = (
+                f"No role on this site holds read on '{doctype}'. State that as a "
+                f"fact about the site, and do not apologise for it."
+            )
+        return error(
+            f"DocType '{doctype}' could not be read: this account may not read it.",
+            doctype=doctype,
+            denied=True,
+            actionable=actionable,
+        )
 
     described = [
         {
@@ -701,6 +893,15 @@ def run_report(
     if isinstance(resolved, str):
         return resolved
     report_doc, report_filters = resolved
+
+    missing = _missing_mandatory_filters(report_doc, report_filters)
+    if missing:
+        return error(
+            f"Report '{report}' requires filter(s): {', '.join(missing)}",
+            report=report,
+            missing_filters=missing,
+            actionable="Call run_report again with these filters added.",
+        )
 
     refusal = _report_refusal(report_doc, report)
     if refusal:
@@ -753,6 +954,40 @@ def _resolve_report(report: str, filters: Any) -> Any:
         filters = {}
 
     return report_doc, filters
+
+
+def _missing_mandatory_filters(report_doc, filters: Any) -> list[str]:
+    """The mandatory filters the caller did not supply.
+
+    A mandatory filter that carries a default is not missing: the report
+    fills it itself.  So the check is mandatory, no default, and not in
+    the filters the model sent.  Getting that wrong refuses reports that
+    would have run, which is worse than the current silence.
+    """
+    filters = filters if isinstance(filters, dict) else {}
+    missing: list[str] = []
+    for row in getattr(report_doc, "filters", None) or []:
+        try:
+            if hasattr(row, "get"):
+                fieldname = row.get("fieldname")
+                mandatory = row.get("mandatory")
+                default = row.get("default")
+            else:
+                fieldname = getattr(row, "fieldname", None)
+                mandatory = getattr(row, "mandatory", None)
+                default = getattr(row, "default", None)
+        except Exception:
+            continue
+        if not fieldname:
+            continue
+        if not mandatory:
+            continue
+        if default is not None and str(default).strip() != "":
+            continue
+        if str(fieldname) in filters:
+            continue
+        missing.append(str(fieldname))
+    return missing
 
 
 def _report_refusal(report_doc, report: str) -> str | None:
