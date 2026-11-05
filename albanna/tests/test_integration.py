@@ -4093,3 +4093,291 @@ class TestRunReportBehaviour(AlbannaTestCase):
         if result.ok:
             self.assertIn("truncated", result.content or "")
             self.assertIsNotNone(result.data)
+
+
+@pytest.mark.integration
+class TestPreviewBulk(AlbannaTestCase):
+    """The confirmation card's count is the reader's count."""
+
+    def setUp(self):
+        super().setUp()
+        self.sales_user = self._make_user(
+            "albanna.test.previewbulk.sales@albanna.dev", "Sales User"
+        )
+        self.accounts_user = self._make_user(
+            "albanna.test.previewbulk.accounts@albanna.dev", "Accounts User"
+        )
+
+    def _make_user(self, email: str, role: str) -> str:
+        if not frappe.db.exists("User", email):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Albanna"
+                user.last_name = "PreviewBulk"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        user = frappe.get_doc("User", email)
+        user.flags.ignore_permissions = True
+        user.add_roles(role, "Albanna User")
+        return email
+
+    def _as(self, email: str):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def test_the_count_and_sample_names(self):
+        from albanna.services.approval import _preview_bulk
+
+        self._as(self.accounts_user)
+        preview = _preview_bulk(
+            "Sales Invoice",
+            {"doctype": "Sales Invoice", "filters": [["docstatus", "=", 1]], "limit": 5},
+            {"remarks": "x"},
+        )
+        self.assertIn("Change 5 Sales Invoice document(s)", preview)
+        self.assertIn("showing", preview)
+
+    def test_zero_matches(self):
+        from albanna.services.approval import _preview_bulk
+
+        self._as(self.accounts_user)
+        preview = _preview_bulk(
+            "Sales Invoice",
+            {"doctype": "Sales Invoice", "filters": [["name", "=", "NO-SUCH-DOC-XYZ"]], "limit": 5},
+            {"remarks": "x"},
+        )
+        self.assertIn("no documents match", preview)
+
+    def test_permission_filtering(self):
+        # A Sales User may not read Sales Invoices, so the card counts
+        # zero of them even though the site has thousands.
+        from albanna.services.approval import _preview_bulk
+
+        self._as(self.sales_user)
+        preview = _preview_bulk(
+            "Sales Invoice",
+            {"doctype": "Sales Invoice", "filters": [["docstatus", "=", 1]], "limit": 5},
+            {"remarks": "x"},
+        )
+        self.assertIn("no documents match", preview)
+
+
+@pytest.mark.integration
+class TestRemainingPaths(AlbannaTestCase):
+    """The paths that had no coverage before this pass."""
+
+    def setUp(self):
+        super().setUp()
+        self.sales_user = self._make_user("albanna.test.remaining.sales@albanna.dev", "Sales User")
+        self.accounts_user = self._make_user(
+            "albanna.test.remaining.accounts@albanna.dev", "Accounts User"
+        )
+        self.backend = ErpnextBackend()
+
+    def _make_user(self, email: str, role: str) -> str:
+        if not frappe.db.exists("User", email):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Albanna"
+                user.last_name = "Remaining"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        user = frappe.get_doc("User", email)
+        user.flags.ignore_permissions = True
+        user.add_roles(role, "Albanna User")
+        return email
+
+    def _as(self, email: str):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _context(self, email: str) -> ToolContext:
+        self._as(email)
+        return ToolContext(principal=current_principal(), site=frappe.local.site)
+
+    # -- 6.1 submit=True --------------------------------------------------
+
+    def test_create_with_submit_true_reports_created_but_not_submitted(self):
+        # Sales User may create a Customer but not submit it.
+        context = self._context(self.sales_user)
+        name = f"Albanna SubmitTrue {self._testMethodName}"
+        result = self.backend.call(
+            TOOL_MANIFEST.get("create_doc"),
+            {
+                "doctype": "Customer",
+                "data": {
+                    "customer_name": name,
+                    "customer_type": "Company",
+                    "customer_group": frappe.db.get_value(
+                        "Customer", {"disabled": 0}, "customer_group"
+                    ),
+                    "territory": frappe.db.get_value("Customer", {"disabled": 0}, "territory"),
+                },
+                "submit": True,
+            },
+            context,
+        )
+        self.assertFalse(result.ok)
+        self.assertIn("could not submit", result.content.lower())
+
+    def test_update_with_submit_true(self):
+        # Create a draft Sales Order, then update with submit=True as a user
+        # who may submit.
+        company = frappe.get_all("Company", pluck="name", limit=1)[0]
+        customer = frappe.db.get_value("Customer", {"disabled": 0}, "name")
+        item = frappe.db.get_value("Item", {"disabled": 0}, "name")
+        order = frappe.new_doc("Sales Order")
+        order.company = company
+        order.customer = customer
+        order.delivery_date = frappe.utils.add_days(frappe.utils.nowdate(), 7)
+        order.append("items", {"item_code": item, "qty": 1, "rate": 10})
+        order.flags.ignore_permissions = True
+        order.insert()
+        context = self._context(self.sales_user)
+        # Sales User may submit Sales Orders.
+        result = self.backend.call(
+            TOOL_MANIFEST.get("update_doc"),
+            {
+                "doctype": "Sales Order",
+                "name": order.name,
+                "data": {"po_no": "updated"},
+                "submit": True,
+            },
+            context,
+        )
+        self.assertTrue(result.ok, result.content)
+        self.assertIn("submitted", result.content.lower())
+
+    # -- 6.2 child-table replacement message ------------------------------
+
+    def test_child_table_replacement_message(self):
+        company = frappe.get_all("Company", pluck="name", limit=1)[0]
+        customer = frappe.db.get_value("Customer", {"disabled": 0}, "name")
+        item = frappe.db.get_value("Item", {"disabled": 0}, "name")
+        order = frappe.new_doc("Sales Order")
+        order.company = company
+        order.customer = customer
+        order.delivery_date = frappe.utils.add_days(frappe.utils.nowdate(), 7)
+        order.append("items", {"item_code": item, "qty": 1, "rate": 10})
+        order.append("items", {"item_code": item, "qty": 2, "rate": 10})
+        order.flags.ignore_permissions = True
+        order.insert()
+
+        context = self._context(self.sales_user)
+        result = self.backend.call(
+            TOOL_MANIFEST.get("update_doc"),
+            {
+                "doctype": "Sales Order",
+                "name": order.name,
+                "data": {"items": [{"item_code": item, "qty": 3, "rate": 10}]},
+            },
+            context,
+        )
+        self.assertTrue(result.ok, result.content)
+        self.assertIn("Replaced the 2 line(s) of 'items' with 1", result.content)
+        self.assertIn("the 1 line(s) that were not in the new list are gone", result.content)
+
+    # -- 6.3 row-level update refusal -------------------------------------
+
+    def test_row_level_update_refusal(self):
+        mine = frappe.db.get_value("Customer", {"disabled": 0}, "name")
+        # create a second customer
+        other_name = f"Albanna Other {self._testMethodName}"
+        if not frappe.db.exists("Customer", other_name):
+            c = frappe.new_doc("Customer")
+            c.customer_name = other_name
+            c.customer_type = "Company"
+            c.customer_group = frappe.db.get_value("Customer", {"disabled": 0}, "customer_group")
+            c.territory = frappe.db.get_value("Customer", {"disabled": 0}, "territory")
+            c.flags.ignore_permissions = True
+            c.insert()
+
+        # limit accounts user to `mine`
+        perm = frappe.get_doc(
+            {
+                "doctype": "User Permission",
+                "user": self.accounts_user,
+                "allow": "Customer",
+                "for_value": mine,
+                "apply_to_all_doctypes": 1,
+            }
+        )
+        perm.flags.ignore_permissions = True
+        perm.insert()
+
+        self._as(self.accounts_user)
+        result = self.backend.call(
+            TOOL_MANIFEST.get("update_doc"),
+            {"doctype": "Customer", "name": other_name, "data": {"customer_details": "x"}},
+            self._context(self.accounts_user),
+        )
+        self.assertFalse(result.ok)
+        self.assertIn("could not be read", result.content.lower())
+
+    # -- 6.4 create file cleanup ------------------------------------------
+
+    def test_create_refused_save_leaves_no_copy_on_disk(self):
+        from unittest import mock
+
+        from frappe.model.document import Document
+        from frappe.utils.file_manager import get_content_hash, save_file
+
+        self._as(self.sales_user)
+        content = f"mine {frappe.generate_hash(length=12)}".encode()
+        saved = save_file(
+            "albanna-remaining-mine.png", content, "User", self.sales_user, is_private=1
+        )
+        url = str(getattr(saved, "file_url", "") or "")
+        self.assertTrue(url.startswith("/private/files/"))
+
+        before = self._public_files()
+        with mock.patch.object(Document, "save", side_effect=frappe.PermissionError("no")):
+            result = self.backend.call(
+                TOOL_MANIFEST.get("create_doc"),
+                {
+                    "doctype": "Contact",
+                    "data": {"first_name": "Albanna", "image": url},
+                },
+                self._context(self.sales_user),
+            )
+
+        self.assertFalse(result.ok, result.content)
+        self.assertFalse(
+            frappe.db.exists("File", {"content_hash": get_content_hash(content), "is_private": 0}),
+            "the refused create left a public File row",
+        )
+        self.assertEqual(self._public_files(), before, "the refused create left a public file")
+
+    def test_unreadable_document_with_invalid_data_returns_read_refusal(self):
+        name = self._submitted_invoice() if hasattr(self, "_submitted_invoice") else None
+        # Use a Sales Invoice a Sales User may not read, with an invented field.
+        name = frappe.db.get_value("Sales Invoice", {"docstatus": 1}, "name")
+        if not name:
+            self.skipTest("no submitted Sales Invoice")
+        self._as(self.sales_user)
+        result = self.backend.call(
+            TOOL_MANIFEST.get("update_doc"),
+            {"doctype": "Sales Invoice", "name": name, "data": {"nonsense_field": "x"}},
+            self._context(self.sales_user),
+        )
+        self.assertFalse(result.ok)
+        self.assertIn("could not be read", result.content.lower())
+        self.assertNotIn("unknown field", result.content.lower())
+        self.assertNotIn("closest", result.content.lower())
+
+    def _public_files(self):
+        return frappe.db.count("File", {"is_private": 0})

@@ -1211,11 +1211,21 @@ def _create_refusal_for(doctype: str, data: Any) -> str | None:
     if protected:
         return protected
 
-    # A file the caller may not read is not attached to the new document:
-    # the document would hand it to its own readers.
+    # The fieldnames are checked before the attachment check, and before
+    # the document is loaded: a field that does not exist is refused with
+    # the close-match correction, the same sentence the update path gives.
+    # A protected field is refused before its existence is questioned,
+    # which is the order ``_field_refusal`` uses.
     meta = _meta(doctype)
     if isinstance(meta, str):
         return meta
+
+    invalid = _validate_fields(meta, doctype, list(data))
+    if invalid:
+        return invalid
+
+    # A file the caller may not read is not attached to the new document:
+    # the document would hand it to its own readers.
     return _attachment_refusal(meta, doctype, data)
 
 
@@ -1373,11 +1383,29 @@ def _field_refusal(meta, doctype: str, data: dict, name: str = "") -> str | None
 def _load_for_update(doctype: str, name: str, data: dict[str, Any]):
     """The document to change, or an error envelope saying why there is not one.
 
-    The refusals that do not need the document come first: a field that does
-    not exist, a field the framework owns, a field the form would not let a
-    person change.  They are cheaper, and they are the ones a model most
-    often gets wrong.
+    The document is loaded and the read is checked *before* the field
+    checks.  The field checks are cheaper, and they are the ones a model
+    most often gets wrong — but running them first would tell a reader who
+    may not read a row which fieldnames its DocType has, because an
+    invented fieldname comes back with "closest: 'customer'".  The
+    document is loaded either way, so the cost of moving the read check
+    first is nil, and the leak is closed.  This is a real trade-off — the
+    cheap checks now run after an expensive one — and it is made
+    deliberately.
     """
+    try:
+        document = frappe.get_doc(doctype, name)
+    except frappe.DoesNotExistError:
+        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
+    except Exception as exc:
+        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+
+    # A change is a write, and a write is not a read: the roles that hold
+    # one do not always hold the other.  The read check comes first, so
+    # that a reader who may not see the row is not told its fieldnames.
+    if not may_read(document):
+        return _read_refusal(doctype, name)
+
     meta = _meta(doctype)
     if isinstance(meta, str):
         return meta
@@ -1391,21 +1419,6 @@ def _load_for_update(doctype: str, name: str, data: dict[str, Any]):
     refusal = _attachment_refusal(meta, doctype, data)
     if refusal:
         return refusal
-
-    try:
-        document = frappe.get_doc(doctype, name)
-    except frappe.DoesNotExistError:
-        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
-    except Exception as exc:
-        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
-
-    # A change is a write, and a write is not a read: the roles that hold
-    # one do not always hold the other.  The document is loaded first and
-    # checked second, because the check that matters is about *this* row —
-    # a User Permission that limits an account to one customer is a read
-    # permission, and it applies here.
-    if not may_read(document):
-        return _read_refusal(doctype, name)
 
     return document
 
@@ -1864,6 +1877,9 @@ def cancel_doc(doctype: str, name: str) -> str:
                 "for it."
             ),
         )
+    except frappe.ValidationError as exc:
+        _rollback_to(savepoint)
+        return error(f"Validation failed for {doctype} '{name}': {exc}", doctype=doctype, name=name)
     except Exception as exc:
         _rollback_to(savepoint)
         return error(f"Failed to cancel {doctype} '{name}': {exc}", doctype=doctype, name=name)
@@ -1928,6 +1944,9 @@ def amend_doc(doctype: str, name: str) -> str:
                 "that as a fact about the account, and do not apologise for it."
             ),
         )
+    except frappe.ValidationError as exc:
+        _rollback_to(savepoint)
+        return error(f"Validation failed for {doctype} '{name}': {exc}", doctype=doctype, name=name)
     except Exception as exc:
         _rollback_to(savepoint)
         return error(f"Failed to amend {doctype} '{name}': {exc}", doctype=doctype, name=name)
@@ -1982,6 +2001,9 @@ def delete_doc(doctype: str, name: str) -> str:
                 "that as a fact about the account, and do not apologise for it."
             ),
         )
+    except frappe.ValidationError as exc:
+        _rollback_to(savepoint)
+        return error(f"Validation failed for {doctype} '{name}': {exc}", doctype=doctype, name=name)
     except Exception as exc:
         _rollback_to(savepoint)
         return error(f"Failed to delete {doctype} '{name}': {exc}", doctype=doctype, name=name)
@@ -1994,7 +2016,64 @@ def delete_doc(doctype: str, name: str) -> str:
     )
 
 
-def bulk_update_doc(doctype: str, filters: Any, data: Any, limit: int = 50) -> str:
+def _bulk_approved_set_refusal(doctype: str, names: list, approved_names: Any) -> str | None:
+    """The refusal when the approved set moved, or ``None``.
+
+    A document that appeared or disappeared since the card was shown is a
+    row the reader never approved, and the change is refused rather than
+    made on their behalf.
+    """
+    if approved_names is None:
+        return None
+    approved = {str(n) for n in (approved_names or [])}
+    current = {str(n) for n in (names or [])}
+    appeared = sorted(current - approved)
+    disappeared = sorted(approved - current)
+    if not appeared and not disappeared:
+        return None
+    parts = []
+    if appeared:
+        parts.append("appeared: " + ", ".join(appeared))
+    if disappeared:
+        parts.append("disappeared: " + ", ".join(disappeared))
+    return error(
+        f"The set of {doctype} documents changed since approval "
+        f"({' ; '.join(parts)}); nothing was changed.",
+        doctype=doctype,
+        actionable="Read the documents again and propose the change afresh.",
+    )
+
+
+def _bulk_lookup_names(doctype: str, filters: Any, limit: Any) -> tuple[list, str | None]:
+    """Resolve the bulk change's target names, or an error envelope.
+
+    Returns ``(names, None)`` on success and ``([], error)`` on failure.
+    """
+    try:
+        limit = int(limit or 50)
+    except (TypeError, ValueError):
+        limit = 50
+    limit = max(1, min(limit, 200))
+
+    frappe_filters = _bulk_filters(filters)
+    if isinstance(frappe_filters, str):
+        return [], frappe_filters
+
+    try:
+        # ``get_list`` and not ``get_all``: the targets of a bulk change
+        # are documents the caller may read.  ``get_all`` ignores the
+        # permission engine, and a bulk change that reached past it would
+        # name — and change — rows the reader cannot see.
+        names = frappe.get_list(doctype, filters=frappe_filters, pluck="name", limit=limit)
+    except Exception as exc:
+        return [], error(f"Could not look up {doctype}: {exc}", doctype=doctype)
+
+    return list(names), None
+
+
+def bulk_update_doc(
+    doctype: str, filters: Any, data: Any, limit: int = 50, _approved_names: Any = None
+) -> str:
     """Change the same fields on many documents of one DocType at once.
 
     Args:
@@ -2021,25 +2100,13 @@ def bulk_update_doc(doctype: str, filters: Any, data: Any, limit: int = 50) -> s
     if refusal:
         return refusal
 
-    try:
-        limit = int(limit or 50)
-    except (TypeError, ValueError):
-        limit = 50
-    limit = max(1, min(limit, 200))
+    names, lookup_error = _bulk_lookup_names(doctype, filters, limit)
+    if lookup_error:
+        return lookup_error
 
-    # Build the filter list in the shape Frappe expects.
-    frappe_filters = _bulk_filters(filters)
-    if isinstance(frappe_filters, str):
-        return frappe_filters
-
-    try:
-        # ``get_list`` and not ``get_all``: the targets of a bulk change
-        # are documents the caller may read.  ``get_all`` ignores the
-        # permission engine, and a bulk change that reached past it would
-        # name — and change — rows the reader cannot see.
-        names = frappe.get_list(doctype, filters=frappe_filters, pluck="name", limit=limit)
-    except Exception as exc:
-        return error(f"Could not look up {doctype}: {exc}", doctype=doctype)
+    refusal = _bulk_approved_set_refusal(doctype, names, _approved_names)
+    if refusal:
+        return refusal
 
     if not names:
         return ok(

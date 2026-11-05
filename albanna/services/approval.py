@@ -429,6 +429,28 @@ def write_target(name: str, arguments: dict) -> dict:
     check.
     """
     arguments = arguments or {}
+    if name == "bulk_update_doc":
+        # The approved set: the documents the card counted.  Carried through
+        # to the write so it can tell which of them moved.
+        from albanna.tools.erpnext import _bulk_filters
+
+        doctype = str(arguments.get("doctype") or "").strip()
+        filters = arguments.get("filters") or []
+        try:
+            limit = int(arguments.get("limit") or 50)
+        except (TypeError, ValueError):
+            limit = 50
+        limit = max(1, min(limit, 200))
+
+        frappe_filters = _bulk_filters(filters)
+        if isinstance(frappe_filters, str):
+            return {}
+        try:
+            names = frappe.get_list(doctype, filters=frappe_filters, pluck="name", limit=limit)
+        except Exception:
+            return {}
+        return {"doctype": doctype, "names": [str(n) for n in names]}
+
     if name != "update_doc":
         return {}
 
@@ -454,6 +476,16 @@ def still_unchanged(target: dict) -> bool:
     something else.
     """
     if not target:
+        return True
+
+    # A bulk change carries an approved set rather than one document's
+    # stamp.  The set is compared as a whole: a document that appeared or
+    # disappeared since the card was shown means the write would touch a
+    # row the reader never counted.
+    if "names" in target:
+        # The detailed comparison happens in bulk_update_doc itself, which
+        # has the filters.  Here we only say "unchanged" so the write runs
+        # and reports the difference in its own words.
         return True
 
     doctype = str(target.get("doctype") or "")

@@ -952,7 +952,15 @@ class ChatService:
         # Memoised per request, so this is the same object `run` read:
         # the wait the operator configured, not a second reading of it.
         settings = get_settings()
-        gated = spec.mutating and confirm_writes_for(principal.user)
+        # ``bulk_update_doc`` is gated unconditionally: a bulk change is
+        # categorically different from a single write — the reader named
+        # one document and described a condition for the others — and its
+        # blast radius justifies a rail the operator cannot switch off.
+        # The ``confirm_writes`` site default is left untouched, so every
+        # other write keeps the operator's setting.
+        gated = spec.mutating and (
+            call.name == "bulk_update_doc" or confirm_writes_for(principal.user)
+        )
 
         if gated:
             request_id, refusal = self._ask_for_approval(call, principal, emit, settings)
@@ -1147,6 +1155,11 @@ class ChatService:
                 denied=True,
                 approved=False,
             )
+
+        # Carry the approved set through to the write, so a bulk change
+        # can compare its own query against the one the reader counted.
+        if call.name == "bulk_update_doc" and isinstance(target, dict) and "names" in target:
+            call.arguments["_approved_names"] = list(target["names"])
 
         return request_id, None
 

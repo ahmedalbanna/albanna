@@ -871,6 +871,12 @@ The reading side of the assistant — listing, reading one document,
 describing a DocType, running a report, and the permission parity across
 all four — is recorded in `docs/FR-3_READING.md`.
 
+## Writing (FR-4)
+
+The writing side of the assistant — creating, changing, changing many at
+once, the lifecycle actions, and the permission parity across all of them
+— is recorded in `docs/FR-4_WRITING.md`.
+
 ## 6. Decision rule for new ideas
 
 Before adding any feature, answer three questions:

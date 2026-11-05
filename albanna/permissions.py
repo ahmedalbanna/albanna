@@ -194,6 +194,13 @@ def _doctypes_for_permission(
     level (``permlevel``) is not the same right, and offering it as the way
     in would be wrong.
     """
+    # ``ptype`` is interpolated into the SQL as a column name, so it
+    # must never come from a caller.  The only values that may reach here
+    # are the permission types this module asks about; anything else is a
+    # programming error and is refused rather than interpolated.
+    if ptype not in {"read", "create", "write", "submit", "cancel", "amend", "delete"}:
+        return []
+
     try:
         roles = tuple(set(frappe.get_roles(user)) - set(exclude))
     except Exception:

@@ -782,6 +782,13 @@ ASK_QUESTION = ToolSpec(
 
 
 #: Every tool the app knows about.
+#:
+#: Rule: no tool may declare a SQL-shaped parameter (sql, query,
+#: statement).  The assistant must never be handed a way to run SQL
+#: against the site.  The one path that does run SQL (Query Reports) is
+#: administrator-authored, Frappe-guarded (check_safe_sql_query whitelists
+#: only select/explain/with) and parameterised, and it is not a tool
+#: parameter.  Enforced by tests/test_tool_manifest.py.
 TOOL_MANIFEST = ToolRegistry(
     [
         LIST_DOCS,
