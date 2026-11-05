@@ -865,6 +865,12 @@ fails says so.
 
 ---
 
+## Reading (FR-3)
+
+The reading side of the assistant — listing, reading one document,
+describing a DocType, running a report, and the permission parity across
+all four — is recorded in `docs/FR-3_READING.md`.
+
 ## 6. Decision rule for new ideas
 
 Before adding any feature, answer three questions:
