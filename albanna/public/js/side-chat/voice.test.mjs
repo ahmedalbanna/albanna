@@ -118,6 +118,23 @@ describe("mergeTranscript", () => {
 			"spoken",
 		);
 	});
+
+	it("keeps text typed after the last result event", () => {
+		// The shape the composer's `onend` uses.  A session ends three
+		// ways — the two-minute limit, a deliberate stop, the browser
+		// giving up — and "dictate, correct, click stop" is the ordinary
+		// one.  The correction arrives after the last `onresult`, so
+		// reusing what that event emitted would drop it, and the merge has
+		// to be run again against the box as it stands now.
+		const spoken = "hello";
+		const lastEmitted = "hello";
+		const current = "hello world";
+
+		assert.equal(
+			mergeTranscript({ spoken, current, lastEmitted }),
+			"hello world",
+		);
+	});
 });
 
 describe("voiceErrorText", () => {

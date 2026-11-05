@@ -951,6 +951,38 @@ class TestTouchedDocuments(AlbannaTestCase):
 
         self.assertEqual(touched_documents(call, result), [])
 
+    def test_a_refused_read_reports_no_document(self):
+        """A read the reader was refused leaves no link behind.
+
+        The name is in the arguments either way — the model asked for it —
+        so a link built from the arguments alone would point at a document
+        the reader cannot open, and would tell them, by linking, that it
+        exists.  The app's whole claim is that the assistant can never see
+        or do more than the person asking; a link to a refused document is
+        that claim broken in the one direction nobody tests.
+        """
+        from albanna.services.chat_service import touched_documents
+        from albanna.tools.base import ToolResult
+
+        call = self._call("get_doc", {"doctype": "Sales Order", "name": "SAL-ORD-2026-00001"})
+        result = ToolResult.refusal("You may not read this Sales Order.", "no_permission")
+
+        self.assertEqual(touched_documents(call, result), [])
+
+    def test_a_refused_write_reports_no_document(self):
+        """A write that touched nothing names nothing.
+
+        The same rule for the write tools: a refused update changed no
+        document, so the Sources line has nothing to point at.
+        """
+        from albanna.services.chat_service import touched_documents
+        from albanna.tools.base import ToolResult
+
+        call = self._call("update_doc", {"doctype": "Sales Order", "name": "SAL-ORD-2026-00001"})
+        result = ToolResult.refusal("You may not write this Sales Order.", "no_permission")
+
+        self.assertEqual(touched_documents(call, result), [])
+
     def test_a_tool_call_reports_the_documents_it_looked_at(self):
         """The event the panel reads carries the documents.
 

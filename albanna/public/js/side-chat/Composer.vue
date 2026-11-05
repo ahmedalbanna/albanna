@@ -130,11 +130,21 @@ function toggleVoice() {
 		if (ignoreTranscript) return;
 		// The reader may have typed alongside the dictation — a
 		// correction, a second sentence — and that text is theirs, not
-		// the browser's.  onresult already merged it into lastEmitted on
-		// every result event, so emit that, not the raw spoken words:
-		// emitting finalText here would throw away anything typed while
-		// the microphone was open.
-		emit("update:modelValue", (lastEmitted || finalText).trim());
+		// the browser's.  The merge is run *again* here rather than
+		// reusing what onresult last emitted, because the reader may have
+		// typed after the last result event: a deliberate stop is one of
+		// the ways a session ends, and "dictate, correct, click stop" is
+		// the ordinary shape of using it.  Reusing lastEmitted there
+		// would drop the correction; emitting finalText would drop
+		// everything typed since the session began.
+		emit(
+			"update:modelValue",
+			mergeTranscript({
+				spoken: finalText,
+				current: props.modelValue,
+				lastEmitted,
+			}).trim(),
+		);
 	};
 	session.onerror = (event) => {
 		listening.value = false;
