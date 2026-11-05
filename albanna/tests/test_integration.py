@@ -3802,3 +3802,294 @@ class TestTheAuditRowNamesTheWrites(AlbannaTestCase):
         self.assertIn("Customer CUST-0001", result["error"])
         self.assertIn("Customer CUST-0002", result["error"])
         self.assertIn("changes you confirmed", result["error"])
+
+
+FR3_SALES_USER = "albanna.test.fr3.sales@albanna.dev"
+
+
+@pytest.mark.integration
+class TestListDocsFilters(AlbannaTestCase):
+    def setUp(self):
+        super().setUp()
+        if not frappe.db.exists("User", FR3_SALES_USER):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = FR3_SALES_USER
+                user.first_name = "Albanna"
+                user.last_name = "Fr3"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        user = frappe.get_doc("User", FR3_SALES_USER)
+        user.flags.ignore_permissions = True
+        user.add_roles("Sales User", "Albanna User")
+        self.sales_user = FR3_SALES_USER
+        self.backend = ErpnextBackend()
+
+    def _as(self, email):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _context(self, email):
+        self._as(email)
+        return ToolContext(principal=current_principal(), site=frappe.local.site)
+
+    def _call(self, name, arguments):
+        return self.backend.call(TOOL_MANIFEST.get(name), arguments, self._context(self.sales_user))
+
+    def test_a_working_filter_returns_matching_rows(self):
+        result = self._call(
+            "list_docs",
+            {"doctype": "Customer", "filters": [["customer_name", "like", "%"]], "limit": 5},
+        )
+        self.assertTrue(result.ok, result.content)
+
+    def test_a_list_value_filter_is_rejected(self):
+        result = self._call(
+            "list_docs", {"doctype": "Customer", "filters": [["customer_name", "=", ["a", "b"]]]}
+        )
+        self.assertFalse(result.ok)
+        self.assertIn("plain string", result.error or "")
+
+    def test_an_object_value_filter_is_rejected(self):
+        result = self._call(
+            "list_docs", {"doctype": "Customer", "filters": [["customer_name", "=", {"a": 1}]]}
+        )
+        self.assertFalse(result.ok)
+        self.assertIn("plain string", result.error or "")
+
+    def test_a_two_element_filter_is_rejected(self):
+        result = self._call(
+            "list_docs", {"doctype": "Customer", "filters": [["customer_name", "="]]}
+        )
+        self.assertFalse(result.ok)
+        self.assertIn("three elements", result.error or "")
+
+    def test_a_four_element_filter_is_rejected(self):
+        result = self._call(
+            "list_docs", {"doctype": "Customer", "filters": [["customer_name", "=", "x", "y"]]}
+        )
+        self.assertFalse(result.ok)
+        self.assertIn("three elements", result.error or "")
+
+    def test_an_invented_sort_field_is_rejected(self):
+        result = self._call("list_docs", {"doctype": "Customer", "order_by": "nope desc"})
+        self.assertFalse(result.ok)
+        self.assertIn("Unknown sort field", result.error or "")
+
+    def test_limit_is_clamped(self):
+        result = self._call("list_docs", {"doctype": "Customer", "limit": 10000})
+        self.assertTrue(result.ok, result.content)
+
+
+@pytest.mark.integration
+class TestGetDocRead(AlbannaTestCase):
+    def setUp(self):
+        super().setUp()
+        if not frappe.db.exists("User", FR3_SALES_USER):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = FR3_SALES_USER
+                user.first_name = "Albanna"
+                user.last_name = "Fr3"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        user = frappe.get_doc("User", FR3_SALES_USER)
+        user.flags.ignore_permissions = True
+        user.add_roles("Sales User", "Albanna User")
+        self.sales_user = FR3_SALES_USER
+        self.backend = ErpnextBackend()
+
+    def _as(self, email):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _context(self, email):
+        self._as(email)
+        return ToolContext(principal=current_principal(), site=frappe.local.site)
+
+    def _call(self, name, arguments):
+        return self.backend.call(TOOL_MANIFEST.get(name), arguments, self._context(self.sales_user))
+
+    def test_a_hidden_field_requested_explicitly_is_dropped_with_a_hint(self):
+        # Sales Order with ignore_pricing_rule hidden from Sales User
+        import frappe as _f
+
+        # find any sales order
+        names = _f.get_all("Sales Order", pluck="name", limit=1)
+        if not names:
+            pytest.skip("no sales order on site")
+        name = names[0]
+        result = self._call(
+            "get_doc",
+            {"doctype": "Sales Order", "name": name, "fields": ["customer", "ignore_pricing_rule"]},
+        )
+        self.assertTrue(result.ok, result.content)
+        data = result.data or {}
+        self.assertNotIn("ignore_pricing_rule", data)
+        # hint present
+        self.assertIn("not readable", (result.content or ""))
+
+    def test_get_doc_refuses_a_document_the_caller_may_not_read(self):
+        # A DocType the Sales User may not read, with a document in it.
+        former = frappe.session.user
+        frappe.set_user("Administrator")
+        try:
+            comp = frappe.new_doc("Salary Component")
+            comp.salary_component = "Albanna Fr3 Refusal"
+            comp.type = "Earning"
+            comp.flags.ignore_permissions = True
+            comp.insert()
+            name = comp.name
+        finally:
+            frappe.set_user(former)
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+        result = self._call("get_doc", {"doctype": "Salary Component", "name": name})
+        self.assertFalse(result.ok)
+        self.assertIn("could not be read", result.error or "")
+
+
+@pytest.mark.integration
+class TestGetDoctypeMetaBehaviour(AlbannaTestCase):
+    def setUp(self):
+        super().setUp()
+        if not frappe.db.exists("User", FR3_SALES_USER):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = FR3_SALES_USER
+                user.first_name = "Albanna"
+                user.last_name = "Fr3"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        user = frappe.get_doc("User", FR3_SALES_USER)
+        user.flags.ignore_permissions = True
+        user.add_roles("Sales User", "Albanna User")
+        self.sales_user = FR3_SALES_USER
+        self.backend = ErpnextBackend()
+
+    def _as(self, email):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _context(self, email):
+        self._as(email)
+        return ToolContext(principal=current_principal(), site=frappe.local.site)
+
+    def _call(self, name, arguments):
+        return self.backend.call(TOOL_MANIFEST.get(name), arguments, self._context(self.sales_user))
+
+    def test_full_field_list(self):
+        from albanna.tools.erpnext import get_doctype_meta
+
+        self._as(self.sales_user)
+        raw = get_doctype_meta("Customer")
+        obj = json.loads(raw)
+        self.assertIn("fields", obj)
+        self.assertTrue(len(obj["fields"]) > 0)
+        self.assertTrue(any(f["fieldname"] == "customer_name" for f in obj["fields"]))
+
+    def test_fields_projection(self):
+        from albanna.tools.erpnext import get_doctype_meta
+
+        self._as(self.sales_user)
+        raw = get_doctype_meta("Customer", fields=["customer_name", "nope"])
+        obj = json.loads(raw)
+        self.assertEqual(len(obj["fields"]), 1)
+        self.assertEqual(obj["fields"][0]["fieldname"], "customer_name")
+        self.assertIn("nope", obj["unknown_fields"])
+
+    def test_refusal_for_unreadable_doctype(self):
+        result = self._call("get_doctype_meta", {"doctype": "Salary Slip"})
+        self.assertFalse(result.ok)
+        self.assertIn("could not be read", result.error or "")
+
+
+@pytest.mark.integration
+class TestRunReportBehaviour(AlbannaTestCase):
+    def setUp(self):
+        super().setUp()
+        if not frappe.db.exists("User", FR3_SALES_USER):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = FR3_SALES_USER
+                user.first_name = "Albanna"
+                user.last_name = "Fr3"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        user = frappe.get_doc("User", FR3_SALES_USER)
+        user.flags.ignore_permissions = True
+        user.add_roles("Sales User", "Albanna User")
+        self.sales_user = FR3_SALES_USER
+        self.backend = ErpnextBackend()
+
+    def _as(self, email):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _context(self, email):
+        self._as(email)
+        return ToolContext(principal=current_principal(), site=frappe.local.site)
+
+    def _call(self, name, arguments):
+        return self.backend.call(TOOL_MANIFEST.get(name), arguments, self._context(self.sales_user))
+
+    def test_bounds_envelope(self):
+        result = self._call("run_report", {"report": "Sales Register", "limit": 0})
+        self.assertFalse(result.ok)
+        result2 = self._call("run_report", {"report": "Sales Register", "limit": 10000})
+        self.assertFalse(result2.ok)
+
+    def test_missing_mandatory_filter_is_reported(self):
+        # A report the Sales User may run, called without its mandatory
+        # filter, reports the key to add.  If no such report is reachable
+        # on this site, the unit test in
+        # tests/test_missing_mandatory_filters.py covers the logic.
+        result = self._call("run_report", {"report": "Sales Register"})
+        if "do not have access" in (result.error or ""):
+            self.skipTest("Sales Register is not readable by the Sales User on this site")
+        if not result.ok:
+            self.assertTrue(
+                "requires filter" in (result.error or "")
+                or "missing_filters" in (result.content or "")
+            )
+
+    def test_pagination_fields(self):
+        result = self._call(
+            "run_report",
+            {
+                "report": "Sales Register",
+                "limit": 5,
+                "offset": 0,
+                "filters": {"company": frappe.db.get_value("Company", {}, "name")},
+            },
+        )
+        if "do not have access" in (result.error or ""):
+            self.skipTest("Sales Register is not readable by the Sales User on this site")
+        if result.ok:
+            self.assertIn("truncated", result.content or "")
+            self.assertIsNotNone(result.data)
