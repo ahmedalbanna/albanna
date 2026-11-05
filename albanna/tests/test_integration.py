@@ -2180,6 +2180,82 @@ class TestWriteApproval(TestToolPath):
         finally:
             self._restore_policy(email)
 
+    def test_a_bulk_change_waits_even_when_confirmation_is_off(self):
+        """A bulk change is gated whatever the operator's setting.
+
+        The site default is that writes do not wait, and a reader who has
+        not been given the rail gets no card for a single write.  A bulk
+        change is the exception: it changes up to two hundred documents
+        the reader described with a condition rather than named, so its
+        blast radius justifies a rail the operator cannot switch off.
+
+        Every other approval test in this class runs with the policy set
+        to "always", which is why none of them could catch this: with
+        "always" everything is gated anyway.
+        """
+        import contextlib
+
+        from albanna.core.messages import Message, ToolCall
+        from albanna.providers.base import Completion, Usage
+
+        email = self.accounts_user
+        self._make_policy(email, "never")
+        try:
+            self._as(email)
+
+            asked = []
+
+            def make_emit():
+                def emit(event):
+                    if event.get("event") != "confirm":
+                        return
+                    asked.append(event.get("request_id"))
+                    from albanna.services.approval import record_decision
+
+                    with contextlib.suppress(Exception):
+                        record_decision(event["request_id"], "approve", ttl=60)
+
+                return emit
+
+            from albanna.services.chat_service import ChatService, TurnRequest
+
+            service = ChatService()
+
+            def fake_complete(config, messages, tools, emit, stream):
+                return Completion(
+                    message=Message(
+                        role="assistant",
+                        content="I will update them.",
+                        tool_calls=(
+                            ToolCall(
+                                id="call_1",
+                                name="bulk_update_doc",
+                                arguments={
+                                    "doctype": "Sales Invoice",
+                                    "filters": [["name", "=", "No Such Invoice"]],
+                                    "data": {"remarks": "x"},
+                                },
+                            ),
+                        ),
+                    ),
+                    provider="openai",
+                    model="a-model",
+                    usage=Usage(input_tokens=10, output_tokens=5),
+                )
+
+            service._complete = fake_complete
+            service.run(
+                TurnRequest(question="set the remarks on all of them", page="test|bulk-gate|"),
+                emit=make_emit(),
+            )
+        finally:
+            self._restore_policy(email)
+
+        self.assertTrue(
+            asked,
+            "a bulk change ran without asking the reader, with confirmation switched off",
+        )
+
     def test_an_approved_write_runs(self):
         outcome = self._run(self.accounts_user, "approve")
         self.assertTrue(outcome.ok, "an approved write must complete the turn")
