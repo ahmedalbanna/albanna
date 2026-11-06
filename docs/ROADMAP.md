@@ -883,6 +883,12 @@ The two moments where a write stops being the assistant's decision — the
 card that asks before it runs, and the button that takes it back after —
 are recorded in `docs/FR-5_APPROVAL.md`.
 
+## Conversations (FR-6)
+
+The reader's own history — the list of it, the search through it, the
+thread that belongs to a page, the turns in it, and the hand-off to a
+human — is recorded in `docs/FR-6_CONVERSATIONS.md`.
+
 ## 6. Decision rule for new ideas
 
 Before adding any feature, answer three questions:
