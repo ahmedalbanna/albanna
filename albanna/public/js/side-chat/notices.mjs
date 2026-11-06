@@ -33,6 +33,12 @@ export function noticeText(notice) {
 		case "copy-answer-failed":
 			return __("The answer could not be copied.");
 		case "deleted":
+			return __("The document was deleted.");
+		case "reverted":
+			return __("The change was reverted.");
+		case "cancelled":
+			return __("The submission was cancelled.");
+		case "conversation-deleted":
 			return __("The conversation was deleted.");
 		case "started":
 			return __("A new conversation was started.");

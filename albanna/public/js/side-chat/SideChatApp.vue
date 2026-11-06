@@ -592,7 +592,14 @@ async function undoTurn(message) {
 		});
 		const undone = (result && result.undone) || [];
 		if (undone.length) {
-			state.notice = "undone";
+			// The server says exactly what it did — a submission is
+			// cancelled, not reversed, and the reader deserves to know
+			// which.  Fall back to the generic notice only when the
+			// action is absent or unrecognised.
+			const action = undone.map((item) => (item && item.action) || "").find((value) =>
+				["deleted", "reverted", "cancelled"].includes(value),
+			);
+			state.notice = action || "undone";
 		} else {
 			state.error = String((result && result.status) || __("Nothing to undo."));
 		}
@@ -2201,7 +2208,7 @@ async function deleteConversation(conversation) {
 			conversationId.value = "";
 			state.messages = [];
 			view.value = "chat";
-			state.notice = "deleted";
+			state.notice = "conversation-deleted";
 		}
 	} catch (failure) {
 		state.error = failureText(failure, __("Could not delete that conversation."));

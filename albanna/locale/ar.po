@@ -297,6 +297,15 @@ msgstr "جارٍ الاختبار…"
 msgid "The conversation was deleted."
 msgstr "تم حذف المحادثة."
 
+msgid "The document was deleted."
+msgstr "تم حذف المستند."
+
+msgid "The change was reverted."
+msgstr "تم التراجع عن التغيير."
+
+msgid "The submission was cancelled."
+msgstr "تم إلغاء الإرسال."
+
 msgid "The provider answered"
 msgstr "استجاب المزوّد"
 
