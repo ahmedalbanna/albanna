@@ -3216,7 +3216,10 @@ onBeforeUnmount(() => {
 					<span class="albanna-chat__confirm-diff-after">{{ change.after }}</span>
 				</li>
 			</ul>
-			<p v-else class="albanna-chat__confirm-countdown albanna-chat__confirm-countdown--out">
+			<p
+				v-if="!canDecide(wait.approval, now)"
+				class="albanna-chat__confirm-countdown albanna-chat__confirm-countdown--out"
+			>
 				{{ __("The wait ran out — the change was not made.") }}
 			</p>
 			<div class="albanna-chat__confirm-actions">
