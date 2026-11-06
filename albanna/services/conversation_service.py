@@ -58,6 +58,13 @@ MAX_STORED_MESSAGES = 400
 #: it rather than inherited from a server default.
 LIKE_ESCAPE = "\\"
 
+#: How much of the first question the drawer shows beside a title.
+#:
+#: The preview is a *preview*: enough for the reader to recognise the
+#: thread, and no more.  The title is the whole of the first question
+#: once it has been named after it.
+PREVIEW_LENGTH = 140
+
 
 def ensure_conversation(user: str, page: str = "", title: str = "") -> str:
     """Return the name of the user's conversation for *page*, creating it if needed.
@@ -552,11 +559,43 @@ def list_conversations(user: str, limit: int = 20, offset: int = 0, search: str 
         conversation["turns"] = 0
         conversation["tokens"] = 0
         conversation["cost"] = 0.0
+        # The first question, for the moment before the title has been
+        # generated.  Aggregated in one query for the whole page too.
+        conversation["preview"] = ""
         conversations.append(conversation)
 
     if conversations:
         names = tuple(c["name"] for c in conversations)
         placeholders = ", ".join(["%s"] * len(names))
+
+        # The first question of each conversation.  One query for the
+        # whole page, not one per row: the drawer asks for thirty
+        # conversations at a time, and thirty queries for thirty previews
+        # is thirty round trips to say one thing.  The totals below were
+        # already gathered this way, with a comment saying why — the
+        # pattern had been applied to one half of this function and not
+        # to the other.
+        previews = frappe.db.sql(
+            f"""
+            select parent, content
+            from (
+                select parent, content,
+                       row_number() over (partition by parent order by idx asc) as position
+                from `tabAlbanna Message`
+                where parent in ({placeholders}) and parentfield = %s and role = 'user'
+            ) as firsts
+            where position = 1
+            """,
+            (*names, PARENT_FIELD),
+            as_dict=True,
+        )
+        previews_by_name = {
+            row["parent"]: " ".join((row.get("content") or "").split())[:PREVIEW_LENGTH]
+            for row in previews
+        }
+        for conversation in conversations:
+            conversation["preview"] = previews_by_name.get(conversation["name"], "")
+
         try:
             totals = frappe.db.sql(
                 f"""

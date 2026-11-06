@@ -830,6 +830,119 @@ class TestTheConversationSearch(AlbannaTestCase):
 
 
 @pytest.mark.integration
+class TestTheDrawerListing(AlbannaTestCase):
+    """The drawer's list, and the queries it takes to draw it.
+
+    The drawer asks for thirty conversations at a time.  Each of them
+    carries a preview — the first question — and the preview used to be
+    fetched one conversation at a time, so a page of the drawer cost
+    thirty-one queries: one for the page, one for the totals, and one
+    for every preview on it.
+
+    The totals were already aggregated in one query for the whole page,
+    with a comment saying why.  The preview was not, and the pattern
+    had been applied to one half of the function and not to the other.
+    """
+
+    READER = "albanna.test.drawer@albanna.dev"
+
+    def setUp(self):
+        super().setUp()
+        self.reader = self._make_user(self.READER)
+        self._clear()
+        frappe.db.commit()
+
+    def _make_user(self, email: str) -> str:
+        if not frappe.db.exists("User", email):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Albanna"
+                user.last_name = "Drawer"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        user = frappe.get_doc("User", email)
+        user.flags.ignore_permissions = True
+        user.add_roles("Albanna User")
+        return email
+
+    def _clear(self):
+        """The reader's conversations, so a test does not depend on the last run."""
+        names = frappe.db.sql_list(
+            "select name from `tabAlbanna Conversation` where user = %s",
+            (self.reader,),
+        )
+        if not names:
+            return
+        placeholders = ", ".join(["%s"] * len(names))
+        frappe.db.sql(
+            f"delete from `tabAlbanna Message` where parent in ({placeholders})",
+            names,
+        )
+        frappe.db.sql(
+            f"delete from `tabAlbanna Conversation` where name in ({placeholders})",
+            names,
+        )
+
+    def _as(self, email: str):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _thread(self, index: int) -> str:
+        conversation = ensure_conversation(self.reader, f"test|drawer|{index}|")
+        frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
+        append_messages(conversation, [{"role": "user", "content": f"question {index}"}])
+        return conversation
+
+    def test_the_previews_are_fetched_in_one_query(self):
+        """One query for the whole page, not one for each conversation."""
+        self._as(self.reader)
+        threads = [self._thread(index) for index in range(5)]
+
+        queries: list[str] = []
+        original = frappe.db.sql
+
+        def spy(query, *args, **kwargs):
+            queries.append(str(query))
+            return original(query, *args, **kwargs)
+
+        frappe.db.sql = spy
+        try:
+            found = list_conversations(limit=30)["conversations"]
+        finally:
+            frappe.db.sql = original
+
+        previews = [query for query in queries if "tabAlbanna Message" in query]
+        self.assertEqual(
+            len(previews),
+            1,
+            f"the previews took {len(previews)} queries for {len(threads)} conversations",
+        )
+
+        # And the previews are the ones the drawer showed before.
+        by_name = {conversation["name"]: conversation["preview"] for conversation in found}
+        for index, name in enumerate(threads):
+            self.assertEqual(by_name.get(name), f"question {index}")
+
+    def test_a_conversation_with_no_question_has_no_preview(self):
+        """A thread nobody has asked anything in has nothing to preview."""
+        self._as(self.reader)
+        empty = ensure_conversation(self.reader, "test|drawer|empty|")
+        self._thread(1)
+
+        found = list_conversations(limit=30)["conversations"]
+
+        by_name = {conversation["name"]: conversation["preview"] for conversation in found}
+        self.assertEqual(by_name.get(empty), "")
+
+
+@pytest.mark.integration
 class TestNewConversation(AlbannaTestCase):
     """The panel's "New" button, and the conversation it makes.
 

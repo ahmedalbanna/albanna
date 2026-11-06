@@ -51,7 +51,13 @@ def _as_int(value: Any, default: int = 0) -> int:
 
 @frappe.whitelist()
 def list_conversations(limit: int = PAGE_SIZE, offset: int = 0, search: str = "") -> dict:
-    """The caller's conversations, most recent first."""
+    """The caller's conversations, most recent first.
+
+    The preview — the first question of each thread — is gathered with
+    the rest of the page's per-conversation facts, in one query for the
+    whole page.  It used to be fetched one conversation at a time, so a
+    page of the drawer cost thirty-one queries to say one thing.
+    """
     require_chat_access()
 
     from albanna.services.conversation_service import list_conversations as _list
@@ -62,9 +68,6 @@ def list_conversations(limit: int = PAGE_SIZE, offset: int = 0, search: str = ""
         offset=int(offset or 0),
         search=str(search or ""),
     )
-
-    for conversation in conversations:
-        conversation["preview"] = _preview(conversation["name"])
 
     return {"status": "ok", "conversations": conversations}
 
@@ -406,21 +409,3 @@ def delete_conversation(conversation: str = "") -> dict:
     frappe.db.commit()
 
     return {"status": "ok"}
-
-
-def _preview(conversation: str, limit: int = 140) -> str:
-    """The first question of a conversation, for the drawer's list.
-
-    The list shows a title, which is the first question; the preview is the
-    same text, clipped, for the moment before the title has been generated.
-    """
-    first = frappe.db.sql(
-        """
-        select content from `tabAlbanna Message`
-        where parent = %s and parentfield = %s and role = 'user'
-        order by idx asc limit 1
-        """,
-        (conversation, "messages"),
-    )
-    text = " ".join((first[0][0] if first else "").split())
-    return text[:limit]
