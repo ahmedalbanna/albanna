@@ -58,11 +58,13 @@ MAX_STORED_MESSAGES = 400
 #: it rather than inherited from a server default.
 LIKE_ESCAPE = "\\"
 
-#: How much of the first question the drawer shows beside a title.
+#: How much of the first question the listing carries as a preview.
 #:
-#: The preview is a *preview*: enough for the reader to recognise the
+#: The preview is a *preview*: enough for a reader to recognise the
 #: thread, and no more.  The title is the whole of the first question
-#: once it has been named after it.
+#: once it has been named after it.  The drawer does not draw the
+#: preview today — it shows the title, the page, the time and the turn
+#: count — so the field is carried for a caller that may come.
 PREVIEW_LENGTH = 140
 
 
