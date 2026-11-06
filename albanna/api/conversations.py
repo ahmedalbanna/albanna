@@ -296,6 +296,13 @@ def escalate_conversation(conversation: str = "") -> dict:
         if not content:
             continue
         lines.append(f"**{role}:** {content}")
+        tool_lines = _tool_lines(message.get("tools") or [])
+        if tool_lines:
+            # The calls sit under the answer that made them, and a
+            # blank line separates the two: a list that runs straight on
+            # from the sentence above it reads as part of the answer.
+            lines.append("")
+            lines.extend(tool_lines)
         lines.append("")
 
     description = "\n".join(lines).strip()
@@ -307,6 +314,45 @@ def escalate_conversation(conversation: str = "") -> dict:
     issue.insert()
 
     return {"issue": issue.name}
+
+
+def _tool_lines(tools: list[dict]) -> list[str]:
+    """What the assistant did, as lines under the answer that did it.
+
+    A hand-off that carries the questions and the answers and not the
+    tool calls is a hand-off the human has to reconstruct by re-running
+    the conversation — and the tool calls are the part that says what
+    the assistant *read* and what it *changed*.  So each call is a line
+    of its own, carrying the summary the transcript already stores: the
+    summary is written for a human, and it is the informative version —
+    "Read Sales Order 'SAL-ORD-00042'" rather than a count of calls.
+
+    The tool's own name is not on the line.  ``get_doc`` is the model's
+    name for the call and not the reader's, and the summary already
+    says what was read and what was changed.
+
+    A call with no summary is skipped rather than rendered as an empty
+    bullet: a line that says nothing is worse than no line.
+
+    A refused call is marked, because a refusal and a failure read
+    alike and they are different facts.  A refusal says the *account*
+    may not do it — a fact about the organisation, and the one the
+    person picking the ticket up most needs to know, because it is the
+    difference between "the assistant did not find it" and "the
+    assistant was not allowed to look".
+    """
+    lines = []
+    for tool in tools:
+        summary = str(tool.get("summary") or "").strip()
+        if not summary:
+            continue
+        if tool.get("denied"):
+            lines.append(f"  · **refused:** {summary}")
+        elif not tool.get("ok", True):
+            lines.append(f"  · **failed:** {summary}")
+        else:
+            lines.append(f"  · {summary}")
+    return lines
 
 
 @frappe.whitelist()

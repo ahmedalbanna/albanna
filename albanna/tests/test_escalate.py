@@ -31,6 +31,8 @@ permission matrix rather than the hand-off.
 
 from __future__ import annotations
 
+import json
+
 import frappe
 import pytest
 
@@ -90,7 +92,7 @@ class TestEscalation(AlbannaTestCase):
         frappe.local.role_permissions = {}
         frappe.local.perms = {}
 
-    def _thread(self, title: str = "") -> str:
+    def _thread(self, title: str = "", tools: list[dict] | None = None) -> str:
         """A conversation with a question and an answer.
 
         Each test gets its own page, because a conversation is found by
@@ -101,11 +103,14 @@ class TestEscalation(AlbannaTestCase):
         frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
         if title:
             frappe.db.set_value("Albanna Conversation", conversation, "title", title)
+        answer: dict = {"role": "assistant", "content": "Here are your open orders."}
+        if tools is not None:
+            answer["tool_calls"] = json.dumps(tools)
         append_messages(
             conversation,
             [
                 {"role": "user", "content": "How many open orders are there?"},
-                {"role": "assistant", "content": "Here are your open orders."},
+                answer,
             ],
         )
         return conversation
@@ -130,6 +135,106 @@ class TestEscalation(AlbannaTestCase):
         self.assertEqual(issue.subject, "Open orders for Acme")
         self.assertIn("How many open orders are there?", issue.description)
         self.assertIn("Here are your open orders.", issue.description)
+        # A turn with no tool calls is unchanged: there is nothing to
+        # say about what the assistant did, so nothing is said.
+        self.assertNotIn("·", issue.description)
+
+    def test_the_issue_says_what_the_assistant_did(self):
+        """The hand-off says what the assistant did, not only what it said.
+
+        A human picking the conversation up is handed the questions and
+        the answers and — without this — no word about the documents the
+        assistant read or changed.  So they would have to re-run the
+        conversation to find out what it touched, which is the one thing
+        the hand-off was supposed to save them from.
+
+        The lines carry the summary the transcript already stores, which
+        is written for a human: "Read Sales Order 'SAL-ORD-00042'", not
+        a count of calls.
+        """
+        self._as(self.owner)
+        conversation = self._thread(
+            "Open orders for Acme",
+            tools=[
+                {
+                    "name": "get_doc",
+                    "ok": True,
+                    "summary": "Read Sales Order 'SAL-ORD-00042'",
+                },
+                {
+                    "name": "update_doc",
+                    "ok": True,
+                    "summary": "Changed the remarks on Sales Order 'SAL-ORD-00042'",
+                },
+            ],
+        )
+
+        result = escalate_conversation(conversation=conversation)
+
+        issue = frappe.get_doc("Issue", result["issue"])
+        self.assertIn("Read Sales Order 'SAL-ORD-00042'", issue.description)
+        self.assertIn("Changed the remarks on Sales Order 'SAL-ORD-00042'", issue.description)
+        # The tool's own name is the model's name for the call, and the
+        # summary already says what was read and what was changed.
+        self.assertNotIn("get_doc", issue.description)
+
+    def test_a_refused_call_is_marked_as_refused(self):
+        """A refusal and a failure read alike, and they are not the same.
+
+        A refusal says the *account* may not do it — a fact about the
+        organisation, and the one the person picking the ticket up most
+        needs to know: it is the difference between "the assistant did
+        not find it" and "the assistant was not allowed to look".
+        """
+        self._as(self.owner)
+        conversation = self._thread(
+            "Open orders for Acme",
+            tools=[
+                {
+                    "name": "get_doc",
+                    "ok": False,
+                    "denied": True,
+                    "summary": "You may not read this Sales Order.",
+                },
+                {
+                    "name": "list_docs",
+                    "ok": False,
+                    "summary": "The report could not be run.",
+                },
+            ],
+        )
+
+        result = escalate_conversation(conversation=conversation)
+
+        issue = frappe.get_doc("Issue", result["issue"])
+        self.assertIn("**refused:** You may not read this Sales Order.", issue.description)
+        self.assertIn("**failed:** The report could not be run.", issue.description)
+
+    def test_a_call_with_no_summary_is_not_rendered(self):
+        """A line that says nothing is worse than no line.
+
+        A call the transcript stored without a summary has nothing to
+        say, and an empty bullet in the middle of a hand-off is a hole
+        the reader stops to look at.
+        """
+        self._as(self.owner)
+        conversation = self._thread(
+            "Open orders for Acme",
+            tools=[
+                {"name": "get_doc", "ok": True, "summary": ""},
+                {
+                    "name": "list_docs",
+                    "ok": True,
+                    "summary": "Found 2 Sales Order",
+                },
+            ],
+        )
+
+        result = escalate_conversation(conversation=conversation)
+
+        issue = frappe.get_doc("Issue", result["issue"])
+        self.assertIn("Found 2 Sales Order", issue.description)
+        self.assertEqual(issue.description.count("·"), 1, "an empty bullet was rendered")
 
     def test_the_issue_is_raised_by_the_caller(self):
         """The Issue is created as the reader, not as the administrator.
