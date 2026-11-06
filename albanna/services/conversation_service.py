@@ -50,6 +50,14 @@ PLACEHOLDER_TITLE = "New conversation"
 #: context bound.
 MAX_STORED_MESSAGES = 400
 
+#: The character that escapes a wildcard in a LIKE pattern.
+#:
+#: It is the one MySQL and MariaDB already use for LIKE, and the one
+#: Frappe's own query builder uses — so the rule here is the rule the
+#: framework applies, written down where a reader of this file can see
+#: it rather than inherited from a server default.
+LIKE_ESCAPE = "\\"
+
 
 def ensure_conversation(user: str, page: str = "", title: str = "") -> str:
     """Return the name of the user's conversation for *page*, creating it if needed.
@@ -472,6 +480,28 @@ def display_title(title: str) -> str:
     return "" if text == PLACEHOLDER_TITLE else text
 
 
+def _like_pattern(search: str) -> str:
+    """A search term as a LIKE pattern that matches the term itself.
+
+    ``%`` and ``_`` are the two characters a LIKE pattern gives a
+    meaning to, and both of them are ordinary characters in a title:
+    "50% done" and "Q3_forecast" are things a reader would type.  Left
+    alone, a reader who typed either got every conversation they had,
+    with no way to tell that this was not what they asked for.
+
+    So the term is escaped before it is wrapped, and the query says
+    which character does the escaping.  The escape character is escaped
+    too: it is a character like any other, and a reader who typed one
+    meant it.
+    """
+    escaped = (
+        search.replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
+        .replace("%", LIKE_ESCAPE + "%")
+        .replace("_", LIKE_ESCAPE + "_")
+    )
+    return f"%{escaped}%"
+
+
 def list_conversations(user: str, limit: int = 20, offset: int = 0, search: str = "") -> list[dict]:
     """The user's conversations, most recent first.
 
@@ -480,14 +510,24 @@ def list_conversations(user: str, limit: int = 20, offset: int = 0, search: str 
     SQL so that a search reaches conversations that have not been loaded
     into the panel yet — a client-side filter over one page of results is
     not a search, it is a guess.
+
+    The term is matched as the term and not as a pattern: ``%`` and ``_``
+    are ordinary characters in a title, and a reader who typed one meant
+    the character.  See :func:`_like_pattern`.
     """
 
     search = (search or "").strip()
     params: list[Any] = [user]
     where = "where user = %s"
     if search:
-        where += " and (title like %s or page like %s)"
-        like = f"%{search}%"
+        # The escape character is named in the query rather than left to
+        # the server's default: a rule that lives in a default is a rule
+        # this file does not state, and the default is not the same on
+        # every database.  The doubled backslash is the SQL literal for
+        # one backslash — the value itself is a bound parameter, so it
+        # never passes through the string parser.
+        where += r" and (title like %s escape '\\' or page like %s escape '\\')"
+        like = _like_pattern(search)
         params.extend([like, like])
 
     rows = frappe.db.sql(

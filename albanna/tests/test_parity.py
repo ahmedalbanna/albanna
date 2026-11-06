@@ -687,6 +687,18 @@ class TestPermissionParity(AlbannaTestCase):
         )
         permission.flags.ignore_permissions = True
         permission.insert()
+        # The permission is taken away again when the test ends.  A later
+        # test in this class commits, and a committed User Permission
+        # outlives the transaction — so the *next* run of this suite
+        # found the row already there and refused to make a second one,
+        # and the suite was not runnable twice.  A test that leaves a row
+        # behind is a test that decides what the next run may do.
+        self.addCleanup(
+            frappe.delete_doc,
+            "User Permission",
+            permission.name,
+            ignore_permissions=True,
+        )
 
         result = self._call(
             "submit_doc",

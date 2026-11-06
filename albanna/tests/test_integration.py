@@ -648,6 +648,188 @@ class TestConversationOwnership(AlbannaTestCase):
 
 
 @pytest.mark.integration
+class TestTheConversationSearch(AlbannaTestCase):
+    """The drawer's search, and what it is allowed to match.
+
+    The search runs in SQL, so that it reaches conversations the panel
+    has not loaded — *a client-side filter over one page of results is
+    not a search, it is a guess*.  And a search that runs in SQL has to
+    say what a ``%`` means, because ``%`` and ``_`` are the two
+    characters a LIKE pattern gives a meaning to, and both of them are
+    ordinary characters in a title: "50% done" and "Q3_forecast" are
+    things a reader would type.
+
+    Left alone, a reader who typed either got every conversation they
+    had, with no way to tell that this was not what they asked for.
+    """
+
+    READER = "albanna.test.search@albanna.dev"
+
+    def setUp(self):
+        super().setUp()
+        self.reader = self._make_user(self.READER)
+        self._clear()
+        frappe.db.commit()
+
+    def _make_user(self, email: str) -> str:
+        if not frappe.db.exists("User", email):
+            # The user is created as the administrator: the framework makes
+            # the session's own settings for a new user, so a session left
+            # as somebody else — a user another test made, and one this
+            # transaction has already rolled back — fails the insert for a
+            # reason that has nothing to do with what this test is about.
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Albanna"
+                user.last_name = "Search"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        user = frappe.get_doc("User", email)
+        user.flags.ignore_permissions = True
+        user.add_roles("Albanna User")
+        return email
+
+    def _clear(self):
+        """The reader's conversations, so a test does not depend on the last run.
+
+        The search matches the title *or* the page, and a page identity
+        that held a wildcard would make the wildcard tests match
+        something that is not there.  So the slate is wiped rather than
+        trusted.
+        """
+        names = frappe.db.sql_list(
+            "select name from `tabAlbanna Conversation` where user = %s",
+            (self.reader,),
+        )
+        if not names:
+            return
+        placeholders = ", ".join(["%s"] * len(names))
+        frappe.db.sql(
+            f"delete from `tabAlbanna Message` where parent in ({placeholders})",
+            names,
+        )
+        frappe.db.sql(
+            f"delete from `tabAlbanna Conversation` where name in ({placeholders})",
+            names,
+        )
+
+    def _as(self, email: str):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _conversation(self, title: str, page: str = "") -> str:
+        """A conversation of this reader's, with a title of its own.
+
+        The page identity is made of characters that are not LIKE
+        wildcards, because the search matches the page as well as the
+        title: a page holding a ``_`` would make the wildcard tests
+        match something that is not there.
+        """
+        page = page or f"test|search|{frappe.generate_hash(length=8)}|"
+        conversation = ensure_conversation(self.reader, page)
+        frappe.db.set_value("Albanna Conversation", conversation, "title", title)
+        return conversation
+
+    def test_a_search_that_matches_one_title_returns_that_one(self):
+        self._as(self.reader)
+        wanted = self._conversation("Open orders for Acme")
+        self._conversation("Overdue invoices")
+
+        found = list_conversations(limit=30, search="Acme")["conversations"]
+
+        self.assertEqual([c["name"] for c in found], [wanted])
+
+    def test_a_search_for_a_percent_sign_returns_nothing(self):
+        """The regression: ``%`` is a wildcard, and a reader may type one.
+
+        A title like "50% done" is an ordinary title, and a reader who
+        typed "50%" meant the title — not every conversation they have.
+        """
+        self._as(self.reader)
+        self._conversation("Open orders for Acme")
+        self._conversation("Overdue invoices")
+
+        found = list_conversations(limit=30, search="%")["conversations"]
+
+        self.assertEqual(found, [], "the wildcard was matched as a wildcard")
+
+    def test_a_search_for_an_underscore_returns_nothing(self):
+        """The same for ``_``, which is an ordinary character in a title.
+
+        "Q3_forecast" is a thing a reader would type, and the
+        underscore in it is not a wildcard.
+        """
+        self._as(self.reader)
+        self._conversation("Open orders for Acme")
+        self._conversation("Overdue invoices")
+
+        found = list_conversations(limit=30, search="_")["conversations"]
+
+        self.assertEqual(found, [], "the wildcard was matched as a wildcard")
+
+    def test_a_title_that_holds_a_wildcard_is_found_by_it(self):
+        """The other half: escaping a wildcard does not lose it.
+
+        A reader who types "50%" is looking for the title that says
+        "50% done", and the title that says "50% done" is a title they
+        can find.  Escaping the wildcard must not turn the search into
+        one that matches nothing at all.
+        """
+        self._as(self.reader)
+        wanted = self._conversation("50% done")
+        self._conversation("Q3_forecast")
+        self._conversation("Overdue invoices")
+
+        found = list_conversations(limit=30, search="50%")["conversations"]
+
+        self.assertEqual([c["name"] for c in found], [wanted])
+
+    def test_a_search_that_matches_nothing_returns_an_empty_list(self):
+        self._as(self.reader)
+        self._conversation("Open orders for Acme")
+
+        found = list_conversations(limit=30, search="nothing at all")["conversations"]
+
+        self.assertEqual(found, [])
+
+    def test_a_search_reaches_a_conversation_the_panel_has_not_loaded(self):
+        """The search is server-side, and it says so.
+
+        A client-side filter over one page of results is not a search,
+        it is a guess: the reader would be shown the thirty
+        conversations the panel happened to have, and told that they
+        were the ones that matched.  So the target here is the
+        *oldest* of thirty-one conversations — the one the first page
+        does not carry — and the search finds it anyway.
+        """
+        self._as(self.reader)
+        for index in range(30):
+            self._conversation(f"Filler conversation {index}")
+        target = self._conversation("The one the reader is looking for")
+        # The oldest of them all, so the first page cannot carry it.
+        frappe.db.set_value(
+            "Albanna Conversation",
+            target,
+            "last_activity",
+            "2020-01-01 00:00:00",
+        )
+
+        first_page = list_conversations(limit=30)["conversations"]
+        self.assertNotIn(target, [c["name"] for c in first_page])
+
+        found = list_conversations(limit=30, search="looking for")["conversations"]
+
+        self.assertEqual([c["name"] for c in found], [target])
+
+
+@pytest.mark.integration
 class TestNewConversation(AlbannaTestCase):
     """The panel's "New" button, and the conversation it makes.
 
