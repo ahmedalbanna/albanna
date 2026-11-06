@@ -877,6 +877,12 @@ The writing side of the assistant — creating, changing, changing many at
 once, the lifecycle actions, and the permission parity across all of them
 — is recorded in `docs/FR-4_WRITING.md`.
 
+## Approval and undo (FR-5)
+
+The two moments where a write stops being the assistant's decision — the
+card that asks before it runs, and the button that takes it back after —
+are recorded in `docs/FR-5_APPROVAL.md`.
+
 ## 6. Decision rule for new ideas
 
 Before adding any feature, answer three questions:
