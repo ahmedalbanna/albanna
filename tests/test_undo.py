@@ -59,10 +59,9 @@ def test_a_bulk_change_may_be_undone_too():
     call = {
         "name": "bulk_update_doc",
         "undo": {
-            "action": "update",
+            "action": "update_many",
             "doctype": "Issue",
-            "name": "ISS-2026-00003",
-            "data": {"priority": "Medium"},
+            "documents": [{"name": "ISS-2026-00003", "data": {"priority": "Medium"}}],
         },
     }
 
@@ -100,6 +99,15 @@ def test_a_delete_may_not_be_undone_by_anything():
 def test_a_cancel_may_not_be_undone_by_anything():
     call = {
         "name": "cancel_doc",
+        "undo": {"action": "cancel", "doctype": "Sales Invoice", "name": "SINV-0001"},
+    }
+
+    assert is_undoable(call) is False
+
+
+def test_an_amend_may_not_be_undone_by_anything():
+    call = {
+        "name": "amend_doc",
         "undo": {"action": "cancel", "doctype": "Sales Invoice", "name": "SINV-0001"},
     }
 

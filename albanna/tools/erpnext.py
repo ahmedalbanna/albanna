@@ -2117,10 +2117,16 @@ def bulk_update_doc(
 
     changed = 0
     failed: list[str] = []
+    # The values each document carried before this change, for the fields
+    # that actually changed — so a bulk change can be taken back.  One
+    # entry per document that was changed, in the order it was changed.
+    documents: list[dict[str, Any]] = []
     for name in names:
-        was_changed, reason = _bulk_change_one(doctype, name, data)
+        was_changed, reason, before = _bulk_change_one(doctype, name, data)
         if was_changed:
             changed += 1
+            if before:
+                documents.append({"name": name, "before": before})
         elif reason:
             failed.append(f"{name}: {reason}")
 
@@ -2132,7 +2138,13 @@ def bulk_update_doc(
 
     return ok(
         message,
-        data={"doctype": doctype, "changed": changed, "total": len(names), "failed": failed},
+        data={
+            "doctype": doctype,
+            "changed": changed,
+            "total": len(names),
+            "failed": failed,
+            "documents": documents,
+        },
         doctype=doctype,
     )
 
@@ -2152,13 +2164,17 @@ def _bulk_filters(filters: Any) -> list | str:
     return triples
 
 
-def _bulk_change_one(doctype: str, name: str, data: dict[str, Any]) -> tuple[bool, str]:
+def _bulk_change_one(
+    doctype: str, name: str, data: dict[str, Any]
+) -> tuple[bool, str, dict[str, Any]]:
     """Change one document of a bulk change.
 
-    Returns ``(changed, reason)``: the reason is empty when the document
-    was changed or needed no change, and says why when it was left
-    alone.  Each document gets its own savepoint, so one that cannot be
-    changed does not undo the ones that were.
+    Returns ``(changed, reason, before)``: the reason is empty when the
+    document was changed or needed no change, and says why when it was
+    left alone; ``before`` holds the values the document carried for the
+    fields that actually changed, so the change can be taken back.  Each
+    document gets its own savepoint, so one that cannot be changed does
+    not undo the ones that were.
     """
     savepoint = _savepoint("bulk_update_doc")
     written: list = []
@@ -2166,21 +2182,22 @@ def _bulk_change_one(doctype: str, name: str, data: dict[str, Any]) -> tuple[boo
         document = frappe.get_doc(doctype, name)
         if not may_read(document):
             _rollback_to(savepoint)
-            return False, "may not be read"
+            return False, "may not be read", {}
         if document.docstatus:
             _rollback_to(savepoint)
-            return False, "submitted"
+            return False, "submitted", {}
         changes = _actual_changes(document, data)
         if not changes:
-            return False, ""
+            return False, "", {}
+        before = {field: document.get(field) for field in changes}
         _adopt_attachments(document, changes, written)
         document.update(changes)
         document.save()
-        return True, ""
+        return True, "", before
     except Exception as exc:
         _rollback_to(savepoint)
         _discard_written(written)
-        return False, str(exc)
+        return False, str(exc), {}
 
 
 def list_doctypes(

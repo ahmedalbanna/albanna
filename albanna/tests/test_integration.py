@@ -3445,6 +3445,133 @@ class TestUndo(AlbannaTestCase):
             "the transcript offered the undo of a read",
         )
 
+    def test_the_transcript_does_not_offer_the_undo_of_cancel_amend_or_delete(self):
+        """Cancel, amend and delete are never undoable, at the layer the
+        button reads.
+
+        The rule is already covered by the pure rule tests; this pins the
+        same answer at the transcript layer, which is what the button
+        actually reads.
+        """
+        from albanna.services.conversation_service import transcript_window
+
+        name = self._customer()
+        for tool_name, action in (
+            ("cancel_doc", "cancel"),
+            ("amend_doc", "cancel"),
+            ("delete_doc", "delete"),
+        ):
+            conversation, message = self._turn(
+                [
+                    {
+                        "name": tool_name,
+                        "ok": True,
+                        "summary": "Did it",
+                        "undo": {"action": action, "doctype": "Customer", "name": name},
+                    }
+                ]
+            )
+
+            window = transcript_window(conversation, 50)
+
+            self.assertFalse(
+                window["messages"][0]["tools"][0]["undoable"],
+                f"the transcript offered the undo of {tool_name}",
+            )
+
+    def test_a_real_bulk_change_may_be_undone(self):
+        """A bulk change is offered for undo, and the undo reverts every document.
+
+        The rule test builds a synthetic entry, so it proves the rule and
+        not the tool.  This runs a real bulk change through the backend and
+        follows it all the way through: the stored entry carries an undo,
+        the transcript offers the button, and taking it back puts every
+        document back where it was.
+
+        It is the test that would have caught the bulk undo being declared
+        and never offered — ``bulk_update_doc``'s result carried no
+        ``before``, so ``undo_entry`` built nothing and the button never
+        appeared, while ``UNDO_BY_ACTION`` said the tool was undoable and a
+        test asserted it.
+        """
+        from albanna.api.conversations import undo_turn
+        from albanna.services.chat_service import tool_entry
+        from albanna.services.conversation_service import transcript_window
+
+        prefix = f"Albanna Bulk Undo {self._testMethodName}"
+        names = []
+        for index in range(3):
+            name = f"{prefix} {index}"
+            if not frappe.db.exists("Customer", name):
+                customer = frappe.new_doc("Customer")
+                customer.customer_name = name
+                customer.customer_type = "Company"
+                customer.customer_group = self._customer_group()
+                customer.flags.ignore_permissions = True
+                customer.insert()
+            names.append(name)
+
+        context = self._context(self.owner)
+        result = self.backend.call(
+            TOOL_MANIFEST.get("bulk_update_doc"),
+            {
+                "doctype": "Customer",
+                "filters": [["customer_name", "like", f"%{prefix}%"]],
+                "data": {"customer_name": f"{prefix} changed"},
+            },
+            context,
+        )
+
+        self.assertTrue(result.ok, result.content)
+        self.assertEqual((result.data or {}).get("changed"), 3, result.content)
+        for name in names:
+            self.assertEqual(
+                frappe.db.get_value("Customer", name, "customer_name"),
+                f"{prefix} changed",
+                "the bulk change did not reach every document",
+            )
+
+        # The stored entry has to carry the undo, or nothing downstream can
+        # offer it.
+        entry = tool_entry(
+            self._call(
+                "bulk_update_doc",
+                {
+                    "doctype": "Customer",
+                    "filters": [["customer_name", "like", f"%{prefix}%"]],
+                    "data": {"customer_name": f"{prefix} changed"},
+                },
+            ),
+            result,
+        )
+        undo = entry.get("undo") or {}
+        self.assertEqual(undo.get("action"), "update_many", f"no undo was built: {entry}")
+        self.assertEqual(len(undo.get("documents") or []), 3, undo)
+
+        conversation, message = self._turn([entry])
+
+        window = transcript_window(conversation, 50)
+        self.assertTrue(
+            window["messages"][0]["tools"][0]["undoable"],
+            "the transcript did not offer the undo of a bulk change",
+        )
+
+        taken = undo_turn(conversation=conversation, message=message)
+
+        self.assertTrue(taken["undone"], f"the undo took nothing back: {taken}")
+        for name in names:
+            self.assertEqual(
+                frappe.db.get_value("Customer", name, "customer_name"),
+                name,
+                "the undo did not put every document back",
+            )
+
+        after = transcript_window(conversation, 50)
+        self.assertFalse(
+            after["messages"][0]["tools"][0]["undoable"],
+            "the undo was spent and must not be offered again",
+        )
+
     def test_the_transcript_offers_the_undo_only_while_there_is_something_to_take_back(self):
         """The button disappears once the undo has been carried out.
 

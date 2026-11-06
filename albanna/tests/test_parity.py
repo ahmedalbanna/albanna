@@ -549,6 +549,35 @@ class TestPermissionParity(AlbannaTestCase):
             "the card carried a diff of a document the reader may not read",
         )
 
+    def test_a_readable_documents_card_carries_the_right_diff(self):
+        """The diff on a readable document's card names the field, its
+        current value and the proposed value.
+
+        ``diff_fields`` is tested on its own; this pins the wrapper that
+        loads the document and builds the before-map, which is the whole
+        of FR-5.1.
+        """
+        from albanna.services.approval import write_diff
+
+        name = self._customer(f"Albanna Parity Diff {self._testMethodName}")
+        # Set a known current value.
+        frappe.db.set_value("Customer", name, "customer_name", "Before Name")
+        frappe.db.commit()
+
+        self._as(self.sales_user)
+        arguments = {
+            "doctype": "Customer",
+            "name": name,
+            "data": {"customer_name": "After Name"},
+        }
+
+        diff = write_diff("update_doc", arguments)
+
+        self.assertIsNotNone(diff, "a readable document carried no diff")
+        self.assertIn("customer_name", diff)
+        self.assertEqual(diff["customer_name"]["before"], "Before Name")
+        self.assertEqual(diff["customer_name"]["after"], "After Name")
+
     def test_the_card_counts_only_what_the_reader_may_read(self):
         """The bulk card says how many documents will change.
 

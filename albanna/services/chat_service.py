@@ -1559,6 +1559,25 @@ def undo_entry(call: ToolCall, result: ToolResult) -> dict[str, Any] | None:
             "data": data.get("before"),
         }
 
+    # A bulk change carries one before-map per document it changed, so it
+    # is taken back as one entry that reverts them all — not as a list of
+    # entries, which would change the data model every tool uses.
+    if isinstance(data, dict) and isinstance(data.get("documents"), list):
+        documents = []
+        for item in data.get("documents") or []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            before = item.get("before")
+            if name and isinstance(before, dict) and before:
+                documents.append({"name": name, "data": before})
+        if documents:
+            return {
+                "action": "update_many",
+                "doctype": str(data.get("doctype") or call.arguments.get("doctype") or "").strip(),
+                "documents": documents,
+            }
+
     # A submitted document is taken back by cancelling it.
     if call.name == "submit_doc" and result.ok:
         doctype = str(call.arguments.get("doctype") or "").strip()

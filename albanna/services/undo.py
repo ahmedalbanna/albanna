@@ -167,6 +167,27 @@ def _take_back(undo: dict[str, Any]) -> dict[str, Any] | None:
         doc.save()
         return {"action": "reverted", "doctype": doctype, "name": name}
 
+    if action == "update_many":
+        documents = undo.get("documents") or []
+        reverted = 0
+        for document in reversed(documents):
+            docname = str(document.get("name") or "").strip()
+            data = document.get("data") or {}
+            if not docname or not isinstance(data, dict) or not data:
+                continue
+            try:
+                doc = frappe.get_doc(doctype, docname)
+                for field, value in data.items():
+                    doc.set(field, value)
+                doc.save()
+                reverted += 1
+            except Exception as exc:
+                frappe.log_error(str(exc), "Albanna undo")
+                break
+        if reverted:
+            return {"action": "reverted", "doctype": doctype, "name": ""}
+        return None
+
     if action == "cancel":
         doc = frappe.get_doc(doctype, name)
         if doc.docstatus == 1:

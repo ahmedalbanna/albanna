@@ -46,7 +46,8 @@ from typing import Any
 #: tool does not allow is refused.
 UNDO_BY_ACTION: dict[str, tuple[str, ...]] = {
     "delete": ("create_doc",),
-    "update": ("update_doc", "bulk_update_doc"),
+    "update": ("update_doc",),
+    "update_many": ("bulk_update_doc",),
     "cancel": ("submit_doc",),
 }
 
@@ -79,15 +80,32 @@ def is_undoable(call: Any) -> bool:
         return False
 
     doctype = str(undo.get("doctype") or "").strip()
-    name = str(undo.get("name") or "").strip()
-    if not doctype or not name:
+    if not doctype:
         return False
 
     if action == "update":
+        name = str(undo.get("name") or "").strip()
+        if not name:
+            return False
         data = undo.get("data")
         return isinstance(data, dict) and bool(data)
 
-    return True
+    if action == "update_many":
+        documents = undo.get("documents")
+        if not isinstance(documents, list) or not documents:
+            return False
+        for document in documents:
+            if not isinstance(document, dict):
+                return False
+            name = str(document.get("name") or "").strip()
+            data = document.get("data")
+            if not name or not isinstance(data, dict) or not data:
+                return False
+        return True
+
+    # ``delete`` and ``cancel`` act on one named document, so the name is
+    # the last thing checked before the entry is accepted.
+    return bool(str(undo.get("name") or "").strip())
 
 
 def spend(calls: list[Any], spent: list[dict[str, Any]]) -> list[Any]:
