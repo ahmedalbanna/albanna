@@ -58,6 +58,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
+from typing import Any
 
 import frappe
 
@@ -193,10 +194,64 @@ def _preview_update(doctype: str, arguments: dict, data: dict) -> str:
     return f"Change a {doctype}"
 
 
+def _current_values(doctype: str, filters: Any, field: str, limit: int) -> dict[str, int]:
+    """How the matched documents currently hold *field*, as value → count.
+
+    The reader approves a change *from* a state, and across a set of
+    documents that state is not one value.  Saying "status = Paid" without
+    saying what the status is now asks the reader to approve a change they
+    cannot picture — they may be moving twelve drafts and thirty billed
+    invoices, or forty-two documents that are already paid.
+
+    The distribution is the reader's own, drawn from the same filtered
+    query the count and the sample names come from, so a card never tells
+    a reader what they cannot see.
+
+    Counted in Python rather than by a grouped query: the set is already
+    bounded by the change's own limit, and a ``group_by`` over a field the
+    model named is one more thing that can fail on a site whose reports
+    are somebody else's.
+    """
+    try:
+        rows = frappe.get_list(
+            doctype,
+            filters=filters,
+            fields=[field],
+            limit=limit,
+        )
+    except Exception:
+        return {}
+
+    counts: dict[str, int] = {}
+    for row in rows or []:
+        value = row.get(field) if isinstance(row, dict) else None
+        key = "" if value is None else str(value)
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def _distribution(counts: dict[str, int]) -> str:
+    """The distribution as a sentence fragment: "Draft 12, To Bill 30"."""
+    if not counts:
+        return ""
+    # Largest first, so the reader sees what most of the set is before
+    # they see the tail.  An empty value is named rather than dropped:
+    # "unset 4" is a fact about the documents, and a missing bucket is a
+    # count that does not add up.
+    ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return ", ".join(f"{value or 'unset'} {count}" for value, count in ordered)
+
+
 def _preview_bulk(doctype: str, arguments: dict, data: dict) -> str:
     """The card for a change to many documents at once."""
     filters = arguments.get("filters") or []
     limit = arguments.get("limit") or 50
+    try:
+        limit = int(limit)
+    except (TypeError, ValueError):
+        limit = 50
+    limit = max(1, min(limit, 200))
+
     fields = ", ".join(f"{key} = {value}" for key, value in list(data.items())[:6])
     try:
         # ``get_list`` and not ``get_all``: the count on the card is the
@@ -204,7 +259,7 @@ def _preview_bulk(doctype: str, arguments: dict, data: dict) -> str:
         # the reader may read.  A card that says "Change 42 Sales
         # Invoices" to a reader who may see three of them tells them
         # what they cannot see, and asks them to approve it besides.
-        names = frappe.get_list(doctype, filters=filters, pluck="name", limit=int(limit))
+        names = frappe.get_list(doctype, filters=filters, pluck="name", limit=limit)
     except Exception:
         names = []
 
@@ -212,10 +267,25 @@ def _preview_bulk(doctype: str, arguments: dict, data: dict) -> str:
     sample = ", ".join(names[:5])
     if count == 0:
         return f"Change {doctype}: no documents match the filters"
+
+    # What the set holds now, for the fields being changed.  Only the
+    # fields the card actually names, so a change of six fields costs six
+    # bounded queries and a change of one costs one.
+    current = ""
+    shown = list(data.items())[:6]
+    if shown:
+        parts = []
+        for field, _value in shown:
+            distribution = _distribution(_current_values(doctype, filters, field, limit))
+            if distribution:
+                parts.append(f"{field} is currently {distribution}")
+        if parts:
+            current = " (" + "; ".join(parts) + ")"
+
     suffix = f" (showing {sample})" if sample else ""
     if fields:
-        return f"Change {count} {doctype} document(s): {fields}{suffix}"
-    return f"Change {count} {doctype} document(s){suffix}"
+        return f"Change {count} {doctype} document(s): {fields}{current}{suffix}"
+    return f"Change {count} {doctype} document(s){current}{suffix}"
 
 
 def _preview_title(doctype: str, data: dict) -> str:

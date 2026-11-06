@@ -44,8 +44,6 @@ export function noticeText(notice) {
 			return __("A new conversation was started.");
 		case "removed":
 			return __("The question and its answer were removed.");
-		case "truncated":
-			return __("The answer was cut off before it was finished.");
 		case "image-dropped":
 			return __("This model cannot see images; the image was ignored.");
 		case "dry-run":

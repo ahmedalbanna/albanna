@@ -774,14 +774,22 @@ def trim_conversation(conversation: str, keep: int = MAX_STORED_MESSAGES) -> Non
         return
 
     excess = count - keep
+    # ``DELETE ... ORDER BY ... LIMIT`` rather than a ``LIMIT`` inside an
+    # ``IN`` subquery: MariaDB refuses the latter outright — "This version
+    # of MariaDB doesn't yet support 'LIMIT & IN/ALL/ANY/SOME subquery'" —
+    # so the trim only ever failed once a conversation outgrew its bound,
+    # which is exactly when it is needed.  It surfaced as an error in
+    # whatever turn happened to push a thread past 400 messages, which
+    # made it look like a bug in that turn rather than in the trim.
+    #
+    # The two forms delete the same rows: the *excess* oldest messages of
+    # this conversation, by idx.
     frappe.db.sql(
         """
         delete from `tabAlbanna Message`
-        where name in (
-            select name from `tabAlbanna Message`
-            where parent = %s and parentfield = %s
-            order by idx asc limit %s
-        )
+        where parent = %s and parentfield = %s
+        order by idx asc
+        limit %s
         """,
         (conversation, PARENT_FIELD, excess),
     )

@@ -4371,6 +4371,56 @@ class TestPreviewBulk(AlbannaTestCase):
         )
         self.assertIn("no documents match", preview)
 
+    def test_the_card_says_what_the_set_holds_now(self):
+        """The reader approves a change *from* a state.
+
+        "status = Paid" on its own asks the reader to approve a change
+        they cannot picture: they may be moving twelve drafts and thirty
+        billed invoices, or forty-two documents that are already paid.
+        The distribution is what makes the card a decision rather than a
+        request for trust.
+        """
+        from albanna.services.approval import _preview_bulk
+
+        prefix = f"Albanna Bulk Card {self._testMethodName}"
+        group = frappe.db.get_value("Customer", {"disabled": 0}, "customer_group")
+        self.assertTrue(group, "the site needs a customer group")
+
+        former = frappe.session.user
+        frappe.set_user("Administrator")
+        try:
+            for index, kind in enumerate(("Company", "Company", "Individual")):
+                name = f"{prefix} {index}"
+                if frappe.db.exists("Customer", name):
+                    frappe.db.set_value("Customer", name, "customer_type", kind)
+                    continue
+                customer = frappe.new_doc("Customer")
+                customer.customer_name = name
+                customer.customer_type = kind
+                customer.customer_group = group
+                customer.flags.ignore_permissions = True
+                customer.insert()
+        finally:
+            frappe.set_user(former)
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+        self._as(self.accounts_user)
+        preview = _preview_bulk(
+            "Customer",
+            {
+                "doctype": "Customer",
+                "filters": [["customer_name", "like", f"%{prefix}%"]],
+                "limit": 10,
+            },
+            {"customer_type": "Company"},
+        )
+
+        self.assertIn("Change 3 Customer document(s)", preview)
+        self.assertIn("customer_type is currently", preview)
+        self.assertIn("Company 2", preview)
+        self.assertIn("Individual 1", preview)
+
 
 @pytest.mark.integration
 class TestRemainingPaths(AlbannaTestCase):
