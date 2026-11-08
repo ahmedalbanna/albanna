@@ -183,17 +183,23 @@ class Message:
     #: The attachments carried on the user's question, as base64 data URLs.
     #: The assistant's answer is text.  Empty means "no attachment", which
     #: is the common case and keeps the wire shape plain.
-    images: list[str] = field(default_factory=list)
+    attachments: list[str] = field(default_factory=list)
 
     def to_wire(self) -> dict[str, Any]:
-        """The OpenAI-shaped wire form."""
+        """The OpenAI-shaped wire form.
+
+        The wire dialect's own name for an attachment part is
+        ``image_url``, and it stays: that is the provider's vocabulary,
+        not this app's.  What travels in it is whatever the reader
+        attached.
+        """
         content: Any = self.content
-        if self.images:
+        if self.attachments:
             parts: list[dict[str, Any]] = []
             if self.content:
                 parts.append({"type": "text", "text": self.content})
-            for image in self.images:
-                parts.append({"type": "image_url", "image_url": {"url": image}})
+            for attachment in self.attachments:
+                parts.append({"type": "image_url", "image_url": {"url": attachment}})
             content = parts
         payload: dict[str, Any] = {"role": self.role, "content": content}
         if self.tool_calls:
@@ -213,12 +219,14 @@ class Message:
             role = "user"
 
         content = raw.get("content")
-        images: list[str] = []
+        attachments: list[str] = []
         if content is None:
             content = ""
         elif isinstance(content, list):
             # Vision shape: a list of {type: "text"} and
-            # {type: "image_url"} parts.  Reassemble into text + images.
+            # {type: "image_url"} parts.  Reassemble into text +
+            # attachments.  The part type is the provider's name and
+            # stays; what it carries is the reader's file.
             text_parts: list[str] = []
             for part in content:
                 if not isinstance(part, dict):
@@ -231,7 +239,7 @@ class Message:
                     if isinstance(url, dict):
                         url = url.get("url")
                     if isinstance(url, str) and url:
-                        images.append(url)
+                        attachments.append(url)
             content = "\n".join(text_parts)
         elif not isinstance(content, str):
             content = json.dumps(content, default=str)
@@ -246,7 +254,7 @@ class Message:
             content=content,
             tool_calls=tool_calls,
             tool_call_id=str(raw.get("tool_call_id") or ""),
-            images=images,
+            attachments=attachments,
         )
 
 
@@ -254,8 +262,8 @@ def system(text: str) -> Message:
     return Message(role="system", content=text)
 
 
-def user(text: str, images: list[str] | None = None) -> Message:
-    return Message(role="user", content=text, images=images or [])
+def user(text: str, attachments: list[str] | None = None) -> Message:
+    return Message(role="user", content=text, attachments=attachments or [])
 
 
 def assistant(text: str = "", tool_calls: tuple[ToolCall, ...] = ()) -> Message:
@@ -308,7 +316,7 @@ def sanitize(messages: list[Message]) -> list[Message]:
             kept[-1] = Message(
                 role=message.role,
                 content=f"{kept[-1].content}\n\n{message.content}",
-                images=(kept[-1].images or []) + (message.images or []),
+                attachments=(kept[-1].attachments or []) + (message.attachments or []),
             )
             continue
 
@@ -334,7 +342,7 @@ def as_plain_history(messages: list[Message]) -> list[Message]:
         Message(
             role=message.role,
             content=message.content,
-            images=message.images,
+            attachments=message.attachments,
         )
         if message.role == "assistant"
         else message

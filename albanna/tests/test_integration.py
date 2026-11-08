@@ -4898,7 +4898,7 @@ class TestRemainingPaths(AlbannaTestCase):
                 TOOL_MANIFEST.get("create_doc"),
                 {
                     "doctype": "Contact",
-                    "data": {"first_name": "Albanna", "image": url},
+                    "data": {"first_name": "Albanna", "attachments": url},
                 },
                 self._context(self.sales_user),
             )

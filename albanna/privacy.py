@@ -45,7 +45,7 @@ REQUEST_TEXT_FIELDS = (
     "messages_json",
     "question",
     "page_context",
-    "image",
+    "attachments",
     "file_data_url",
 )
 

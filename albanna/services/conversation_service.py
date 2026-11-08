@@ -184,7 +184,7 @@ def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]
             insert into `tabAlbanna Message`
                 (name, owner, creation, modified, modified_by, docstatus, idx,
                  parent, parentfield, parenttype,
-                 role, content, image_url, tool_name, round_no, tool_calls)
+                 role, content, attachment_urls, tool_name, round_no, tool_calls)
             values
                 (%s, %s, %s, %s, %s, 0, %s,
                  %s, %s, %s,
@@ -202,7 +202,7 @@ def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]
                 "Albanna Conversation",
                 row.get("role") or "assistant",
                 row.get("content") or "",
-                row.get("image_url") or "",
+                row.get("attachment_urls") or "",
                 row.get("tool_name") or "",
                 int(row.get("round_no") or 0),
                 row.get("tool_calls") or "",
@@ -248,7 +248,7 @@ def load_messages(conversation: str, limit: int = 20) -> list[Message]:
     """
     rows = frappe.db.sql(
         """
-        select role, content, image_url, tool_name, tool_calls
+        select role, content, attachment_urls, tool_name, tool_calls
         from `tabAlbanna Message`
         where parent = %s and parentfield = %s
         order by idx asc
@@ -292,7 +292,7 @@ def load_messages(conversation: str, limit: int = 20) -> list[Message]:
         #
         # The widget's own view of the thread keeps the URLs
         # (:func:`load_transcript`), and the reader sees the picture.
-        stored, _readable = read_attachment_list(row.image_url or "")
+        stored, _readable = read_attachment_list(row.attachment_urls or "")
         content = row.content or ""
         if stored and role == "user":
             content += attachment_note(stored)
@@ -336,7 +336,7 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
     if before_idx > 0:
         rows = frappe.db.sql(
             """
-            select name, role, content, image_url, tool_calls, creation, idx, rating
+            select name, role, content, attachment_urls, tool_calls, creation, idx, rating
             from `tabAlbanna Message`
             where parent = %s and parentfield = %s and idx < %s
             order by idx desc
@@ -348,7 +348,7 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
     else:
         rows = frappe.db.sql(
             """
-            select name, role, content, image_url, tool_calls, creation, idx, rating
+            select name, role, content, attachment_urls, tool_calls, creation, idx, rating
             from `tabAlbanna Message`
             where parent = %s and parentfield = %s
             order by idx desc
@@ -403,7 +403,7 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
                 "idx": int(row.idx or 0),
                 "role": role,
                 "content": row.content or "",
-                "images": read_attachment_list(row.image_url or "")[0],
+                "attachments": read_attachment_list(row.attachment_urls or "")[0],
                 "rating": row.rating or "",
                 "tools": tools,
                 # When it was said, so that the transcript can say so.

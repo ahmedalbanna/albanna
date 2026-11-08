@@ -93,7 +93,7 @@ class TestTheParkedCard(AlbannaTestCase):
             "started_at": time.time(),
             "question": "a question",
             "page_context": "",
-            "image": "",
+            "attachments": "",
         }
 
     def test_status_offers_a_card_the_socket_never_delivered(self):

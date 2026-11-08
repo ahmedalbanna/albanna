@@ -91,8 +91,10 @@ def run_turn_job(
         # that parks a single bare data URL, and a bare string is read as
         # a list of one.  Anything else is no attachment: a turn that
         # cannot read its own attachments must still answer.
-        images, _readable = read_attachment_list(parked.get("images") or parked.get("image"))
-        image_urls, _readable = read_attachment_list(parked.get("image_urls"))
+        attachments, _readable = read_attachment_list(
+            parked.get("attachments") or parked.get("attachments")
+        )
+        attachment_urls, _readable = read_attachment_list(parked.get("attachment_urls"))
 
     try:
         outcome = ChatService().run(
@@ -102,8 +104,8 @@ def run_turn_job(
                 page=page,
                 page_context=page_context,
                 stream=True,
-                images=images,
-                image_urls=image_urls,
+                attachments=attachments,
+                attachment_urls=attachment_urls,
             ),
             emit=emit,
         )

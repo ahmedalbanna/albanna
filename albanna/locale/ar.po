@@ -1093,17 +1093,17 @@ msgid "The answer could not be copied."
 msgstr "تعذّر نسخ الإجابة."
 
 
-msgid "Image Support"
-msgstr "دعم الصور"
+msgid "Attachment Support"
+msgstr "دعم المرفقات"
 
-msgid "When on, users may attach an image to a question. Only vision-capable models can see it."
-msgstr "عند التفعيل، يمكن للمستخدمين إرفاق صورة بسؤال. فقط النماذج القادرة على الرؤية يمكنها رؤيتها."
+msgid "When on, users may attach a file to a question. Only models that can read the file's type will see it."
+msgstr "عند التفعيل، يمكن للمستخدمين إرفاق ملف بسؤال. فقط النماذج القادرة على قراءة نوع الملف يمكنها رؤيته."
 
-msgid "Max Image Size (KB)"
-msgstr "أقصى حجم للصورة (كيلوبايت)"
+msgid "Max Attachment Size (KB)"
+msgstr "أقصى حجم للمرفق (كيلوبايت)"
 
-msgid "The largest image that may be attached, in kilobytes."
-msgstr "أكبر صورة يمكن إرفاقها، بالكيلوبايت."
+msgid "The largest attachment that may be attached, in kilobytes."
+msgstr "أكبر مرفق يمكن إرفاقه، بالكيلوبايت."
 
 msgid "Attach file"
 msgstr "إرفاق ملف"
@@ -1114,12 +1114,12 @@ msgstr "الملف مطلوب."
 msgid "Remove attachment"
 msgstr "إزالة المرفق"
 
-msgid "This model cannot see images; the image was ignored."
-msgstr "هذا النموذج لا يمكنه رؤية الصور؛ تم تجاهل الصورة."
+msgid "This model cannot see attachments; the attachment was ignored."
+msgstr "هذا النموذج لا يمكنه رؤية المرفقات؛ تم تجاهل المرفق."
 
 
-msgid "Had Image"
-msgstr "احتوت صورة"
+msgid "Had Attachment"
+msgstr "احتوت مرفقاً"
 
 
 msgid "Voice input"
@@ -1135,8 +1135,11 @@ msgstr "جارٍ الرفع…"
 msgid "Attached file"
 msgstr "ملف مرفق"
 
-msgid "Image URL"
-msgstr "رابط الصورة"
+msgid "Attachment URLs"
+msgstr "روابط المرفقات"
+
+msgid "The addresses the attachments were stored under, as a JSON list. The bytes travel with the turn; this is what outlives it."
+msgstr "العناوين التي خُزّنت المرفقات تحتها، كقائمة JSON. البايتات تسافر مع الدور؛ وهذا ما يبقى بعده."
 
 msgid "Image attachments are not enabled on this site."
 msgstr "إرفاق الصور غير مُفعّل على هذا الموقع."

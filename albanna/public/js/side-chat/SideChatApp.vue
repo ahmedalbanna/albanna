@@ -679,7 +679,7 @@ function makeMessage(role, content, at) {
 		time: "",
 		// The attachments on the reader's question, as data URLs.  Empty
 		// for an answer and for a text-only question.
-		images: [],
+		attachments: [],
 		// Whether the answer holds a table that can be taken away.
 		hasTable: false,
 		// Whether the answer was cut off at the token ceiling.  Carried on
@@ -769,7 +769,7 @@ function messageFromServer(message) {
 	// on this site.  The reader sees them; the model is told about them
 	// in words, because a path on this site is not a picture a provider
 	// can fetch.
-	item.images = message.images || [];
+	item.attachments = message.attachments || [];
 	// The stored index, which is how the panel asks for the page of
 	// messages behind this one.  A message that has not been stored yet
 	// has no index, and it is the newest one.
@@ -1361,7 +1361,7 @@ function applyTurnResult(result, asked, answer) {
 		// says it was cut.
 		if (result.truncated) answer.truncated = true;
 		if (result.dry_run) state.notice = "dry-run";
-		if (result.image_dropped) state.notice = "image-dropped";
+		if (result.attachment_dropped) state.notice = "attachments-dropped";
 	} else {
 		// A turn that ended without an answer and without an error is
 		// still over.
@@ -1426,7 +1426,7 @@ async function send(question) {
 
 	// The bytes the model reads, and the addresses they were stored
 	// under.  The two are parallel, and the server relies on that.
-	const { images, imageUrls } = turnAttachments(attachedFiles.value);
+	const { attachments, attachmentUrls } = turnAttachments(attachedFiles.value);
 	attachedFiles.value = [];
 
 	draft.value = "";
@@ -1434,7 +1434,7 @@ async function send(question) {
 	showScrollButton.value = false;
 
 	const asked = makeMessage("user", text);
-	if (images.length) asked.images = images;
+	if (attachments.length) asked.attachments = attachments;
 	const answer = makeMessage("assistant", "");
 	answer.pending = true;
 
@@ -1472,8 +1472,8 @@ async function send(question) {
 	try {
 		result = await runTurn({
 			question: text,
-			images: images,
-			imageUrls: imageUrls,
+			attachments: attachments,
+			attachmentUrls: attachmentUrls,
 			conversationId: conversationId.value,
 			page: page,
 			pageContext: {
@@ -2733,7 +2733,7 @@ onBeforeUnmount(() => {
 					<div
 						v-if="
 							message.role === 'user' &&
-							(message.content || (message.images && message.images.length))
+							(message.content || (message.attachments && message.attachments.length))
 						"
 						class="albanna-chat__bubble albanna-chat__bubble--plain"
 					>
@@ -2741,21 +2741,21 @@ onBeforeUnmount(() => {
 						     holds every attachment, so a reader who sent three
 						     pictures sees three pictures. -->
 						<div
-							v-if="message.images && message.images.length"
+							v-if="message.attachments && message.attachments.length"
 							class="albanna-chat__user-attachments"
 						>
-							<template v-for="(image, index) in message.images" :key="index">
+							<template v-for="(attachments, index) in message.attachments" :key="index">
 								<img
-									v-if="isImageSrc(image)"
-									:src="image"
+									v-if="isImageSrc(attachments)"
+									:src="attachments"
 									alt=""
-									class="albanna-chat__user-image"
+									class="albanna-chat__user-attachments"
 								/>
 								<span v-else class="albanna-chat__user-file">
 									<!-- The paperclip is decoration: the words beside it
 								     say what the attachment is, so the icon is for the
 								     eye and not for a screen reader.  An emoji here
-								     would have been an image of a different set of
+								     would have been an emoji of a different set of
 								     instructions, in a font the browser picks. -->
 									<svg
 										width="13"
@@ -3280,8 +3280,8 @@ onBeforeUnmount(() => {
 			v-if="view === 'chat' && !locked"
 			v-model="draft"
 			:files="attachedFiles"
-			:image-support="config && config.image_support"
-			:max-image-size-kb="config && config.max_image_size_kb"
+			:attachments-support="config && config.attachment_support"
+			:max-attachments-size-kb="config && config.max_attachment_size_kb"
 			:attachable-types="(config && config.attachable_types) || []"
 			:busy="busy"
 			:can-chat="canChat"

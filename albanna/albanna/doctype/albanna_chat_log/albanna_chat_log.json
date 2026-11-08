@@ -12,7 +12,7 @@
         "provider",
         "model",
         "status",
-        "had_image",
+        "had_attachment",
         "rounds_section",
         "rounds",
         "tool_calls",
@@ -73,9 +73,9 @@
             "description": "How the turn ended. 'truncated' means the provider cut the answer off at the token ceiling — the answer is unfinished, not wrong."
         },
         {
-            "fieldname": "had_image",
+            "fieldname": "had_attachment",
             "fieldtype": "Check",
-            "label": "Had Image",
+            "label": "Had Attachment",
             "default": "0"
         },
         {

@@ -44,8 +44,8 @@ export function noticeText(notice) {
 			return __("A new conversation was started.");
 		case "removed":
 			return __("The question and its answer were removed.");
-		case "image-dropped":
-			return __("This model cannot see images; the image was ignored.");
+		case "attachments-dropped":
+			return __("This model cannot see attachments; the attachment was ignored.");
 		case "dry-run":
 			return __("Dry run — nothing was saved.");
 		case "escalated":

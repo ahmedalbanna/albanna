@@ -1,6 +1,6 @@
 """The document's own copy of an attachment.
 
-The rule under test: an image the chat stored is private and the
+The rule under test: an attachment the chat stored is private and the
 uploader's, so it renders in their session and nowhere else.  An image
 set on a document is the document's picture, and it has to render for
 everyone who may read the document — so the document gets its own copy
@@ -10,7 +10,7 @@ one setting it; somebody else's private file stays private.
 
 The second rule under test is the one the next turn depends on: the
 model's view of a conversation must not carry a stored file's address as
-an *image*.  The address is a path on this site
+an *image part*.  The address is a path on this site
 (``/private/files/albanna-8f2a1c.png``), and a vision provider cannot
 read a path it has no way to fetch — the request is refused, and the
 second turn of every conversation with an attachment dies with it.  The
@@ -37,7 +37,7 @@ PNG = "data:image/png;base64,aGVsbG8="  # "hello", which is not a PNG: bytes are
 
 class TestAdoptingAnAttachment(AlbannaTestCase):
     def setUp(self):
-        self.url = ChatService()._store_image(PNG, frappe.session.user or "Administrator")
+        self.url = ChatService()._store_attachment(PNG, frappe.session.user or "Administrator")
         self.assertTrue(self.url.startswith("/private/files/"))
 
     def _document(self):
@@ -77,7 +77,7 @@ class TestAdoptingAnAttachment(AlbannaTestCase):
         self.assertTrue(frappe.db.get_value("File", {"file_url": self.url}, "is_private"))
 
     def test_setting_the_same_image_twice_adds_no_second_row(self):
-        """Setting an image the document already owns must not leave a
+        """Setting an attachment the document already owns must not leave a
         second File row behind it."""
         from albanna.tools.erpnext import _adopt_attachments
 
@@ -126,7 +126,7 @@ class TestTheStorageDoor(AlbannaTestCase):
     """
 
     def setUp(self):
-        self._ceiling = frappe.db.get_single_value("Albanna Settings", "max_image_size_kb")
+        self._ceiling = frappe.db.get_single_value("Albanna Settings", "max_attachment_size_kb")
 
     def tearDown(self):
         self._set_ceiling(self._ceiling)
@@ -139,7 +139,7 @@ class TestTheStorageDoor(AlbannaTestCase):
         that changes the ceiling has to say so again — a ceiling the rule
         did not see is a ceiling the rule did not enforce.
         """
-        frappe.db.set_single_value("Albanna Settings", "max_image_size_kb", kilobytes)
+        frappe.db.set_single_value("Albanna Settings", "max_attachment_size_kb", kilobytes)
         get_settings(refresh=True)
 
     def test_a_type_the_site_does_not_take_is_refused_by_the_write(self):
@@ -171,7 +171,7 @@ class TestTheAttachmentInTheNextTurn(AlbannaTestCase):
     """What the model reads when the reader comes back to the thread."""
 
     def setUp(self):
-        self.url = ChatService()._store_image(PNG, frappe.session.user or "Administrator")
+        self.url = ChatService()._store_attachment(PNG, frappe.session.user or "Administrator")
         self.assertTrue(self.url.startswith("/private/files/"))
         self.conversation = ensure_conversation(
             frappe.session.user or "Administrator", "", "A thread"
@@ -183,7 +183,7 @@ class TestTheAttachmentInTheNextTurn(AlbannaTestCase):
                     "role": "user",
                     "content": "what is this?",
                     "round_no": 0,
-                    "image_url": json.dumps([self.url]),
+                    "attachment_urls": json.dumps([self.url]),
                 },
                 {"role": "assistant", "content": "A picture.", "round_no": 1},
             ],
@@ -192,7 +192,7 @@ class TestTheAttachmentInTheNextTurn(AlbannaTestCase):
     def test_the_stored_address_is_not_an_image_part(self):
         """A path on this site is not a picture the provider can read."""
         messages = load_messages(self.conversation)
-        self.assertEqual(messages[0].images, [])
+        self.assertEqual(messages[0].attachments, [])
 
     def test_the_model_is_told_where_the_picture_went(self):
         """The reader does not attach the same picture twice to set it on
@@ -206,4 +206,4 @@ class TestTheAttachmentInTheNextTurn(AlbannaTestCase):
         from albanna.services.conversation_service import load_transcript
 
         transcript = load_transcript(self.conversation)
-        self.assertEqual(transcript[0]["images"], [self.url])
+        self.assertEqual(transcript[0]["attachments"], [self.url])

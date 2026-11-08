@@ -71,7 +71,7 @@ def upload_file(file_data_url: str = "") -> dict[str, Any]:
         frappe.throw(refusal_sentence(REQUIRED), frappe.ValidationError)
 
     settings = get_settings()
-    if not getattr(settings, "image_support", False):
+    if not getattr(settings, "attachment_support", False):
         frappe.throw(refusal_sentence(DISABLED), frappe.ValidationError)
 
     raw, mime = decode_data_url(file_data_url)
@@ -125,8 +125,8 @@ def options() -> dict[str, Any]:
         "position": settings.widget_position,
         "position_default": settings.widget_position,
         "tools": tools,
-        "image_support": settings.image_support,
-        "max_image_size_kb": settings.max_image_size_kb,
+        "attachment_support": settings.attachment_support,
+        "max_attachment_size_kb": settings.max_attachment_size_kb,
         # The types the site attaches, published so the browser does not
         # keep a copy of them.  A browser that keeps a copy is a browser
         # whose copy goes stale, and a stale copy is a browser that

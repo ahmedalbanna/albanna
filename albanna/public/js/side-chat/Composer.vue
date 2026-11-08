@@ -460,7 +460,7 @@ async function onChooseFile() {
 				<span
 					class="albanna-chat__attach-chip-icon"
 					:class="{
-						'albanna-chat__attach-chip-icon--image': file.type.startsWith('image/'),
+						'albanna-chat__attach-chip-icon--attachments': file.type.startsWith('image/'),
 					}"
 					aria-hidden="true"
 				>

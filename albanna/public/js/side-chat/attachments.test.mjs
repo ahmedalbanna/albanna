@@ -214,16 +214,16 @@ const RULES = { types: TYPES };
 		makeAttachment({ dataUrl: "data:image/png;base64,AAAA", fileUrl: "/private/files/a.png" }),
 		makeAttachment({ dataUrl: "data:image/png;base64,BBBB", fileUrl: "/private/files/b.png" }),
 	];
-	const { images, imageUrls } = turnAttachments(files);
-	assert.deepEqual(images, ["data:image/png;base64,AAAA", "data:image/png;base64,BBBB"]);
-	assert.deepEqual(imageUrls, ["/private/files/a.png", "/private/files/b.png"]);
+	const { attachments, attachmentUrls } = turnAttachments(files);
+	assert.deepEqual(attachments, ["data:image/png;base64,AAAA", "data:image/png;base64,BBBB"]);
+	assert.deepEqual(attachmentUrls, ["/private/files/a.png", "/private/files/b.png"]);
 }
 
 // A question with no attachments carries none.
 {
-	const { images, imageUrls } = turnAttachments([]);
-	assert.deepEqual(images, []);
-	assert.deepEqual(imageUrls, []);
+	const { attachments, attachmentUrls } = turnAttachments([]);
+	assert.deepEqual(attachments, []);
+	assert.deepEqual(attachmentUrls, []);
 }
 
 console.log("attachments: all assertions passed");

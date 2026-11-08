@@ -31,8 +31,8 @@
         "confirm_writes",
         "confirm_timeout",
         "dry_run",
-        "image_support",
-        "max_image_size_kb",
+        "attachment_support",
+        "max_attachment_size_kb",
         "disabled_tools",
         "question_expiry_hours",
         "limits_section",
@@ -212,17 +212,17 @@
         },
         {
             "default": "0",
-            "description": "When on, users may attach an image to a question. Only vision-capable models can see it.",
-            "fieldname": "image_support",
+            "description": "When on, users may attach a file to a question. Only models that can read the file's type will see it.",
+            "fieldname": "attachment_support",
             "fieldtype": "Check",
-            "label": "Image Support"
+            "label": "Attachment Support"
         },
         {
             "default": "2048",
-            "description": "The largest image that may be attached, in kilobytes.",
-            "fieldname": "max_image_size_kb",
+            "description": "The largest attachment that may be attached, in kilobytes.",
+            "fieldname": "max_attachment_size_kb",
             "fieldtype": "Int",
-            "label": "Max Image Size (KB)"
+            "label": "Max Attachment Size (KB)"
         },
         {
             "description": "Tool names, separated by commas or line breaks — one per line is easiest to read. A name that is not one of this app's tools is refused when you save: a name that matches no tool hides nothing from the assistant, and a setting that looks right while hiding nothing is worse than an error. The tools are list_docs, get_doc, get_doctype_meta, run_report, create_doc, update_doc, bulk_update_doc, submit_doc, cancel_doc, amend_doc, delete_doc, ask_question.",

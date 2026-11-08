@@ -5,9 +5,9 @@ The wire
 
 The browser sends the reader's files in two fields:
 
-*   ``image`` — the bytes, as data URLs, so a vision-capable provider can
+*   ``attachments`` — the bytes, as data URLs, so a vision-capable provider can
     read them;
-*   ``image_urls`` — the addresses the bytes were already stored under, so
+*   ``attachment_urls`` — the addresses the bytes were already stored under, so
     the turn reuses the file instead of writing the same bytes twice.
 
 Both fields are **one string parameter** on the wire, because that is what
@@ -232,7 +232,7 @@ def check_attachment(mime: str, size: int, max_bytes: int = 0) -> str:
 def check_attachments(value: Any, max_bytes: int = 0) -> tuple[list[str], str]:
     """The attachments a field holds, and why they may not be carried.
 
-    Returns ``(images, reason)``.  ``reason`` is empty when the
+    Returns ``(attachments, reason)``.  ``reason`` is empty when the
     attachments may be carried, and otherwise names the rule they broke.
     The wording is the caller's.
 
@@ -244,11 +244,11 @@ def check_attachments(value: Any, max_bytes: int = 0) -> tuple[list[str], str]:
 
     A ceiling of zero means no ceiling.
     """
-    images, readable = read_attachment_list(value)
+    attachments, readable = read_attachment_list(value)
     if not readable:
         return [], UNREADABLE
 
-    for entry in images:
+    for entry in attachments:
         raw, mime = decode_data_url(entry)
         if not raw:
             return [], UNREADABLE
@@ -256,7 +256,7 @@ def check_attachments(value: Any, max_bytes: int = 0) -> tuple[list[str], str]:
         if reason:
             return [], reason
 
-    return images, ""
+    return attachments, ""
 
 
 def paired_addresses(count: int, urls: list[str]) -> list[str]:

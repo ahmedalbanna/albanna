@@ -8,7 +8,7 @@
     "field_order": [
         "role",
         "content",
-        "image_url",
+        "attachment_urls",
         "tool_name",
         "round_no",
         "tool_calls",
@@ -34,9 +34,10 @@
             "label": "Content"
         },
         {
-            "fieldname": "image_url",
+            "description": "The addresses the attachments were stored under, as a JSON list. The bytes travel with the turn; this is what outlives it.",
+            "fieldname": "attachment_urls",
             "fieldtype": "Data",
-            "label": "Image URL",
+            "label": "Attachment URLs",
             "read_only": 1
         },
         {

@@ -177,14 +177,14 @@ class TurnRequest:
     page: str = ""
     page_context: str = ""
     stream: bool = False
-    images: list[str] = field(default_factory=list)
+    attachments: list[str] = field(default_factory=list)
     #: The addresses the bytes were already stored under, parallel to
-    #: ``images``: the address at one place is the address of the bytes
+    #: ``attachments``: the address at one place is the address of the bytes
     #: at the same place.  When an entry holds a URL the turn reuses the
     #: file instead of storing the bytes again — the reader's file is
     #: already on the site, and writing it twice leaves two files for one
     #: picture.
-    image_urls: list[str] = field(default_factory=list)
+    attachment_urls: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -211,8 +211,8 @@ class TurnOutcome:
     #: so, because an answer that looks complete and is not is worse
     #: than one that says it was cut.
     truncated: bool = False
-    #: True when an image was sent but no provider could see it.
-    image_dropped: bool = False
+    #: True when an attachment was sent but no provider could see it.
+    attachment_dropped: bool = False
     #: The question the assistant asked the reader, if it asked one.
     #:
     #: The card the reader is shown is built from this, and from the row
@@ -270,7 +270,7 @@ class TurnAudit:
     error_class: str = ""
     error_message: str = ""
     price_per_million: float = 0.0
-    had_image: bool = False
+    had_attachment: bool = False
     #: Per-round durations in milliseconds, one per model call in the turn.
     #: Carried inside the audit row's ``tools`` field, not a column, so
     #: production avoids a DDL on ``tabAlbanna Chat Log``.
@@ -300,7 +300,7 @@ def turn_payload(outcome: TurnOutcome) -> dict[str, Any]:
         # told, because an answer that looks complete and is not is
         # worse than one that says it was cut.
         "truncated": outcome.truncated,
-        "image_dropped": outcome.image_dropped,
+        "attachment_dropped": outcome.attachment_dropped,
         # The question the assistant asked, with the answers the reader
         # may choose from.  Null when the turn asked none.
         "question": outcome.question,
@@ -380,7 +380,7 @@ class ChatService:
         started = time.monotonic()
         settings = get_settings()
 
-        image_dropped = bool(request.images) and not (
+        attachment_dropped = bool(request.attachments) and not (
             getattr(settings.provider, "supports_vision", False)
             or (
                 settings.fallback is not None
@@ -406,9 +406,9 @@ class ChatService:
 
         # The files attached to the question are stored as Frappe Files so
         # that the assistant can refer to them by address — for example, to
-        # set one as a document's image field.  The bytes travel with the
+        # set one as a document's attachments field.  The bytes travel with the
         # turn; what is stored is the files, not the chat.
-        image_urls, extra = self._store_attachments(request, principal.user)
+        attachment_urls, extra = self._store_attachments(request, principal.user)
         if extra:
             # The request is whole after this, not a half of one.  It is
             # copied by the dataclass rather than field by field, so a
@@ -416,7 +416,7 @@ class ChatService:
             request = replace(
                 request,
                 page_context=(request.page_context or "") + extra,
-                image_urls=image_urls,
+                attachment_urls=attachment_urls,
             )
 
         history = load_messages(conversation, settings.history_limit)
@@ -433,7 +433,7 @@ class ChatService:
             running.status = "running"
             running.rounds = 0
             running.tool_calls = 0
-            running.had_image = 1 if bool(request.images) else 0
+            running.had_attachment = 1 if bool(request.attachments) else 0
             running.insert(ignore_permissions=True)
             self._audit_name = running.name
             frappe.db.commit()
@@ -458,7 +458,7 @@ class ChatService:
             system(build_system_prompt(visible, context, settings.system_prompt))
         ]
         messages.extend(sanitize(as_plain_history(history)))
-        messages.append(user(question, images=request.images or None))
+        messages.append(user(question, attachments=request.attachments or None))
 
         tool_calls_made: list[dict[str, Any]] = []
         rounds = 0
@@ -522,7 +522,7 @@ class ChatService:
                         error_class="provider_error",
                         error_message=str(exc),
                         price_per_million=settings.price_per_million,
-                        had_image=bool(request.images),
+                        had_attachment=bool(request.attachments),
                         round_ms=round_durations,
                     )
                 )
@@ -532,7 +532,7 @@ class ChatService:
                     conversation_id=conversation,
                     rounds=rounds,
                     tool_calls=tool_calls_made,
-                    image_dropped=image_dropped,
+                    attachment_dropped=attachment_dropped,
                     question=asked_question,
                 )
 
@@ -553,7 +553,7 @@ class ChatService:
                 written = append_messages(
                     conversation,
                     [
-                        self._user_row(question, image_urls),
+                        self._user_row(question, attachment_urls),
                         {
                             "role": "assistant",
                             "content": reply,
@@ -585,7 +585,7 @@ class ChatService:
                         started=started,
                         status="truncated" if completion.truncated else "ok",
                         price_per_million=settings.price_per_million,
-                        had_image=bool(request.images),
+                        had_attachment=bool(request.attachments),
                         round_ms=round_durations,
                     )
                 )
@@ -599,7 +599,7 @@ class ChatService:
                     tool_calls=tool_calls_made,
                     usage=usage,
                     truncated=completion.truncated,
-                    image_dropped=image_dropped,
+                    attachment_dropped=attachment_dropped,
                     written=written,
                     question=asked_question,
                     questions=list(asked_questions),
@@ -657,7 +657,7 @@ class ChatService:
         written = append_messages(
             conversation,
             [
-                self._user_row(question, image_urls),
+                self._user_row(question, attachment_urls),
                 {"role": "assistant", "content": reply, "round_no": rounds},
             ],
         )
@@ -689,7 +689,7 @@ class ChatService:
             usage=usage,
             capped=True,
             truncated=truncated,
-            image_dropped=image_dropped,
+            attachment_dropped=attachment_dropped,
             diagnosis=diagnosis,
             written=written,
             question=asked_question,
@@ -820,7 +820,7 @@ class ChatService:
 
     # -- the tools --------------------------------------------------------
 
-    def _user_row(self, question: str, image_urls: list[str]) -> dict[str, Any]:
+    def _user_row(self, question: str, attachment_urls: list[str]) -> dict[str, Any]:
         """The row that holds the reader's question.
 
         It is built in one place, because a turn that writes the
@@ -832,7 +832,7 @@ class ChatService:
             "role": "user",
             "content": question,
             "round_no": 0,
-            "image_url": json.dumps(image_urls),
+            "attachment_urls": json.dumps(attachment_urls),
         }
 
     def _store_attachments(self, request: TurnRequest, user: str) -> tuple[list[str], str]:
@@ -846,17 +846,17 @@ class ChatService:
         second time: the bytes have already been written, and writing
         them twice leaves two files for one picture.
         """
-        if not request.images:
+        if not request.attachments:
             return [], ""
 
         # The addresses and the bytes are parallel lists.  They are used
         # only when they can be matched: an address that belongs to
         # another picture is worse than storing the same bytes twice.
-        pre_stored = paired_addresses(len(request.images), request.image_urls or [])
+        pre_stored = paired_addresses(len(request.attachments), request.attachment_urls or [])
         urls: list[str] = []
-        for index, image in enumerate(request.images):
+        for index, attachments in enumerate(request.attachments):
             reuse = pre_stored[index] if index < len(pre_stored) else ""
-            stored = reuse or self._store_image(image, user)
+            stored = reuse or self._store_attachment(attachments, user)
             if stored:
                 urls.append(stored)
 
@@ -866,15 +866,17 @@ class ChatService:
             # three; a note that says "three were stored" would be a
             # claim about a file that does not exist.
             note = attachment_note(urls)
-            if len(urls) < len(request.images):
-                note += unstored_note(len(request.images) - len(urls), len(request.images))
+            if len(urls) < len(request.attachments):
+                note += unstored_note(
+                    len(request.attachments) - len(urls), len(request.attachments)
+                )
         else:
-            note = unstored_note(len(request.images), len(request.images))
+            note = unstored_note(len(request.attachments), len(request.attachments))
         return urls, note
 
-    def _store_image(self, image: str, user: str) -> str:
+    def _store_attachment(self, attachments: str, user: str) -> str:
         """Store an attached file as a Frappe File and return its URL."""
-        result = store_attached_file(image, user)
+        result = store_attached_file(attachments, user)
         return result["file_url"] if result else ""
 
     def _resolve_conversation(self, request: TurnRequest, user: str, question: str) -> str:
@@ -1457,7 +1459,7 @@ class ChatService:
                 doc.error_class = audit.error_class
             if audit.error_message:
                 doc.error_message = _without_secrets(audit.error_message)[:500]
-            doc.had_image = 1 if audit.had_image else 0
+            doc.had_attachment = 1 if audit.had_attachment else 0
 
             if is_update:
                 doc.save(ignore_permissions=True)

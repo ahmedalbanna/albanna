@@ -109,18 +109,18 @@ def test_to_wire_and_from_wire_agree():
 
 
 def test_to_wire_emits_vision_shape_when_an_image_is_set():
-    image = "data:image/png;base64,AAAA"
-    message = user("describe this", images=[image])
+    attachments = "data:image/png;base64,AAAA"
+    message = user("describe this", attachments=[attachments])
     wire = message.to_wire()
     assert isinstance(wire["content"], list)
     assert wire["content"][0] == {"type": "text", "text": "describe this"}
-    assert wire["content"][1] == {"type": "image_url", "image_url": {"url": image}}
+    assert wire["content"][1] == {"type": "image_url", "image_url": {"url": attachments}}
 
 
 def test_to_wire_carries_several_images():
     first = "data:image/png;base64,AAAA"
     second = "data:image/jpeg;base64,BBBB"
-    wire = user("these two", images=[first, second]).to_wire()
+    wire = user("these two", attachments=[first, second]).to_wire()
     assert [
         part["image_url"]["url"] for part in wire["content"] if part["type"] == "image_url"
     ] == [
@@ -137,33 +137,33 @@ def test_to_wire_emits_plain_string_when_no_image():
 
 
 def test_from_wire_round_trips_a_vision_message():
-    image = "data:image/png;base64,AAAA"
-    original = user("describe this", images=[image])
+    attachments = "data:image/png;base64,AAAA"
+    original = user("describe this", attachments=[attachments])
     parsed = from_wire([original.to_wire()])[0]
     assert parsed.content == "describe this"
-    assert parsed.images == [image]
+    assert parsed.attachments == [attachments]
 
 
 def test_from_wire_round_trips_several_images():
     first = "data:image/png;base64,AAAA"
     second = "data:image/jpeg;base64,BBBB"
-    original = user("these two", images=[first, second])
+    original = user("these two", attachments=[first, second])
     parsed = from_wire([original.to_wire()])[0]
-    assert parsed.images == [first, second]
+    assert parsed.attachments == [first, second]
 
 
 def test_from_wire_handles_text_only_content_in_a_list():
     wire = {"role": "user", "content": [{"type": "text", "text": "hi"}]}
     parsed = Message.from_wire(wire)
     assert parsed.content == "hi"
-    assert parsed.images == []
+    assert parsed.attachments == []
 
 
 def test_as_plain_history_carries_the_image():
-    image = "data:image/png;base64,AAAA"
-    messages = [user("q", images=[image]), assistant("a")]
+    attachments = "data:image/png;base64,AAAA"
+    messages = [user("q", attachments=[attachments]), assistant("a")]
     plain = as_plain_history(messages)
-    assert plain[0].images == [image]
+    assert plain[0].attachments == [attachments]
 
 
 def test_merging_two_questions_keeps_both_attachments():
@@ -171,9 +171,9 @@ def test_merging_two_questions_keeps_both_attachments():
     to either of them is still attached to the message that is sent."""
     first = "data:image/png;base64,AAAA"
     second = "data:image/jpeg;base64,BBBB"
-    merged = sanitize([user("q", images=[first]), user("r", images=[second])])
+    merged = sanitize([user("q", attachments=[first]), user("r", attachments=[second])])
     assert len(merged) == 1
-    assert merged[0].images == [first, second]
+    assert merged[0].attachments == [first, second]
 
 
 # -- the note about where the attachments went ----------------------------

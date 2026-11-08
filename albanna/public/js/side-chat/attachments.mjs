@@ -107,11 +107,11 @@ export async function storeAll(files, store, write) {
  * together and never apart.
  *
  * @param {object[]} files the attachments
- * @returns {{images: string[], imageUrls: string[]}} what the turn carries
+ * @returns {{attachments: string[], attachmentUrls: string[]}} what the turn carries
  */
 export function turnAttachments(files) {
 	return {
-		images: files.map((file) => file.dataUrl || ""),
-		imageUrls: files.map((file) => file.fileUrl || ""),
+		attachments: files.map((file) => file.dataUrl || ""),
+		attachmentUrls: files.map((file) => file.fileUrl || ""),
 	};
 }

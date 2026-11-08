@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from albanna.api.chat import _prepare_image, _read_attachments
+from albanna.api.chat import _prepare_attachments, _read_attachments
 from albanna.core.attachments import (
     DISABLED,
     TOO_LARGE,
@@ -42,65 +42,67 @@ from albanna.services.chat_service import ChatService
 HELLO = "aGVsbG8="
 
 
-def _settings(image_support=True, max_image_size_kb=2048):
-    return SimpleNamespace(image_support=image_support, max_image_size_kb=max_image_size_kb)
+def _settings(attachment_support=True, max_attachment_size_kb=2048):
+    return SimpleNamespace(
+        attachment_support=attachment_support, max_attachment_size_kb=max_attachment_size_kb
+    )
 
 
 def _data_url(mime="image/png", payload=HELLO):
     return f"data:{mime};base64,{payload}"
 
 
-# -- _prepare_image ------------------------------------------------------
+# -- _prepare_attachments ------------------------------------------------------
 
 
 def test_no_attachment_passes_through():
-    images, reason = _prepare_image("", _settings())
-    assert images == []
+    attachments, reason = _prepare_attachments("", _settings())
+    assert attachments == []
     assert reason == ""
 
 
 def test_off_site_says_so_instead_of_dropping_it():
-    """When the operator has turned image support off, the reader is told.
+    """When the operator has turned attachments support off, the reader is told.
 
     The attachment used to be dropped silently, and the model — which
-    received no image — answered "you have not provided one".  That is a
+    received no attachments — answered "you have not provided one".  That is a
     lie the reader could not see through, so the refusal is explicit now.
     """
-    images, reason = _prepare_image(_data_url(), _settings(image_support=False))
-    assert images == []
+    attachments, reason = _prepare_attachments(_data_url(), _settings(attachment_support=False))
+    assert attachments == []
     assert reason == DISABLED
 
 
 def test_a_good_image_passes():
-    images, reason = _prepare_image(_data_url(), _settings())
-    assert images == [_data_url()]
+    attachments, reason = _prepare_attachments(_data_url(), _settings())
+    assert attachments == [_data_url()]
     assert reason == ""
 
 
 def test_undecodable_payload_is_an_error():
-    images, reason = _prepare_image("data:image/png;base64,!!!!", _settings())
-    assert images == []
+    attachments, reason = _prepare_attachments("data:image/png;base64,!!!!", _settings())
+    assert attachments == []
     assert reason == UNREADABLE
 
 
 def test_oversize_is_an_error_naming_the_ceiling():
-    settings = _settings(max_image_size_kb=1)  # 1 KB
+    settings = _settings(max_attachment_size_kb=1)  # 1 KB
     big = "data:image/png;base64," + "A" * 4096
-    images, reason = _prepare_image(big, settings)
-    assert images == []
+    attachments, reason = _prepare_attachments(big, settings)
+    assert attachments == []
     assert reason == TOO_LARGE
 
 
 def test_image_within_the_ceiling_passes():
-    settings = _settings(max_image_size_kb=2048)
-    images, reason = _prepare_image(_data_url(), settings)
+    settings = _settings(max_attachment_size_kb=2048)
+    attachments, reason = _prepare_attachments(_data_url(), settings)
     assert reason == ""
-    assert images
+    assert attachments
 
 
 def test_zero_ceiling_means_no_ceiling():
-    settings = _settings(max_image_size_kb=0)
-    images, reason = _prepare_image(_data_url(), settings)
+    settings = _settings(max_attachment_size_kb=0)
+    attachments, reason = _prepare_attachments(_data_url(), settings)
     assert reason == ""
 
 
@@ -111,16 +113,16 @@ def test_several_attachments_are_carried_whole():
     """A reader may attach more than one file, and each is kept."""
     first = _data_url("image/png")
     second = _data_url("application/pdf")
-    images, reason = _prepare_image(json.dumps([first, second]), _settings())
-    assert images == [first, second]
+    attachments, reason = _prepare_attachments(json.dumps([first, second]), _settings())
+    assert attachments == [first, second]
     assert reason == ""
 
 
 def test_a_single_attachment_still_arrives_as_one():
     """The turn carries a list, but a reader who attached one file did
     not attach a list of one by any choice of theirs."""
-    images, reason = _prepare_image(json.dumps([_data_url()]), _settings())
-    assert len(images) == 1
+    attachments, reason = _prepare_attachments(json.dumps([_data_url()]), _settings())
+    assert len(attachments) == 1
     assert reason == ""
 
 
@@ -128,16 +130,16 @@ def test_one_bad_attachment_stops_the_whole_turn():
     """A turn that carries two files and cannot read one of them must not
     go to the model as a turn with one file: the reader believes the
     model saw both."""
-    images, reason = _prepare_image(
+    attachments, reason = _prepare_attachments(
         json.dumps([_data_url(), "data:image/png;base64,!!!!"]), _settings()
     )
-    assert images == []
+    assert attachments == []
     assert reason == UNREADABLE
 
 
 def test_an_entry_that_is_not_a_string_is_refused():
-    images, reason = _prepare_image(json.dumps([_data_url(), 7]), _settings())
-    assert images == []
+    attachments, reason = _prepare_attachments(json.dumps([_data_url(), 7]), _settings())
+    assert attachments == []
     assert reason == UNREADABLE
 
 
@@ -146,10 +148,10 @@ def test_a_payload_with_no_type_is_refused():
 
     The header is what says what the bytes are, and the file rules are a
     list of types.  A payload with no type is on no list, and a turn that
-    carried one would put a broken image in front of the model.
+    carried one would put a broken attachments in front of the model.
     """
-    images, reason = _prepare_image(HELLO, _settings())
-    assert images == []
+    attachments, reason = _prepare_attachments(HELLO, _settings())
+    assert attachments == []
     assert reason == UNREADABLE
 
 
@@ -159,10 +161,10 @@ def test_a_payload_with_no_type_is_refused():
 def test_both_entry_points_read_the_fields_the_same_way():
     """The turn that answers now and the turn that answers in a worker
     read the same fields, or they disagree about the same question."""
-    images, stored, error = _read_attachments(
+    attachments, stored, error = _read_attachments(
         _data_url(), json.dumps(["/private/files/a.png"]), _settings()
     )
-    assert images == [_data_url()]
+    assert attachments == [_data_url()]
     assert stored == ["/private/files/a.png"]
     assert error == ""
 
@@ -170,8 +172,8 @@ def test_both_entry_points_read_the_fields_the_same_way():
 def test_addresses_that_cannot_be_read_are_read_as_no_addresses():
     """The turn then stores the bytes itself, which is the safe answer
     to a field it does not understand."""
-    images, stored, error = _read_attachments(_data_url(), "[not json", _settings())
-    assert images == [_data_url()]
+    attachments, stored, error = _read_attachments(_data_url(), "[not json", _settings())
+    assert attachments == [_data_url()]
     assert stored == []
     assert error == ""
 
@@ -363,8 +365,8 @@ def test_a_ceiling_of_zero_is_no_ceiling():
 def test_a_type_the_site_does_not_take_stops_the_turn():
     """The turn and the upload endpoint ask the same rule, so a file one
     of them refuses is refused by both."""
-    images, reason = _prepare_image(_data_url("image/svg+xml"), _settings())
-    assert images == []
+    attachments, reason = _prepare_attachments(_data_url("image/svg+xml"), _settings())
+    assert attachments == []
     assert reason == UNSUPPORTED_TYPE
 
 
@@ -372,8 +374,8 @@ def test_storage_rejects_an_unlisted_type():
     """The rejection happens before the database is touched, so an empty
     return proves the file was refused, not that the write failed."""
     svg = _data_url("image/svg+xml", "PHN2Zz48L3N2Zz4=")  # <svg></svg>
-    assert ChatService()._store_image(svg, "someone") == ""
+    assert ChatService()._store_attachment(svg, "someone") == ""
 
 
 def test_storage_rejects_a_bare_payload_with_no_type():
-    assert ChatService()._store_image(HELLO, "someone") == ""
+    assert ChatService()._store_attachment(HELLO, "someone") == ""

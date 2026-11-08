@@ -57,39 +57,39 @@ STREAM_EVENT = "albanna_chat_progress"
 TURN_CACHE_KEY = "albanna:turn:{stream_id}"
 
 
-def _prepare_image(image: str, settings: Any) -> tuple[list[str], str]:
+def _prepare_attachments(attachments: str, settings: Any) -> tuple[list[str], str]:
     """The attachments a question carries, and why they may not be carried.
 
-    ``image`` may be a single base64 data URL or a JSON-encoded list of
-    them.  Returns ``(images, reason)``.  When ``reason`` is empty the
-    images are ready to use; otherwise the turn must not start, and
+    ``attachments`` may be a single base64 data URL or a JSON-encoded list of
+    them.  Returns ``(attachments, reason)``.  When ``reason`` is empty the
+    attachments are ready to use; otherwise the turn must not start, and
     :func:`_read_attachments` says why.
 
     The reason is a code and not a sentence because this function is
     reached by the domain suite, which has no language to say a sentence
     in.  The wording lives with the endpoint that shows it.
     """
-    if not image:
+    if not attachments:
         return [], ""
-    if not getattr(settings, "image_support", False):
-        # The site has images switched off.  Saying so is the whole point:
+    if not getattr(settings, "attachment_support", False):
+        # The site has attachments switched off.  Saying so is the whole point:
         # dropping the attachment quietly leaves the reader believing the
         # model saw a picture it never received, and the model — which
         # really did receive nothing — says exactly that.
         return [], DISABLED
-    max_bytes = int(getattr(settings, "max_image_size_kb", 0) or 0) * 1024
-    return check_attachments(image, max_bytes)
+    max_bytes = int(getattr(settings, "max_attachment_size_kb", 0) or 0) * 1024
+    return check_attachments(attachments, max_bytes)
 
 
 def _read_attachments(
-    image: str, image_urls: str, settings: Any
+    attachments: str, attachment_urls: str, settings: Any
 ) -> tuple[list[str], list[str], str]:
     """The attachments a question carries, and why they may not be carried.
 
-    Returns ``(images, stored_urls, error)``.  ``error`` is empty when the
+    Returns ``(attachments, stored_urls, error)``.  ``error`` is empty when the
     turn may go ahead.
 
-    ``images`` are the bytes, as data URLs, for the model to read.
+    ``attachments`` are the bytes, as data URLs, for the model to read.
     ``stored_urls`` are the addresses the bytes were already written
     under, so the turn reuses the file instead of writing it twice.  A
     field of stored addresses that cannot be read is read as no addresses:
@@ -98,11 +98,11 @@ def _read_attachments(
     """
     from albanna.services.attachments import ceiling_in_kb, refusal_sentence
 
-    images, reason = _prepare_image(image, settings)
+    attachments, reason = _prepare_attachments(attachments, settings)
     if reason:
         return [], [], refusal_sentence(reason, ceiling_in_kb(settings))
-    stored, _readable = read_attachment_list(image_urls)
-    return images, stored, ""
+    stored, _readable = read_attachment_list(attachment_urls)
+    return attachments, stored, ""
 
 
 #: Where a finished turn is parked for the polling fallback.
@@ -195,14 +195,14 @@ def _render_page_context(raw: Any) -> str:
 
 
 @frappe.whitelist()
-@redacted_request_text("question", "page_context", "image")
+@redacted_request_text("question", "page_context", "attachments")
 def ask(
     question: str = "",
     conversation_id: str = "",
     page: str = "",
     page_context: Any = None,
-    image: str = "",
-    image_urls: str = "",
+    attachments: str = "",
+    attachment_urls: str = "",
 ) -> dict[str, Any]:
     """Ask a question and wait for the answer."""
     require_chat_access()
@@ -215,7 +215,7 @@ def ask(
     from albanna.services.settings_service import get_settings
 
     settings = get_settings()
-    images, stored_urls, error = _read_attachments(image, image_urls, settings)
+    attachments, stored_urls, error = _read_attachments(attachments, attachment_urls, settings)
     if error:
         return {"status": "error", "error": error}
 
@@ -225,8 +225,8 @@ def ask(
         page=page or "",
         page_context=_render_page_context(page_context),
         stream=False,
-        images=images,
-        image_urls=stored_urls,
+        attachments=attachments,
+        attachment_urls=stored_urls,
     )
     outcome = ChatService().run(request)
 
@@ -234,14 +234,14 @@ def ask(
 
 
 @frappe.whitelist()
-@redacted_request_text("question", "page_context", "image")
+@redacted_request_text("question", "page_context", "attachments")
 def ask_stream(
     question: str = "",
     conversation_id: str = "",
     page: str = "",
     page_context: Any = None,
-    image: str = "",
-    image_urls: str = "",
+    attachments: str = "",
+    attachment_urls: str = "",
 ) -> dict[str, Any]:
     """Ask a question and get the answer as it happens.
 
@@ -256,7 +256,7 @@ def ask_stream(
     check_turn_allowed(str(frappe.session.user or ""), SURFACE_STREAM)
 
     settings = get_settings()
-    images, stored_urls, error = _read_attachments(image, image_urls, settings)
+    attachments, stored_urls, error = _read_attachments(attachments, attachment_urls, settings)
     if error:
         return {"status": "error", "error": error}
 
@@ -282,8 +282,8 @@ def ask_stream(
             "status": "running",
             "started_at": time.time(),
             "question": question or "",
-            "images": json.dumps(images),
-            "image_urls": json.dumps(stored_urls),
+            "attachments": json.dumps(attachments),
+            "attachment_urls": json.dumps(stored_urls),
             "page_context": _render_page_context(page_context),
         },
         # No ``user=``: the marker is parked in the site's namespace, not

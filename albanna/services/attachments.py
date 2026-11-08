@@ -63,7 +63,7 @@ def ensure_albanna_folder() -> str:
 def max_attachment_bytes() -> int:
     """The site's ceiling on an attachment, in bytes.  Zero means none.
 
-    The setting is named for images because images were the only thing
+    The setting is named for attachments because attachments were the only thing
     that could be attached when it was written; it is the site's only
     ceiling on a file, so it is the one that applies to a PDF too.
     """
@@ -71,7 +71,7 @@ def max_attachment_bytes() -> int:
 
     try:
         settings = get_settings()
-        return int(getattr(settings, "max_image_size_kb", 0) or 0) * 1024
+        return int(getattr(settings, "max_attachment_size_kb", 0) or 0) * 1024
     except Exception:
         logger.exception("Could not read the site's attachment ceiling")
         return 0
@@ -152,7 +152,7 @@ def refusal_sentence(reason: str, max_kb: int = 0) -> str:
     if reason == DISABLED:
         return _("Image attachments are not enabled on this site.")
     if reason == UNSUPPORTED_TYPE:
-        # The types are named, because "only images" is not an answer a
+        # The types are named, because "only attachments" is not an answer a
         # reader can act on: an SVG *is* an image, and an SVG cannot be
         # stored, because it executes as HTML.
         #
@@ -181,6 +181,6 @@ def ceiling_in_kb(settings: Any) -> int:
     set rather than a number converted twice.
     """
     try:
-        return int(getattr(settings, "max_image_size_kb", 0) or 0)
+        return int(getattr(settings, "max_attachment_size_kb", 0) or 0)
     except (AttributeError, TypeError, ValueError):
         return 0

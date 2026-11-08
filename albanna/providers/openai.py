@@ -236,7 +236,7 @@ class OpenAIProvider:
         if config.supports_vision:
             wire_messages = [message.to_wire() for message in messages]
         else:
-            # The model cannot see images: drop them so the request is
+            # The model cannot see attachments: drop them so the request is
             # valid, and the chat service reports the drop to the reader.
             wire_messages = [
                 Message(

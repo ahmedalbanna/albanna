@@ -27,7 +27,7 @@ const KEYS = [
 	"conversation-deleted",
 	"started",
 	"removed",
-	"image-dropped",
+	"attachments-dropped",
 	"dry-run",
 	"escalated",
 	"undone",
