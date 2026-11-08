@@ -48,7 +48,12 @@ from typing import Any
 import frappe
 from frappe import _
 
-from albanna.core.attachments import paired_addresses
+from albanna.core.attachments import (
+    decode_data_url,
+    paired_addresses,
+    pdf_text,
+    readable_attachments,
+)
 from albanna.core.authority import Authority
 from albanna.core.cost import cost_of_turn
 from albanna.core.errors import (
@@ -458,7 +463,13 @@ class ChatService:
             system(build_system_prompt(visible, context, settings.system_prompt))
         ]
         messages.extend(sanitize(as_plain_history(history)))
-        messages.append(user(question, attachments=request.attachments or None))
+        # A PDF's bytes are not a picture.  No provider reads them as an
+        # image part, and sending them costs the tokens for nothing — a
+        # two-megabyte PDF is the better part of a million tokens of
+        # base64, which is a turn that fails or a turn that costs a
+        # fortune.  Its text travels in the attachment note instead, so
+        # the model has the document and not its encoding.
+        messages.append(user(question, attachments=readable_attachments(request.attachments)))
 
         tool_calls_made: list[dict[str, Any]] = []
         rounds = 0
@@ -869,18 +880,25 @@ class ChatService:
         # another picture is worse than storing the same bytes twice.
         pre_stored = paired_addresses(len(request.attachments), request.attachment_urls or [])
         urls: list[str] = []
+        texts: list[str] = []
         for index, attachments in enumerate(request.attachments):
             reuse = pre_stored[index] if index < len(pre_stored) else ""
             stored = reuse or self._store_attachment(attachments, user)
-            if stored:
-                urls.append(stored)
+            if not stored:
+                continue
+            urls.append(stored)
+            # A PDF's text is the only thing about it the model can use,
+            # so it is read here rather than thrown away.  The bytes are
+            # already in hand — the data URL the browser sent — so there
+            # is no file to open and no path to resolve.
+            texts.append(self._pdf_text(attachments) if stored.lower().endswith(".pdf") else "")
 
         if urls:
             # The count is the count that was *stored*.  A turn that sent
             # three pictures and stored two has told the reader it sent
             # three; a note that says "three were stored" would be a
             # claim about a file that does not exist.
-            note = attachment_note(urls)
+            note = attachment_note(urls, texts)
             if len(urls) < len(request.attachments):
                 note += unstored_note(
                     len(request.attachments) - len(urls), len(request.attachments)
@@ -888,6 +906,14 @@ class ChatService:
         else:
             note = unstored_note(len(request.attachments), len(request.attachments))
         return urls, note
+
+    @staticmethod
+    def _pdf_text(data_url: str) -> str:
+        """The text of an attached PDF, or "" when there is none to get."""
+        raw, mime = decode_data_url(data_url)
+        if mime != "application/pdf" or not raw:
+            return ""
+        return pdf_text(raw)
 
     def _store_attachment(self, attachments: str, user: str) -> str:
         """Store an attached file as a Frappe File and return its URL."""

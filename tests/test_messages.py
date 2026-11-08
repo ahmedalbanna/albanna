@@ -197,6 +197,60 @@ def test_one_attachment_is_said_in_the_singular():
     assert "attachment(s)" not in note
 
 
+def test_a_pdfs_text_travels_with_the_note():
+    """A PDF's bytes are not a picture, so its text is the only thing
+    about it the model can use.
+
+    It used to be thrown away: the note said the contents could not be
+    read and the model answered as though it had not seen the document.
+    The text is read now, and it travels here rather than being dropped.
+    """
+    note = attachment_note(["/private/files/a.pdf"], ["Invoice 42\nTotal 100.00"])
+
+    assert "/private/files/a.pdf" in note
+    assert "Invoice 42" in note
+    assert "Total 100.00" in note
+    assert "could not be read" not in note
+
+
+def test_a_pdf_with_no_text_says_so_rather_than_going_quiet():
+    """A scanned document is pictures of words, and no library reads
+    those without OCR.
+
+    The model is told, because a reader who attached a contract and got
+    an answer that ignored it has been answered about a document nobody
+    read — the same "say what it could not read" property the app ships
+    for refused reads.
+    """
+    note = attachment_note(["/private/files/a.pdf"], [""])
+
+    assert "/private/files/a.pdf" in note
+    assert "could not be read" in note
+    assert "Do not describe what it says." in note
+
+
+def test_a_picture_carries_no_text_of_its_own():
+    """The provider is already looking at the picture; there is nothing
+    to say about it that the picture does not say."""
+    note = attachment_note(["/private/files/a.png"], [""])
+
+    assert "/private/files/a.png" in note
+    assert "could not be read" not in note
+    assert "The text of" not in note
+
+
+def test_a_pdf_among_pictures_is_described_on_its_own():
+    """One attachment's text does not become every attachment's."""
+    note = attachment_note(
+        ["/private/files/a.png", "/private/files/b.pdf"],
+        ["", "Page one of the contract"],
+    )
+
+    assert "Page one of the contract" in note
+    assert "The text of /private/files/b.pdf" in note
+    assert "The text of /private/files/a.png" not in note
+
+
 def test_the_note_about_what_was_not_kept_says_how_many():
     """The model is told how many of the attachments it was given are
     unusable, so it does not try to use them."""
@@ -225,3 +279,18 @@ def test_the_note_is_text_and_not_an_image_part():
     note = attachment_note(["/private/files/a.png"])
     assert "image_url" not in note
     assert "/private/files/a.png" in note
+
+
+def test_the_history_claims_nothing_about_a_pdf_it_never_looked_at():
+    """``None`` and an empty entry mean different things.
+
+    The history is rebuilt from stored URLs alone, and it does not know
+    whether a PDF's text was readable.  Saying "could not be read" there
+    would be a claim with nothing behind it — and a claim the model
+    repeats in the next turn's answer.
+    """
+    note = attachment_note(["/private/files/a.pdf"])
+
+    assert "/private/files/a.pdf" in note
+    assert "could not be read" not in note
+    assert "The text of" not in note

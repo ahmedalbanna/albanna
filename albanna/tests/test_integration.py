@@ -2044,6 +2044,196 @@ class TestTheSettingsRefuseNonsense(AlbannaTestCase):
 
 
 @pytest.mark.integration
+class TestAnAttachedPdf(AlbannaTestCase):
+    """A PDF's text reaches the model, and its bytes do not.
+
+    A PDF's bytes are not a picture: no provider reads them as an image
+    part, and sending them costs the tokens for nothing — a
+    two-megabyte PDF is the better part of a million tokens of base64,
+    which is a turn that fails or a turn that costs a fortune.  Its text
+    is the only thing about it the model can use, and it used to be
+    thrown away: the note said the contents could not be read and the
+    model answered as though it had not seen the document.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.reader = self._make_user("albanna.test.pdf@albanna.dev", "Sales User")
+
+    def _make_user(self, email: str, role: str) -> str:
+        if not frappe.db.exists("User", email):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Albanna"
+                user.last_name = "Pdf"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        user = frappe.get_doc("User", email)
+        user.flags.ignore_permissions = True
+        user.add_roles(role, "Albanna User")
+        return email
+
+    def _as(self, email: str):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _pdf(self, line: bytes) -> str:
+        """A one-page PDF, as the data URL the browser would send."""
+        import base64
+        import io
+
+        objects = [
+            b"<</Type/Catalog/Pages 2 0 R>>",
+            b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
+            b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R"
+            b"/Resources<</Font<</F1 5 0 R>>>>>>",
+            b"<</Length " + str(len(line) + 34).encode() + b">>stream\n"
+            b"BT /F1 12 Tf 20 100 Td (" + line + b") Tj ET\nendstream",
+            b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
+        ]
+        out = io.BytesIO()
+        out.write(b"%PDF-1.4\n")
+        offsets = []
+        for index, body in enumerate(objects, start=1):
+            offsets.append(out.tell())
+            out.write(f"{index} 0 obj".encode() + body + b"endobj\n")
+        xref_at = out.tell()
+        size = len(objects) + 1
+        out.write(f"xref\n0 {size}\n".encode())
+        out.write(b"0000000000 65535 f \n")
+        for offset in offsets:
+            out.write(f"{offset:010d} 00000 n \n".encode())
+        out.write(f"trailer<</Size {size}/Root 1 0 R>>\nstartxref\n{xref_at}\n%%EOF\n".encode())
+        return "data:application/pdf;base64," + base64.b64encode(out.getvalue()).decode("ascii")
+
+    def _run(self, attachments):
+        """Run a turn carrying *attachments*, and return what the model saw."""
+        from albanna.core.messages import Message
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.chat_service import ChatService, TurnRequest
+
+        seen = {}
+
+        def fake_complete(config, messages, tools, emit, stream):
+            seen["messages"] = messages
+            return Completion(
+                message=Message(role="assistant", content="The total is 100.00."),
+                provider="openai",
+                model="a-model",
+                usage=Usage(input_tokens=10, output_tokens=5),
+            )
+
+        service = ChatService()
+        service._complete = fake_complete
+        outcome = service.run(
+            TurnRequest(
+                question="what is the total?",
+                page="test|pdf|",
+                attachments=attachments,
+            )
+        )
+        # The *last* user message is this turn's.  The ones before it are
+        # the thread's history, and they carry no attachments of their own
+        # — asserting on them would be asserting on the past.
+        #
+        # The attachment note travels in the *system* message's page
+        # context, because that is where the page description goes and the
+        # note is part of it.  So the text is looked for there and the
+        # bytes are looked for on the user message.
+        messages = seen.get("messages") or []
+        users = [m for m in messages if m.role == "user"]
+        systems = [m for m in messages if m.role == "system"]
+        return outcome, (users[-1] if users else None), (systems[0] if systems else None)
+
+    def test_the_pdfs_text_reaches_the_model(self):
+        self._as(self.reader)
+        outcome, current, system = self._run([self._pdf(b"Invoice 42, total 100.00")])
+
+        self.assertTrue(outcome.ok, outcome.error)
+        self.assertIsNotNone(current, "the turn sent no user message")
+        self.assertIsNotNone(system, "the turn sent no system message")
+        self.assertIn(
+            "Invoice 42, total 100.00",
+            str(system.content),
+            "the PDF's text never reached the model",
+        )
+        # The note's own sentence, not the system prompt's: the prompt
+        # tells the model to say when a tool "could not read" something,
+        # and matching that phrase would match the instruction rather
+        # than the claim.
+        self.assertNotIn(
+            "it is a scanned or image-only document",
+            str(system.content),
+            "the model was told a document it can read is unreadable",
+        )
+
+    def test_the_pdfs_bytes_do_not_reach_the_model(self):
+        """The bytes are not a picture, and sending them costs the context.
+
+        A two-megabyte PDF is the better part of a million tokens of
+        base64.  The assertion is on the *shape* of the message rather
+        than on its length, because the point is that no image part was
+        built at all.
+        """
+        self._as(self.reader)
+        outcome, current, _system = self._run([self._pdf(b"Invoice 42, total 100.00")])
+
+        self.assertTrue(outcome.ok, outcome.error)
+        self.assertIsNotNone(current, "the turn sent no user message")
+        self.assertEqual(
+            current.attachments,
+            [],
+            "the PDF's bytes were sent to the provider as a picture",
+        )
+
+    def test_a_picture_still_reaches_the_model(self):
+        """The filter drops PDFs and nothing else."""
+        self._as(self.reader)
+        png = "data:image/png;base64,aGVsbG8="
+        outcome, current, _system = self._run([png])
+
+        self.assertTrue(outcome.ok, outcome.error)
+        self.assertIsNotNone(current, "the turn sent no user message")
+        self.assertEqual(
+            current.attachments,
+            [png],
+            "a picture was dropped on its way to the provider",
+        )
+
+    def test_the_history_does_not_claim_a_pdf_it_never_looked_at(self):
+        """The history is rebuilt from stored URLs, and it does not know
+        whether a PDF's text was readable.
+
+        Saying "could not be read" there would be a claim with nothing
+        behind it — and a claim the model repeats in the next turn's
+        answer.  The turn that attached the file looked; the turns after
+        it did not, and they say nothing.
+        """
+        self._as(self.reader)
+        self._run([self._pdf(b"Invoice 42, total 100.00")])
+
+        from albanna.services.conversation_service import load_messages
+
+        conversation = frappe.db.get_value("Albanna Conversation", {"page": "test|pdf|"}, "name")
+        self.assertTrue(conversation, "the turn stored no conversation")
+
+        history = load_messages(conversation)
+        text = "\n".join(str(m.content) for m in history)
+
+        self.assertNotIn(
+            "could not be read",
+            text,
+            "the history claimed a PDF was unreadable without looking at it",
+        )
+
+
 class TestATruncatedAnswer(AlbannaTestCase):
     """An answer that was cut off says so.
 

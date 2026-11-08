@@ -34,12 +34,55 @@ from albanna.core.attachments import (
     check_attachments,
     decode_data_url,
     paired_addresses,
+    pdf_text,
     read_attachment_list,
+    readable_attachments,
 )
 from albanna.services.chat_service import ChatService
 
 # "hello" in base64.
 HELLO = "aGVsbG8="
+
+
+def _pdf_bytes(line: bytes) -> bytes:
+    """The smallest PDF that holds one line of text.
+
+    Built by hand rather than shipped as a fixture: a binary blob in a
+    test file is a blob nobody can read, and the point of the test is
+    that the text comes *out*, not that a particular file parses.
+    """
+    objects = [
+        b"<</Type/Catalog/Pages 2 0 R>>",
+        b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
+        b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R"
+        b"/Resources<</Font<</F1 5 0 R>>>>>>",
+        b"<</Length " + str(len(line) + 34).encode() + b">>stream\n"
+        b"BT /F1 12 Tf 20 100 Td (" + line + b") Tj ET\nendstream",
+        b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
+    ]
+
+    import io
+
+    out = io.BytesIO()
+    out.write(b"%PDF-1.4\n")
+    offsets = []
+    for index, body in enumerate(objects, start=1):
+        offsets.append(out.tell())
+        out.write(f"{index} 0 obj".encode() + body + b"endobj\n")
+    xref_at = out.tell()
+    size = len(objects) + 1
+    out.write(f"xref\n0 {size}\n".encode())
+    out.write(b"0000000000 65535 f \n")
+    for offset in offsets:
+        out.write(f"{offset:010d} 00000 n \n".encode())
+    out.write(f"trailer<</Size {size}/Root 1 0 R>>\nstartxref\n{xref_at}\n%%EOF\n".encode())
+    return out.getvalue()
+
+
+def _pdf_data_url(line: bytes) -> str:
+    import base64
+
+    return "data:application/pdf;base64," + base64.b64encode(_pdf_bytes(line)).decode("ascii")
 
 
 def _settings(attachment_support=True, max_attachment_size_kb=2048):
@@ -379,3 +422,62 @@ def test_storage_rejects_an_unlisted_type():
 
 def test_storage_rejects_a_bare_payload_with_no_type():
     assert ChatService()._store_attachment(HELLO, "someone") == ""
+
+
+# -- a PDF's text ----------------------------------------------------------
+
+
+def test_a_pdfs_text_comes_out():
+    """A PDF's bytes are not a picture, so its text is the only thing
+    about it the model can use — and it used to be thrown away."""
+    assert pdf_text(_pdf_bytes(b"Invoice 42, total 100.00")) == "Invoice 42, total 100.00"
+
+
+def test_a_pdf_with_no_text_comes_back_empty_rather_than_raising():
+    """A scanned document is pictures of words, and no library reads
+    those without OCR.  Empty is the honest answer, and a turn that dies
+    because a reader attached a scan is a turn that answers nothing."""
+    assert pdf_text(b"") == ""
+    assert pdf_text(b"this is not a pdf at all") == ""
+
+
+def test_a_pdfs_text_is_bounded():
+    """The bound is on what the *model* is given, because that is what
+    costs tokens and what fills the context."""
+    from albanna.core.attachments import PDF_TEXT_CEILING
+
+    long_line = b"x" * (PDF_TEXT_CEILING * 2)
+    text = pdf_text(_pdf_bytes(long_line))
+
+    assert len(text) <= PDF_TEXT_CEILING
+    assert text  # and it is not empty: the ceiling truncates, it does not refuse
+
+
+def test_a_pdf_is_not_sent_to_the_provider_as_a_picture():
+    """A two-megabyte PDF is the better part of a million tokens of
+    base64, which is a turn that fails or a turn that costs a fortune.
+
+    No provider reads a PDF as an image part, so sending one buys
+    nothing and costs the context.
+    """
+    assert readable_attachments([_pdf_data_url(b"a contract")]) is None
+
+
+def test_a_picture_is_still_sent():
+    """The filter drops PDFs and nothing else: a guard that dropped every
+    attachment would be a guard that made the tool useless."""
+    png = _data_url()
+    assert readable_attachments([png]) == [png]
+
+
+def test_a_picture_and_a_pdf_leave_the_picture_behind():
+    png = _data_url()
+    assert readable_attachments([png, _pdf_data_url(b"a contract")]) == [png]
+
+
+def test_nothing_attached_is_none_rather_than_an_empty_list():
+    """``None`` is what "no attachment" looks like on the wire: a message
+    with an empty list of parts is a message with a part that has
+    nothing in it."""
+    assert readable_attachments([]) is None
+    assert readable_attachments(None) is None

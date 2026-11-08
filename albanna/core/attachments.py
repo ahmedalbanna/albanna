@@ -51,6 +51,7 @@ not in the next is a rule the reader cannot predict.
 from __future__ import annotations
 
 import base64
+import io
 import json
 from dataclasses import dataclass
 from typing import Any
@@ -180,6 +181,82 @@ def read_attachment_list(value: Any) -> tuple[list[str], bool]:
     if isinstance(parsed, str):
         return ([parsed] if parsed else []), True
     return [], False
+
+
+#: How much of a PDF's text is carried into the turn, in characters.
+#:
+#: A PDF's text is not bounded by the file's size: a scanned contract is a
+#: hundred pages of nothing and a data sheet is two pages of everything.
+#: The bound is on what the *model* is given, because that is what costs
+#: tokens and what fills the context — and a document whose first pages
+#: say what it is worth more than one whose last pages do.
+PDF_TEXT_CEILING = 12000
+
+
+def pdf_text(data: bytes) -> str:
+    """The text of a PDF, or ``""`` when there is none to get.
+
+    ``pypdf`` is a dependency of Frappe itself, so it is on every bench
+    this app runs on and nothing new is installed for this.
+
+    A PDF that yields no text is not an error.  A scanned document is
+    pictures of words, and no library reads those without OCR — so the
+    answer is empty and the caller says so, rather than letting the model
+    answer as though it had read the document.  That is the same "say
+    what it could not read" property the app already ships for refused
+    reads.
+
+    Every failure is the same answer.  A malformed PDF, an encrypted one,
+    a library that changed its shape: all of them mean "no text", and
+    none of them is worth failing a turn over — the reader attached a
+    document, and the turn still has a question to answer.
+    """
+    if not data:
+        return ""
+
+    try:
+        import pypdf
+
+        reader = pypdf.PdfReader(io.BytesIO(data))
+        parts = [(page.extract_text() or "") for page in reader.pages]
+    except Exception:
+        return ""
+
+    text = "\n".join(part.strip() for part in parts if part and part.strip()).strip()
+    if len(text) > PDF_TEXT_CEILING:
+        text = text[:PDF_TEXT_CEILING].rstrip()
+    return text
+
+
+def readable_attachments(data_urls: list[str]) -> list[str] | None:
+    """The attachments a provider can actually read, or ``None``.
+
+    A PDF is dropped.  Its bytes are not a picture: no provider reads
+    them as an image part, and sending them costs the tokens for nothing
+    — a two-megabyte PDF is the better part of a million tokens of
+    base64, which is a turn that fails or a turn that costs a fortune.
+    Its text travels in the attachment note instead, so the model has the
+    document and not its encoding.
+
+    ``None`` rather than an empty list, because that is what "no
+    attachment" looks like on the wire: a message with an empty list of
+    parts is a message with a part that has nothing in it.
+    """
+    kept = [url for url in (data_urls or []) if not _is_pdf(url)]
+    return kept or None
+
+
+def _is_pdf(data_url: str) -> bool:
+    """Whether a data URL claims to be a PDF.
+
+    The claim is the browser's, and it is the same claim
+    :func:`check_attachment` already validated against the site's list —
+    so it is the one thing about a data URL this app trusts.
+    """
+    if not isinstance(data_url, str):
+        return False
+    header = data_url.partition(",")[0]
+    return header[len("data:") :].split(";")[0].strip().lower() == "application/pdf"
 
 
 def decode_data_url(data_url: str) -> tuple[bytes, str]:

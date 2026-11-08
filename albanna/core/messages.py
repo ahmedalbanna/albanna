@@ -49,7 +49,7 @@ Role = Literal["system", "user", "assistant", "tool"]
 TOOL_CALL_TYPE = "function"
 
 
-def attachment_note(urls: list[str]) -> str:
+def attachment_note(urls: list[str], texts: list[str] | None = None) -> str:
     """The note that tells the model where the attachments went.
 
     The bytes travel with the turn; the file is what outlives it.  A
@@ -62,30 +62,62 @@ def attachment_note(urls: list[str]) -> str:
     stored file's address is a path on this site
     (``/private/files/albanna-8f2a1c.png``), and a vision provider
     cannot read a path it has no way to fetch.
+
+    *texts* is parallel to *urls*: the text a PDF's pages hold, for the
+    attachments that have any.  A PDF's bytes are not a picture — no
+    provider reads them as an image part — so its text is the only thing
+    about it the model can use, and it travels here rather than being
+    thrown away.
+
+    ``None`` and an empty entry mean different things, and the difference
+    is the whole point:
+
+    * ``None`` — nobody looked.  The history is rebuilt from stored URLs
+      alone, and it does not know whether a PDF's text was readable.  It
+      says nothing about it, because a claim it cannot support is a lie
+      the model will repeat.
+    * ``""`` — somebody looked and there was nothing to get.  A scanned
+      document is pictures of words, and the model is told so rather than
+      left to guess.
     """
     if not urls:
         return ""
+
+    looked = texts is not None
+    extracted = list(texts or [])
     listed = ", ".join(urls)
-    # A PDF is stored and addressed like any other file, but no provider
-    # reads its bytes: it travels as an image part that nothing parses.
-    # Saying so here keeps the model from answering as though it had read
-    # the document — the same "say what it could not read" property the
-    # app ships for refused reads.
-    has_pdf = any(url.lower().endswith(".pdf") for url in urls)
-    caveat = (
-        " A PDF's contents could not be read; only its address is available, "
-        "so do not describe what it says."
-        if has_pdf
-        else ""
-    )
+
+    # What the model may read of each attachment, as a sentence per
+    # attachment.  A PDF with text says what it holds; a PDF that was
+    # looked at and yielded nothing says it could not be read; anything
+    # else says nothing, because there is nothing to say about a picture
+    # the provider is already looking at.
+    carried = []
+    for index, url in enumerate(urls):
+        if not url.lower().endswith(".pdf"):
+            continue
+        text = extracted[index] if index < len(extracted) else ""
+        if text:
+            carried.append(f"The text of {url} follows.\n\n{text}")
+        elif looked:
+            carried.append(
+                f"The contents of {url} could not be read — it is a scanned or "
+                "image-only document, and only its address is available. Do not "
+                "describe what it says."
+            )
+
+    body = ""
+    if carried:
+        body = "\n\n" + "\n\n".join(carried)
+
     if len(urls) == 1:
         return (
             f"\n\n1 attachment was stored as a Frappe File: {listed}. "
-            "If the user asks to set it as a document's field, use its URL as the value." + caveat
+            "If the user asks to set it as a document's field, use its URL as the value." + body
         )
     return (
         f"\n\n{len(urls)} attachments were stored as Frappe Files: {listed}. "
-        "If the user asks to set one as a document's field, use its URL as the value." + caveat
+        "If the user asks to set one as a document's field, use its URL as the value." + body
     )
 
 
