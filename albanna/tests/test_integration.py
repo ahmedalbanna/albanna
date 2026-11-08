@@ -800,6 +800,57 @@ class TestTheConversationSearch(AlbannaTestCase):
 
         self.assertEqual([c["name"] for c in found], [wanted])
 
+    def test_a_search_matches_the_words_the_drawer_shows_for_an_untitled_thread(self):
+        """The search matches the display title, not the stored sentinel.
+
+        A thread with no title of its own is called whatever the reader's
+        language calls it.  The doctype stores an English sentinel, and
+        the search used to match that — so a reader whose drawer showed
+        them "محادثة جديدة" and who searched for exactly those words got
+        nothing, while the same reader searching the English sentinel
+        found the thread.  The placeholder is a storage detail and not a
+        title, and the search was the one place that treated it as one.
+
+        The test forces the reader's language so the translation is the
+        one the drawer shows them, and asserts the search finds the
+        thread by it.
+        """
+        self._as(self.reader)
+        # Left untitled on purpose: the doctype stores its sentinel for a
+        # thread with no title of its own, and that sentinel is what the
+        # search used to match.  Setting the title to "" would be a state
+        # the API cannot produce — ``rename_conversation`` refuses an
+        # empty one — and would test a case that does not exist.
+        page = f"test|search|{frappe.generate_hash(length=8)}|"
+        untitled = ensure_conversation(self.reader, page)
+        titled = self._conversation("Open orders for Acme")
+
+        # The reader's language, not the site's default: the drawer shows
+        # them the words in *their* language, and the search has to match
+        # those.  It stays set for the search itself, because the search
+        # reads the same translation the drawer does.
+        former_lang = frappe.local.lang
+        frappe.local.lang = "ar"
+        try:
+            placeholder = frappe._("New conversation")
+            if placeholder == "New conversation":
+                self.skipTest("this site has no Arabic translation of the placeholder")
+
+            found = list_conversations(limit=30, search=placeholder)["conversations"]
+        finally:
+            frappe.local.lang = former_lang
+
+        self.assertIn(
+            untitled,
+            [c["name"] for c in found],
+            "the search did not match the words the drawer shows",
+        )
+        self.assertNotIn(
+            titled,
+            [c["name"] for c in found],
+            "the search matched a titled thread by the placeholder",
+        )
+
     def test_a_search_for_a_percent_sign_returns_nothing(self):
         """The regression: ``%`` is a wildcard, and a reader may type one.
 

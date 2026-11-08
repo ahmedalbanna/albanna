@@ -547,9 +547,21 @@ def list_conversations(user: str, limit: int = 20, offset: int = 0, search: str 
         # every database.  The doubled backslash is the SQL literal for
         # one backslash — the value itself is a bound parameter, so it
         # never passes through the string parser.
-        where += r" and (title like %s escape '\\' or page like %s escape '\\')"
-        like = _like_pattern(search)
-        params.extend([like, like])
+        #
+        # The title is read as the *display* title: a thread with no
+        # title of its own is called whatever the reader's language calls
+        # it, and the search has to match that.  Matching the stored
+        # sentinel instead meant an Arabic reader who searched for
+        # "محادثة جديدة" — the words the drawer actually shows them — got
+        # nothing, while the same reader searching the English sentinel
+        # found the thread.  The placeholder is a storage detail and not
+        # a title, and the search was the one place that treated it as
+        # one.
+        placeholder = _(PLACEHOLDER_TITLE)
+        where += r" and (if(title = %s, %s, title) like %s escape '\\' or page like %s escape '\\')"
+        params.extend(
+            [PLACEHOLDER_TITLE, placeholder, _like_pattern(search), _like_pattern(search)]
+        )
 
     # The SQL is assembled from a fixed skeleton plus a where-clause that is
     # itself built from constants (see above); no user value is interpolated
