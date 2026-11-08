@@ -25,21 +25,14 @@ function __(text, args) {
 	return String(text);
 }
 
-/** The longest question that may be sent, in characters.
+/** The question's ceiling when the site has not published one.
  *
- * The two neighbouring fields are capped — the conversation title at
- * 120, the recent-questions list at 300 — and both are *display*
- * fields.  The question is the primary input, and it is the one place a
- * reader legitimately pastes something long: a stack trace, a list of
- * invoice numbers, a query.  A cap that refuses a pasted stack trace is
- * a cap that gets worked around by pasting less and asking worse
- * questions.
- *
- * 4000 is roughly a thousand tokens: room for one stack trace, and
- * small enough that a runaway paste cannot quietly eat the turn's whole
- * context.  The server enforces the same number, because the composer
- * is one client and the endpoint is the door. */
-export const MAX_QUESTION_LENGTH = 4000;
+ * A fallback and not the rule: the site publishes its own number through
+ * ``options()``, the same way it publishes the attachable types, and the
+ * composer uses that.  This is what a panel rendered before the site
+ * answered falls back to — a bound that is this one rather than no bound
+ * at all. */
+export const DEFAULT_QUESTION_LENGTH = 4000;
 
 /**
  * Whether a question may be sent, and the question that would be sent.
@@ -52,7 +45,8 @@ export const MAX_QUESTION_LENGTH = 4000;
  *     a refusal the reader cannot act on is a refusal that fails;
  *   - otherwise the trimmed question is sent.
  *
- * @param {{modelValue?: string, files?: any[], busy?: boolean, canChat?: boolean}} input
+ * @param {{modelValue?: string, files?: any[], busy?: boolean, canChat?: boolean,
+ *          maxLength?: number}} input
  * @returns {{ok: boolean, question: string, reason: string, length: number}}
  */
 export function submitDecision(input) {
@@ -68,16 +62,12 @@ export function submitDecision(input) {
 	if (!question && !hasFile) {
 		return { ok: false, question: "", reason: "empty", length: 0 };
 	}
+	const ceiling = Number(data.maxLength) > 0 ? Number(data.maxLength) : DEFAULT_QUESTION_LENGTH;
 	// The length is the *trimmed* length: leading whitespace is not part
 	// of the question, and a reader who pasted with an indent should not
 	// be charged for it.
-	if (question.length > MAX_QUESTION_LENGTH) {
-		return {
-			ok: false,
-			question: "",
-			reason: "too-long",
-			length: question.length,
-		};
+	if (question.length > ceiling) {
+		return { ok: false, question: "", reason: "too-long", length: question.length };
 	}
 	return { ok: true, question, reason: "", length: question.length };
 }

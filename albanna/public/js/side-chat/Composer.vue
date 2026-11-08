@@ -7,7 +7,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { checkAttachment, makeAttachment, REFUSED_SIZE, storeAll } from "./attachments.mjs";
 import { serverMessage } from "./errors.mjs";
 import { MAX_SESSION_MS, mergeTranscript, readResults, voiceErrorText } from "./voice.mjs";
-import { MAX_QUESTION_LENGTH, submitDecision } from "./submit.mjs";
+import { DEFAULT_QUESTION_LENGTH, submitDecision } from "./submit.mjs";
 
 const props = defineProps({
 	modelValue: { type: String, default: "" },
@@ -26,6 +26,12 @@ const props = defineProps({
 	//: browser that accepts a file the server would refuse is a reader
 	//: who waited for an upload that was going to be refused.
 	attachableTypes: { type: Array, default: () => [] },
+	//: The question's ceiling, as the site publishes it.  The browser
+	//: enforces it so the reader is told before they send, and the
+	//: endpoint enforces the same number because the browser is one
+	//: client.  Published rather than kept here for the same reason the
+	//: types are: two copies of a number is two numbers that drift.
+	maxQuestionLength: { type: Number, default: 0 },
 });
 
 const emit = defineEmits(["update:modelValue", "update:files", "send", "stop"]);
@@ -212,6 +218,7 @@ function submit() {
 		files: props.files,
 		busy: props.busy,
 		canChat: props.canChat,
+		maxLength: ceiling.value,
 	});
 	if (!decision.ok) {
 		// The refusal is shown rather than swallowed.  A reader who
@@ -220,7 +227,7 @@ function submit() {
 		if (decision.reason === "too-long") {
 			noticeText.value = __("Your question is {0} characters; the limit is {1}.", [
 				decision.length,
-				MAX_QUESTION_LENGTH,
+				ceiling.value,
 			]);
 		}
 		return;
@@ -244,16 +251,21 @@ function onAction() {
 }
 
 const noticeText = ref("");
+//: The ceiling this composer enforces: the site's own number when it
+//: published one, and the module's default otherwise.  A panel rendered
+//: before the site answered still has a bound — it just has this one.
+const ceiling = computed(() =>
+	props.maxQuestionLength > 0 ? props.maxQuestionLength : DEFAULT_QUESTION_LENGTH,
+);
+
 //: How many characters the question has, and whether it is near the
 //: ceiling.  Shown only near the ceiling: a counter on every question is
 //: noise, and a counter that appears when it matters is the thing that
 //: stops the refusal being a surprise.  The reader who pastes a stack
 //: trace sees the number climb and knows to attach it as a file instead.
 const questionLength = computed(() => String(props.modelValue || "").trim().length);
-const nearLimit = computed(
-	() => questionLength.value > MAX_QUESTION_LENGTH * 0.8,
-);
-const overLimit = computed(() => questionLength.value > MAX_QUESTION_LENGTH);
+const nearLimit = computed(() => questionLength.value > ceiling.value * 0.8);
+const overLimit = computed(() => questionLength.value > ceiling.value);
 const uploading = ref(false);
 // Whether a file is being dragged over the composer's field.  The field
 // is the drop target, and without a visible affordance the reader cannot
@@ -711,7 +723,7 @@ async function onChooseFile() {
 				class="albanna-chat__hint-count"
 				:class="{ 'albanna-chat__hint-count--over': overLimit }"
 			>
-				{{ __("{0} of {1} characters", [questionLength, MAX_QUESTION_LENGTH]) }}
+				{{ __("{0} of {1} characters", [questionLength, ceiling]) }}
 			</span>
 		</p>
 	</div>

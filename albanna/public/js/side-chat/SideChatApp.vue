@@ -3308,6 +3308,7 @@ onBeforeUnmount(() => {
 			:attachments-support="config && config.attachment_support"
 			:max-attachments-size-kb="config && config.max_attachment_size_kb"
 			:attachable-types="(config && config.attachable_types) || []"
+			:max-question-length="(config && config.max_question_length) || 0"
 			:busy="busy"
 			:can-chat="canChat"
 			@update:files="attachedFiles = $event"

@@ -20,6 +20,7 @@ from typing import Any
 import frappe
 from frappe import _
 
+from albanna.api.chat import MAX_QUESTION_LENGTH
 from albanna.core.attachments import (
     ATTACHABLE_TYPES,
     DISABLED,
@@ -127,6 +128,13 @@ def options() -> dict[str, Any]:
         "tools": tools,
         "attachment_support": settings.attachment_support,
         "max_attachment_size_kb": settings.max_attachment_size_kb,
+        # The question's ceiling, published for the same reason the
+        # attachable types are: the browser enforces it so the reader is
+        # told before they send, and the endpoint enforces it because the
+        # browser is one client.  Two copies of the number is two numbers
+        # that drift, and a composer that lets a reader type more than the
+        # door will take is a composer that wastes their time.
+        "max_question_length": MAX_QUESTION_LENGTH,
         # The types the site attaches, published so the browser does not
         # keep a copy of them.  A browser that keeps a copy is a browser
         # whose copy goes stale, and a stale copy is a browser that
