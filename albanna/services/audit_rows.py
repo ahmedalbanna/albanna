@@ -247,7 +247,7 @@ def lock_row(row_name: str) -> bool:
 
     try:
         rows = frappe.db.sql(
-            f"select name from `tab{LOG_DOCTYPE}` where name = %s for update",
+            "select name from `tabAlbanna Chat Log` where name = %s for update",
             (row_name,),
         )
     except Exception:

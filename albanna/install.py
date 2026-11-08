@@ -58,7 +58,6 @@ def _ensure_role() -> None:
     role.desk_access = 1
     role.flags.ignore_permissions = True
     role.insert(ignore_if_duplicate=True)
-    frappe.db.commit()
 
 
 #:

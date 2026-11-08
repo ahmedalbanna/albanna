@@ -41,11 +41,11 @@ def usage_summary() -> dict[str, Any]:
     start = _month_start()
 
     rows = frappe.db.sql(
-        f"""
+        """
         select provider, model, `user`, status,
                input_tokens, output_tokens, cost, provider_cost,
                estimated, duration_ms
-        from `tab{LOG_DOCTYPE}`
+        from `tabAlbanna Chat Log`
         where creation >= %s
           and status not in ('running', 'interrupted')
         """,

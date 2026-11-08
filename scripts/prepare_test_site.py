@@ -372,7 +372,7 @@ def main() -> int:
         report_customer_meta("after the probe and a cache clear")
         ensure_submitted_invoice(company, customer, item)
         ensure_provider_key()
-        frappe.db.commit()
+        frappe.db.commit()  # standalone script: no framework commit at teardown # nosemgrep
     except Exception:
         frappe.db.rollback()
         raise

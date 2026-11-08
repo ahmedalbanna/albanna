@@ -15,6 +15,26 @@
 // above, and unsafe for any other reason.  If this module ever changes to
 // build HTML from the text without escaping it first, it becomes an
 // injection point.
+//
+// Pure: no `frappe`, no DOM, so it is tested under plain node.  The one
+// thing it needs from the browser is the translator, and it takes it the
+// way `submit.mjs` does — from the global when there is one, and as the
+// identity when there is not.  A table's copy button is a sentence the
+// reader reads, so it is translated like every other one; a module that
+// hardcoded English would be a module that ships English to an Arabic
+// reader.
+
+/** Frappe's translator, or the identity under node.
+ *
+ * @param {string} text the sentence
+ * @returns {string} the sentence, in the reader's language when there is one */
+function __(text) {
+	const translate =
+		typeof globalThis !== "undefined" && typeof globalThis.__ === "function"
+			? globalThis.__
+			: null;
+	return translate ? translate(text) : String(text);
+}
 
 /**
  * Escape the five characters that matter in HTML.
@@ -82,11 +102,21 @@ function isSeparatorRow(line) {
  * a date breaks as `2026-` / `06-15`.  A table that cannot be read is
  * worse than one that scrolls.
  *
+ * The wrapper carries the table's index, and a copy button sits beside
+ * it.  An answer with two tables used to offer one button that took the
+ * *first* table — whichever one the model happened to write first — so
+ * the second was unreachable.  The index is what lets the button find
+ * its own table again: the handler re-reads the markdown rather than
+ * carrying the rows in the DOM, because a data attribute holding a
+ * table's worth of TSV is a data attribute holding a table's worth of
+ * escaping problems.
+ *
  * @param {string[]} lines the table's lines, the first two being the header
  *   and the separator
+ * @param {number} index which table of the answer this is, from zero
  * @returns {string} the table's HTML
  */
-function renderTable(lines) {
+function renderTable(lines, index) {
 	const header = tableCells(lines[0]);
 	const rows = lines.slice(2).map(tableCells);
 
@@ -95,7 +125,22 @@ function renderTable(lines) {
 		.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`)
 		.join("")}</tbody>`;
 
-	return `<div class="albanna-chat__table-wrap"><table>${head}${body}</table></div>`;
+	return (
+		`<div class="albanna-chat__table-wrap" data-table-index="${index}">` +
+		`<table>${head}${body}</table></div>` +
+		`<span class="albanna-chat__table-actions">` +
+		`<button type="button" class="albanna-chat__table-copy" ` +
+		`data-table-index="${index}" data-table-action="copy" ` +
+		`aria-label="${escapeHtml(__("Copy the table"))}" ` +
+		`title="${escapeHtml(__("Copy the table"))}">` +
+		`${escapeHtml(__("Copy table"))}</button>` +
+		`<button type="button" class="albanna-chat__table-copy" ` +
+		`data-table-index="${index}" data-table-action="download" ` +
+		`aria-label="${escapeHtml(__("Download the table"))}" ` +
+		`title="${escapeHtml(__("Download the table"))}">` +
+		`${escapeHtml(__("Download"))}</button>` +
+		`</span>`
+	);
 }
 
 /**
@@ -287,9 +332,11 @@ function renderListItems(items) {
  * @param {string} block
  * @param {string[]} codes collects the inline code
  * @param {object[]} links collects the links
+ * @param {{tables: number}} counter counts the tables the answer has, so
+ *   each one's button can name its own
  * @returns {string} the block's HTML
  */
-function renderBlock(block, codes, links) {
+function renderBlock(block, codes, links, counter) {
 	const lines = block.split("\n");
 
 	// A heading is the first line of a block, and the rest of the block is
@@ -321,7 +368,9 @@ function renderBlock(block, codes, links) {
 	}
 
 	if (lines.length >= 2 && TABLE_ROW.test(lines[0]) && isSeparatorRow(lines[1])) {
-		return renderTable(body.split("\n"));
+		const index = counter.tables;
+		counter.tables += 1;
+		return renderTable(body.split("\n"), index);
 	}
 
 	if (/^[ \t]*([-*]|\d+[.)])[ \t]+/.test(lines[0])) {
@@ -389,25 +438,46 @@ function linkDocuments(text, documents, links) {
 }
 
 /**
- * The rows of the first table in *text*, as tab-separated values.
+ * The rows of one table in *text*, as arrays of cells.
  *
  * A table in an answer is data, and data goes into a spreadsheet.  The
  * tabs are what a spreadsheet expects, and the first row is the header,
  * so the paste lands as a table rather than as a column of text.
  *
+ * *index* says which table.  It used to be implicit — the first one — and
+ * an answer with two tables offered one button that took whichever the
+ * model wrote first, so the second was unreachable.  The renderer now
+ * numbers the tables and each button names its own, so this takes the
+ * one that was asked for.
+ *
  * @param {string} text the answer
- * @returns {string} the table, as tab-separated values
+ * @param {number} [index] which table, from zero; the first by default
+ * @returns {Array<string[]>} the table's rows
  */
-export function tableRows(text) {
+export function tableRows(text, index = 0) {
+	const wanted = Number(index) || 0;
 	const rows = [];
+	let table = -1;
 	let inside = false;
 
 	for (const line of String(text || "").split("\n")) {
 		if (!TABLE_ROW.test(line)) {
-			if (inside) break;
+			// A blank line or a sentence ends the table being read.  It
+			// does not end the scan: an answer with two tables has prose
+			// between them, and the second one is the one being asked
+			// for.  Stopping here is what made the second table
+			// unreachable.
+			inside = false;
 			continue;
 		}
-		inside = true;
+		if (!inside) {
+			// A new table starts here.  The count is of tables *seen*, so
+			// the one being read is the one whose turn it is — and once
+			// it has gone past, there is nothing left to look for.
+			table += 1;
+			inside = true;
+			if (table > wanted) break;
+		}
 
 		const cells = line
 			.trim()
@@ -423,7 +493,7 @@ export function tableRows(text) {
 		// The separator row is structure, not data.
 		if (cells.every((cell) => SEPARATOR_CELL.test(cell))) continue;
 
-		rows.push(cells);
+		if (table === wanted) rows.push(cells);
 	}
 
 	return rows;
@@ -435,8 +505,8 @@ export function tableRows(text) {
  * @param {string} text the answer
  * @returns {string} the table, as tab-separated values
  */
-export function tableAsTsv(text) {
-	return tableRows(text)
+export function tableAsTsv(text, index = 0) {
+	return tableRows(text, index)
 		.map((cells) => cells.join("\t"))
 		.join("\n");
 }
@@ -451,8 +521,8 @@ export function tableAsTsv(text) {
  * @param {string} text the answer
  * @returns {string} the table, as comma-separated values
  */
-export function tableAsCsv(text) {
-	return tableRows(text)
+export function tableAsCsv(text, index = 0) {
+	return tableRows(text, index)
 		.map((cells) => cells.map(csvCell).join(","))
 		.join("\n");
 }
@@ -516,7 +586,12 @@ export function renderMarkdown(text, documents) {
 	// list or a paragraph.
 	const blocks = html.split(/\n{2,}/).filter((block) => block.trim() !== "");
 
-	let rendered = blocks.map((block) => renderBlock(block, codes, links)).join("");
+	// One counter for the whole answer, so the tables are numbered 0, 1,
+	// 2 in the order they were written.  A counter per block would number
+	// every table zero, and every button would take the first one — which
+	// is the bug this exists to fix.
+	const counter = { tables: 0 };
+	let rendered = blocks.map((block) => renderBlock(block, codes, links, counter)).join("");
 
 	// The code goes back, with its contents still escaped.
 	rendered = rendered.replace(

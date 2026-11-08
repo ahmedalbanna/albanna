@@ -624,6 +624,40 @@ body.albanna-side-chat-docked-inline-start {
 	margin: 6px 0;
 }
 
+/* The table's own copy and download buttons.
+ *
+ * They sit under the table they belong to rather than in the answer's
+ * footer, because an answer with two tables used to offer one button
+ * that took the *first* — whichever the model happened to write first —
+ * and the second was unreachable.  A button beside its own table is a
+ * button that cannot be confused with another one.
+ *
+ * They are inside `v-html`, so Vue does not compile them: the styles are
+ * here rather than scoped, and the click is caught by one listener on
+ * the transcript. */
+.albanna-chat__table-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 4px;
+	margin-top: 2px;
+}
+
+.albanna-chat__table-copy {
+	padding: 1px 6px;
+	font-size: 10px;
+	line-height: 1.6;
+	color: var(--albanna-muted, #6c7680);
+	background: transparent;
+	border: 1px solid var(--albanna-border, #d8dde2);
+	border-radius: 4px;
+	cursor: pointer;
+}
+
+.albanna-chat__table-copy:hover {
+	color: var(--albanna-text, #1f272e);
+	border-color: var(--albanna-muted, #6c7680);
+}
+
 .albanna-chat__bubble table {
 	width: max-content;
 	min-width: 100%;

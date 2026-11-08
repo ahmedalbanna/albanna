@@ -176,7 +176,6 @@ def new_conversation(page: str = "") -> dict:
 
     user = str(frappe.session.user or "")
     conversation = _new(user, page or "")
-    frappe.db.commit()
 
     return {"status": "ok", "conversation": conversation}
 
@@ -197,7 +196,6 @@ def rename_conversation(conversation: str = "", title: str = "") -> dict:
         frappe.throw(_("A title is required."), frappe.ValidationError)
 
     _rename(conversation, title)
-    frappe.db.commit()
 
     return {"status": "ok", "title": title}
 
@@ -214,7 +212,6 @@ def toggle_pin(conversation: str = "", pinned: int = 0) -> dict:
     assert_owns(conversation, user)
 
     _toggle(conversation, bool(int(pinned or 0)))
-    frappe.db.commit()
 
     return {"status": "ok"}
 
@@ -239,7 +236,6 @@ def delete_turn(conversation: str = "", message: str = "") -> dict:
     assert_owns(conversation, user)
 
     removed = _delete(conversation, message)
-    frappe.db.commit()
 
     # The window the removal leaves behind, and whether there is more
     # behind it: the reader may have been reading further back, and the
@@ -263,7 +259,6 @@ def rate_message(conversation: str = "", message: str = "", rating: str = "") ->
     from albanna.services.conversation_service import rate_message as _rate
 
     _rate(conversation, message, rating)
-    frappe.db.commit()
 
     return {"status": "ok"}
 
@@ -381,7 +376,6 @@ def undo_turn(conversation: str = "", message: str = "") -> dict:
     assert_owns(conversation, user)
 
     result = undo_message(conversation, message)
-    frappe.db.commit()
 
     window = transcript_window(conversation, TRANSCRIPT_WINDOW)
 
@@ -406,6 +400,5 @@ def delete_conversation(conversation: str = "") -> dict:
     assert_owns(conversation, user)
 
     _delete(conversation)
-    frappe.db.commit()
 
     return {"status": "ok"}

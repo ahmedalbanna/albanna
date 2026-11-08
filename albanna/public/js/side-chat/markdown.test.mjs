@@ -46,8 +46,13 @@ assert.ok(table.includes("<td>200.00</td>"), table);
 assert.ok(!table.includes("|---"), table);
 
 // The table is wrapped in a scroll container: a table wider than the
-// panel has to be able to scroll rather than be squeezed into it.
-assert.ok(table.includes('<div class="albanna-chat__table-wrap"><table>'), table);
+// panel has to be able to scroll rather than be squeezed into it.  The
+// wrapper carries the table's index, which is how its own buttons find
+// it again.
+assert.ok(
+	table.includes('<div class="albanna-chat__table-wrap" data-table-index="0"><table>'),
+	table,
+);
 assert.ok(table.includes("</table></div>"), table);
 
 // A table's cells can carry inline formatting.
@@ -201,8 +206,40 @@ assert.equal(tableAsTsv("| a | b |\n|---|---|\n| 1 | 2 |"), "a\tb\n1\t2");
 // emphasis, not the number.
 assert.equal(tableAsTsv("| a | b |\n|---|---|\n| **24** | `x` |"), "a\tb\n24\tx");
 
-// Only the first table is taken.
+// Only the first table is taken, when no index is given.
 assert.equal(tableAsTsv("| a |\n|---|\n| 1 |\n\ntext\n\n| b |\n|---|\n| 2 |"), "a\n1");
+
+// The second table is reachable by naming it.  This is the case the old
+// single button could not serve: it took whichever table the model wrote
+// first, and the rest were unreachable.
+assert.equal(
+	tableAsTsv("| a |\n|---|\n| 1 |\n\ntext\n\n| b |\n|---|\n| 2 |", 1),
+	"b\n2",
+);
+assert.equal(
+	tableAsCsv("| a |\n|---|\n| 1 |\n\ntext\n\n| b |\n|---|\n| 2 |", 1),
+	"b\n2",
+);
+
+// An index past the last table has nothing to take, rather than wrapping
+// around to the first one.
+assert.equal(tableAsTsv("| a |\n|---|\n| 1 |\n\ntext\n\n| b |\n|---|\n| 2 |", 2), "");
+
+// Three tables, numbered in the order they were written.
+const three = "| a |\n|---|\n| 1 |\n\ntext\n\n| b |\n|---|\n| 2 |\n\ntext\n\n| c |\n|---|\n| 3 |";
+assert.equal(tableAsTsv(three, 0), "a\n1");
+assert.equal(tableAsTsv(three, 1), "b\n2");
+assert.equal(tableAsTsv(three, 2), "c\n3");
+
+// Every table gets its own buttons, and each names its own index — so a
+// reader with two tables has two of each and cannot press the wrong one.
+const twoTables = renderMarkdown("| a |\n|---|\n| 1 |\n\ntext\n\n| b |\n|---|\n| 2 |");
+const tableButtons = twoTables.match(/class="albanna-chat__table-copy"/g) || [];
+assert.equal(tableButtons.length, 4, "each table carries a copy and a download button");
+assert.ok(twoTables.includes('data-table-index="0"'), twoTables);
+assert.ok(twoTables.includes('data-table-index="1"'), twoTables);
+assert.ok(twoTables.includes('data-table-action="copy"'), twoTables);
+assert.ok(twoTables.includes('data-table-action="download"'), twoTables);
 
 // An answer with no table has none to take.
 assert.equal(tableAsTsv("just a sentence"), "");

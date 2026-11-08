@@ -364,11 +364,11 @@ msgstr "نسخ الجدول"
 msgid "Copy table"
 msgstr "نسخ الجدول"
 
-msgid "Copied"
-msgstr "تم النسخ"
-
 msgid "There is no table to copy."
 msgstr "لا يوجد جدول لنسخه."
+
+msgid "The table was copied."
+msgstr "تم نسخ الجدول."
 
 msgid "The table could not be copied."
 msgstr "تعذّر نسخ الجدول."

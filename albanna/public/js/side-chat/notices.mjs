@@ -28,6 +28,8 @@ export function noticeText(notice) {
 			);
 		case "no-table":
 			return __("There is no table to copy.");
+		case "table-copied":
+			return __("The table was copied.");
 		case "copy-failed":
 			return __("The table could not be copied.");
 		case "copy-answer-failed":

@@ -551,14 +551,16 @@ def list_conversations(user: str, limit: int = 20, offset: int = 0, search: str 
         like = _like_pattern(search)
         params.extend([like, like])
 
+    # The SQL is assembled from a fixed skeleton plus a where-clause that is
+    # itself built from constants (see above); no user value is interpolated
+    # into it.  The values travel as bound parameters.
+    sql = (
+        "select name, title, page, model, last_activity, pinned\n"
+        "from `tabAlbanna Conversation`\n" + where + "\norder by pinned desc, last_activity desc\n"
+        "limit %s offset %s"
+    )
     rows = frappe.db.sql(
-        f"""
-        select name, title, page, model, last_activity, pinned
-        from `tabAlbanna Conversation`
-        {where}
-        order by pinned desc, last_activity desc
-        limit %s offset %s
-        """,
+        sql,
         (*params, int(limit), int(offset)),
         as_dict=True,
     )
@@ -589,17 +591,20 @@ def list_conversations(user: str, limit: int = 20, offset: int = 0, search: str 
         # already gathered this way, with a comment saying why — the
         # pattern had been applied to one half of this function and not
         # to the other.
+        # `placeholders` is a run of "%s" tokens, one per conversation name;
+        # the names themselves are bound parameters, never interpolated.
+        sql = (
+            "select parent, content\n"
+            "from (\n"
+            "    select parent, content,\n"
+            "           row_number() over (partition by parent order by idx asc) as position\n"
+            "    from `tabAlbanna Message`\n"
+            "    where parent in (" + placeholders + ") and parentfield = %s and role = 'user'\n"
+            ") as firsts\n"
+            "where position = 1"
+        )
         previews = frappe.db.sql(
-            f"""
-            select parent, content
-            from (
-                select parent, content,
-                       row_number() over (partition by parent order by idx asc) as position
-                from `tabAlbanna Message`
-                where parent in ({placeholders}) and parentfield = %s and role = 'user'
-            ) as firsts
-            where position = 1
-            """,
+            sql,
             (*names, PARENT_FIELD),
             as_dict=True,
         )
@@ -611,16 +616,18 @@ def list_conversations(user: str, limit: int = 20, offset: int = 0, search: str 
             conversation["preview"] = previews_by_name.get(conversation["name"], "")
 
         try:
+            # `placeholders` is a run of "%s" tokens; the names are bound.
+            sql = (
+                "select conversation,\n"
+                "       count(*) as turns,\n"
+                "       coalesce(sum(input_tokens), 0) + coalesce(sum(output_tokens), 0) as tokens,\n"
+                "       coalesce(sum(cost), 0) as cost\n"
+                "from `tabAlbanna Chat Log`\n"
+                "where conversation in (" + placeholders + ")\n"
+                "group by conversation"
+            )
             totals = frappe.db.sql(
-                f"""
-                select conversation,
-                       count(*) as turns,
-                       coalesce(sum(input_tokens), 0) + coalesce(sum(output_tokens), 0) as tokens,
-                       coalesce(sum(cost), 0) as cost
-                from `tabAlbanna Chat Log`
-                where conversation in ({placeholders})
-                group by conversation
-                """,
+                sql,
                 names,
                 as_dict=True,
             )

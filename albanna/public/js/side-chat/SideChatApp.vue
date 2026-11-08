@@ -63,7 +63,7 @@ import { pageIdentity, resolveContext } from "./context.mjs";
 import { examplesFor } from "./examples.mjs";
 import { clockTime } from "./format.mjs";
 import { conversationToMarkdown, exportFilename } from "./export.mjs";
-import { hasTable, renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js";
+import { renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js";
 import { stopPlan } from "./stop.mjs";
 import { watchRoute } from "./page.mjs";
 import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
@@ -161,7 +161,6 @@ const showScrollButton = ref(false);
 /** The message whose answer was just copied, if any. */
 const copiedId = ref("");
 /** The message whose table was just copied, if any. */
-const copiedTableId = ref("");
 
 /* One clock for every approval card on screen.
  *
@@ -681,7 +680,6 @@ function makeMessage(role, content, at) {
 		// for an answer and for a text-only question.
 		attachments: [],
 		// Whether the answer holds a table that can be taken away.
-		hasTable: false,
 		// Whether the answer was cut off at the token ceiling.  Carried on
 		// the message, not in the panel's single notice slot, so it
 		// survives the next question and any other notice.
@@ -744,7 +742,6 @@ function refresh(message) {
 	message.html = renderMarkdown(message.content, message.documents);
 	// An answer can gain a table as it streams, so this is not a
 	// once-and-for-all thing.
-	message.hasTable = hasTable(message.content);
 	message.summary = toolSummary(message);
 }
 
@@ -864,6 +861,29 @@ function onContextChanged(context) {
  * @param {object} event the click
  */
 function onTranscriptClick(event) {
+	// A table's copy button lives inside `v-html`, so Vue does not compile
+	// it and `@click` on it would never fire.  This is the one listener
+	// that catches them — including the buttons in answers that arrive
+	// later, which a listener attached per button would miss.
+	const button =
+		event.target && event.target.closest ? event.target.closest("button") : null;
+	if (button && button.classList.contains("albanna-chat__table-copy")) {
+		const row = button.closest("[data-message-id]");
+		const message = row
+			? state.messages.find((entry) => entry.id === row.getAttribute("data-message-id"))
+			: null;
+		if (message) {
+			event.preventDefault();
+			const index = Number(button.getAttribute("data-table-index")) || 0;
+			if (button.getAttribute("data-table-action") === "download") {
+				downloadTable(message, index);
+			} else {
+				copyTable(message, index);
+			}
+			return;
+		}
+	}
+
 	const link = event.target.closest && event.target.closest("a[href]");
 	if (!link) return;
 
@@ -1765,10 +1785,17 @@ function ask(question) {
  * tabs are what a spreadsheet expects, so the paste lands as a table and
  * not as a column of text.
  *
+ * *index* says which table of the answer.  The renderer puts a button
+ * beside every table and numbers them, so an answer with two tables has
+ * two buttons and each takes its own — the old single button took the
+ * first, whichever the model happened to write first, and the second was
+ * unreachable.
+ *
  * @param {object} message the message
+ * @param {number} [index] which table, from zero
  */
-async function copyTable(message) {
-	const text = tableAsTsv(message.content);
+async function copyTable(message, index = 0) {
+	const text = tableAsTsv(message.content, index);
 	if (!text) {
 		state.notice = "no-table";
 		return;
@@ -1779,23 +1806,21 @@ async function copyTable(message) {
 	// calling it throws a TypeError.  The fallback is therefore not an
 	// optional extra here: it is the path that actually runs.  copyAnswer
 	// beside it already guards the same way.
+	//
+	// The confirmation is the panel's notice rather than a label on the
+	// button: the button is inside `v-html`, so Vue does not compile it
+	// and a ref bound to its text would never reach the DOM.
 	try {
 		if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
 			await navigator.clipboard.writeText(text);
 		} else {
 			fallbackCopy(text);
 		}
-		copiedTableId.value = message.id;
-		window.setTimeout(() => {
-			if (copiedTableId.value === message.id) copiedTableId.value = "";
-		}, 1600);
+		state.notice = "table-copied";
 	} catch (failure) {
 		try {
 			fallbackCopy(text);
-			copiedTableId.value = message.id;
-			window.setTimeout(() => {
-				if (copiedTableId.value === message.id) copiedTableId.value = "";
-			}, 1600);
+			state.notice = "table-copied";
 		} catch (error) {
 			state.notice = "copy-failed";
 		}
@@ -1815,8 +1840,21 @@ async function copyTable(message) {
  *
  * @param {object} message the message
  */
-function downloadTable(message) {
-	const text = tableAsCsv(message.content);
+ * Download one table of the answer, as a CSV.
+ *
+ * Copying puts the table on the clipboard, which is where a table goes
+ * when it is going into a spreadsheet that is already open.  Sometimes
+ * the reader wants the file itself — to attach to something, or to keep.
+ *
+ * The file is built here, in the browser, because the answer is already
+ * here: the table is in the markdown the model wrote, and a round trip
+ * to the server would move text that never needed to move.
+ *
+ * @param {object} message the message
+ * @param {number} [index] which table, from zero
+ */
+function downloadTable(message, index = 0) {
+	const text = tableAsCsv(message.content, index);
 	if (!text) {
 		state.notice = "no-table";
 		return;
@@ -2697,6 +2735,7 @@ onBeforeUnmount(() => {
 					:key="message.id"
 					class="albanna-chat__message"
 					:class="`albanna-chat__message--${message.role}`"
+					data-message-id="message.id"
 				>
 					<!-- While the turn runs: one line saying what is happening.
 					     Afterwards: one line saying what it did, which opens
@@ -2950,26 +2989,6 @@ onBeforeUnmount(() => {
 									d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"
 								/>
 							</svg>
-						</button>
-						<button
-							v-if="message.role === 'assistant' && message.hasTable"
-							type="button"
-							class="albanna-chat__copy albanna-chat__copy--table"
-							:aria-label="__('Copy the table')"
-							:title="__('Copy the table')"
-							@click="copyTable(message)"
-						>
-							{{ copiedTableId === message.id ? __("Copied") : __("Copy table") }}
-						</button>
-						<button
-							v-if="message.role === 'assistant' && message.hasTable"
-							type="button"
-							class="albanna-chat__copy albanna-chat__copy--table"
-							:aria-label="__('Download the table')"
-							:title="__('Download the table')"
-							@click="downloadTable(message)"
-						>
-							{{ __("Download") }}
 						</button>
 						<button
 							v-if="message.role === 'assistant' && message.name && canUndo(message)"
