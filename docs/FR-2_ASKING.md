@@ -160,12 +160,21 @@ question recorded as blocked.
 **Accepted trade-offs.** None.
 
 **Blocked.**
-- **G1.** A PDF is sent to the provider as an `image_url` part, and
-  nothing guarantees any provider can read it.  Fixing it means either
-  refusing PDFs honestly at the door or adding a parsing pipeline — both
-  are scope decisions.
 - **Scope.** "A file" may mean a document (PDF is the answer) or any
   file.  Blocked on the same kind of owner decision.
+
+**Closed in the pass that followed.**
+- **G1 — a PDF's text reaches the model, and its bytes do not.**  A PDF
+  was sent to the provider as an `image_url` part that nothing parses,
+  and the app worked around it with a caveat sentence — so the model was
+  honest and the reader attached a document and got an answer that could
+  not see it.  The cost was not only honesty: the site's ceiling is
+  2048 KB, and a two-megabyte PDF is the better part of a million tokens
+  of base64.  The text is extracted with `pypdf` — a dependency of Frappe
+  itself, so nothing new is installed — and travels with the turn; the
+  bytes are dropped from the provider payload.  A scanned PDF is
+  described as unreadable, in the turn that attached it and nowhere
+  else.  See ADR-0050.
 
 ---
 
@@ -379,8 +388,6 @@ that question.
 
 - **FR-2.3 scope.** Dictation versus a voice note.  See FR-2.3.
 - **FR-2.4 scope.** "A file" versus a document.  See FR-2.4.
-- **FR-2.4 G1.** PDF sent as an `image_url` part with no guarantee any
-  provider can read it.
 
 ## Closed in the pass that followed
 
@@ -398,6 +405,11 @@ that question.
 - **FR-2.10 G1 — every table can be copied.**  The renderer numbers the
   tables and puts a copy and a download button beside each one, so a
   reader with two tables has two of each.  See ADR-0044.
+- **FR-2.4 G1 — a PDF's text reaches the model.**  It was sent as an
+  `image_url` part nothing parses, and the app worked around it with a
+  caveat sentence.  The text is extracted with `pypdf` and travels with
+  the turn; the bytes are dropped from the provider payload.  See
+  ADR-0050.
 
 ## Accepted — recorded, not acted on
 

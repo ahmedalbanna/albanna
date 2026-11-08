@@ -221,19 +221,14 @@ the server, so it reaches conversations the panel has not loaded.
   (`TestTheConversationSearch`), and the two wildcard tests were red
   before the fix and green after it.
 
-**Blocked.** The placeholder title.  `display_title` maps the stored
-placeholder to `""` for display, and the drawer renders its own
-translated "New conversation" for a thread with no title of its own —
-while the search runs against the *stored* title, which is the English
-sentinel the doctype puts there
-(`albanna/albanna/doctype/albanna_conversation/albanna_conversation.py:27`).  So the search matches a string the
-reader may never see: an Arabic reader who searches for "محادثة جديدة" —
-the text the drawer actually shows them — gets nothing, while the same
-reader searching the English sentinel finds the thread.  The placeholder
-is a sentinel and not a translation, and the search is the one place
-that treats it as a title.  Making the search match what the drawer
-shows is a product decision about what a thread with no title is
-called, and it is not this pass's to take.
+**Closed in the pass that followed.**  The search now reads the title as
+the *display* title: the sentinel is replaced by its translation before
+the LIKE runs, so a reader who searches for the words the drawer shows
+them finds the thread.  On an English site the translation is the
+sentinel and the query is what it always was.  The question "what is a
+thread with no title called" already had an answer in the system —
+whatever the drawer shows — so this was a translation nobody wired up
+rather than a product decision.  See ADR-0049.
 
 ---
 
@@ -379,11 +374,12 @@ Frappe's own permission engine applies to it.
   assistant did not find it" and "the assistant was not allowed to
   look".
 
-**Blocked.** The escalate button is shown whenever a conversation is
-open, and only the **Support Team** role may create an Issue — so most
-readers are offered a button that answers with a generic refusal.
-Hiding it behind a permission check is a product decision about who may
-escalate, and it is not this pass's to take.
+**Closed in the pass that followed.**  The site now publishes whether
+this reader may escalate — read from the same permission checker the
+authority layer uses for every write tool — and the button is drawn for
+them.  The question "who may escalate" already had an answer in the
+system: whoever Frappe lets create an Issue.  What was missing was not a
+decision but the check that reads it.  See ADR-0048.
 
 ---
 
@@ -417,16 +413,18 @@ anything.
 ## Deliberate exclusions
 
 - The escalate button's visibility (FR-6.10) and the placeholder title's
-  search (FR-6.6) are both product decisions, and both are recorded
-  above as blocked rather than taken.
+  search (FR-6.6) were both recorded as product decisions and both turned
+  out to be permissions and translations nobody had wired up.  Both are
+  closed; see ADR-0048 and ADR-0049.
 - The preview field is kept even though the drawer does not draw it,
   because the API's shape is a contract and the cost of carrying it is
   now one query.
 
 ## Accepted trade-offs
 
-- The search matches the stored title, which for an untitled thread is
-  the English sentinel.  See FR-6.6's blocked note.
+- The search matches the *site's* translation of the placeholder.  A
+  reader whose user language differs from the site's is the one case this
+  does not cover, and it is recorded rather than hidden.
 - The escalated transcript carries the tool calls' summaries and not the
   tool names, so the Issue reads as what the assistant did rather than
   as the model's vocabulary.
