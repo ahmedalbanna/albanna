@@ -159,7 +159,7 @@ def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]
     is a row that can be addressed later.
 
     Each row is a dict with ``role``, ``content`` and optionally
-    ``tool_name``, ``round_no`` and ``tool_calls``.
+    ``tool_name``, ``round_no``, ``tool_calls`` and ``truncated``.
 
     The rows continue the conversation's existing order.  The index is *not*
     restarted at one: a conversation whose second turn is indexed from one
@@ -184,11 +184,11 @@ def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]
             insert into `tabAlbanna Message`
                 (name, owner, creation, modified, modified_by, docstatus, idx,
                  parent, parentfield, parenttype,
-                 role, content, attachment_urls, tool_name, round_no, tool_calls)
+                 role, content, attachment_urls, truncated, tool_name, round_no, tool_calls)
             values
                 (%s, %s, %s, %s, %s, 0, %s,
                  %s, %s, %s,
-                 %s, %s, %s, %s, %s, %s)
+                 %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 name,
@@ -203,6 +203,13 @@ def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]
                 row.get("role") or "assistant",
                 row.get("content") or "",
                 row.get("attachment_urls") or "",
+                # Only an answer is ever truncated, and the flag is stored
+                # rather than inferred from the answer's length: a short
+                # answer is not an unfinished one, and a reader who
+                # reloads the thread must be told which they are looking
+                # at.  The live view already says so; this is what makes
+                # the reload say it too.
+                1 if row.get("truncated") else 0,
                 row.get("tool_name") or "",
                 int(row.get("round_no") or 0),
                 row.get("tool_calls") or "",
@@ -336,7 +343,7 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
     if before_idx > 0:
         rows = frappe.db.sql(
             """
-            select name, role, content, attachment_urls, tool_calls, creation, idx, rating
+            select name, role, content, attachment_urls, truncated, tool_calls, creation, idx, rating
             from `tabAlbanna Message`
             where parent = %s and parentfield = %s and idx < %s
             order by idx desc
@@ -348,7 +355,7 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
     else:
         rows = frappe.db.sql(
             """
-            select name, role, content, attachment_urls, tool_calls, creation, idx, rating
+            select name, role, content, attachment_urls, truncated, tool_calls, creation, idx, rating
             from `tabAlbanna Message`
             where parent = %s and parentfield = %s
             order by idx desc
@@ -405,6 +412,11 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
                 "content": row.content or "",
                 "attachments": read_attachment_list(row.attachment_urls or "")[0],
                 "rating": row.rating or "",
+                # Whether the provider cut this answer off.  Carried so a
+                # reader who reloads the thread sees the same indication
+                # the live view showed: an unfinished answer and a short
+                # one look identical, and only one of them is a warning.
+                "truncated": bool(row.truncated),
                 "tools": tools,
                 # When it was said, so that the transcript can say so.
                 # The epoch is what the browser reads: the stored value is

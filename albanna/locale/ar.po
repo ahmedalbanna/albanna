@@ -862,6 +862,12 @@ msgstr "مُثبَّت"
 msgid "Rating"
 msgstr "التقييم"
 
+msgid "Truncated"
+msgstr "مقطوعة"
+
+msgid "The provider cut this answer off at the token ceiling. The answer is unfinished, not wrong — and a reader who reloads the thread must still be told which of the two it is."
+msgstr "قطع المزوّد هذه الإجابة عند سقف الرموز. الإجابة غير مكتملة وليست خاطئة — والقارئ الذي يعيد تحميل المحادثة يجب أن يُخبر أيّهما أمامه."
+
 msgid "Regenerate last answer"
 msgstr "إعادة توليد آخر إجابة"
 

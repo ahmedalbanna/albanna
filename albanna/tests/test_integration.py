@@ -1976,6 +1976,84 @@ class TestATruncatedAnswer(AlbannaTestCase):
         self.assertTrue(outcome.truncated, "the turn must say the answer was cut off")
         self.assertEqual(outcome.reply, "half an answer")
 
+    def test_the_transcript_still_says_the_answer_was_cut_off(self):
+        """The indication survives the reload.
+
+        The live view says it the moment it happens.  A reader who comes
+        back to the thread — tomorrow, or after a refresh — was being
+        shown a short answer that looked complete, because the flag lived
+        only in the browser.  It is stored now, and the transcript reads
+        it back.
+
+        An unfinished answer and a short one look identical, and only one
+        of them is a warning.
+        """
+        from albanna.core.messages import Message
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.chat_service import ChatService, TurnRequest
+        from albanna.services.conversation_service import transcript_window
+
+        completion = Completion(
+            message=Message(role="assistant", content="half an answer"),
+            provider="openai",
+            model="a-model",
+            usage=Usage(input_tokens=10, output_tokens=5),
+            truncated=True,
+        )
+
+        service = ChatService()
+        service._complete = lambda config, messages, tools, emit, stream: completion
+
+        outcome = service.run(
+            TurnRequest(question="a question that was cut off", page="test|truncation|stored|")
+        )
+        frappe.db.commit()
+
+        window = transcript_window(outcome.conversation_id, 50)
+        answers = [m for m in window["messages"] if m["role"] == "assistant"]
+        self.assertTrue(answers, "the turn stored no answer")
+        self.assertTrue(
+            answers[-1]["truncated"],
+            "the transcript lost the indication the live view showed",
+        )
+        self.assertEqual(answers[-1]["content"], "half an answer")
+
+    def test_an_answer_that_was_not_cut_off_is_not_marked(self):
+        """The flag is stored, not inferred from the answer's length.
+
+        A short answer is not an unfinished one.  Marking every brief
+        reply as truncated would make the indication noise, and a reader
+        learns to ignore a warning that is usually wrong.
+        """
+        from albanna.core.messages import Message
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.chat_service import ChatService, TurnRequest
+        from albanna.services.conversation_service import transcript_window
+
+        completion = Completion(
+            message=Message(role="assistant", content="a short answer"),
+            provider="openai",
+            model="a-model",
+            usage=Usage(input_tokens=10, output_tokens=5),
+            truncated=False,
+        )
+
+        service = ChatService()
+        service._complete = lambda config, messages, tools, emit, stream: completion
+
+        outcome = service.run(
+            TurnRequest(question="a question with a brief answer", page="test|truncation|brief|")
+        )
+        frappe.db.commit()
+
+        window = transcript_window(outcome.conversation_id, 50)
+        answers = [m for m in window["messages"] if m["role"] == "assistant"]
+        self.assertTrue(answers, "the turn stored no answer")
+        self.assertFalse(
+            answers[-1]["truncated"],
+            "a complete answer was marked as cut off",
+        )
+
     def test_the_log_records_the_cut_off(self):
         from albanna.core.messages import Message
         from albanna.providers.base import Completion, Usage

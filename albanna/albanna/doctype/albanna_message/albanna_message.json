@@ -9,6 +9,7 @@
         "role",
         "content",
         "attachment_urls",
+        "truncated",
         "tool_name",
         "round_no",
         "tool_calls",
@@ -39,6 +40,13 @@
             "fieldtype": "Data",
             "label": "Attachment URLs",
             "read_only": 1
+        },
+        {
+            "fieldname": "truncated",
+            "fieldtype": "Check",
+            "label": "Truncated",
+            "default": "0",
+            "description": "The provider cut this answer off at the token ceiling. The answer is unfinished, not wrong — and a reader who reloads the thread must still be told which of the two it is."
         },
         {
             "description": "The tool this turn's result belongs to. Set on `tool` rows only.",

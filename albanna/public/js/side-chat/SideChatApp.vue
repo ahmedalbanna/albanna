@@ -770,6 +770,12 @@ function messageFromServer(message) {
 	// in words, because a path on this site is not a picture a provider
 	// can fetch.
 	item.attachments = message.attachments || [];
+	// Whether the provider cut this answer off.  The live view sets it
+	// from the turn's own result; a thread opened again reads it from the
+	// stored row, so the indication survives the reload.  Without it a
+	// reader who comes back to a short answer is looking at one that
+	// looks complete.
+	item.truncated = message.truncated === true;
 	// The stored index, which is how the panel asks for the page of
 	// messages behind this one.  A message that has not been stored yet
 	// has no index, and it is the newest one.

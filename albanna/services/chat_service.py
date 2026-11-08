@@ -563,6 +563,12 @@ class ChatService:
                             # happened, and the audit log records the same
                             # shape.  One shape, two readers.
                             "tool_calls": json.dumps(tool_calls_made, default=str),
+                            # Stored, so a reader who reloads the thread
+                            # is told the answer was cut off.  The live
+                            # view says it the moment it happens; without
+                            # this the reload shows a short answer that
+                            # looks complete.
+                            "truncated": bool(completion.truncated),
                         },
                     ],
                 )
@@ -658,7 +664,16 @@ class ChatService:
             conversation,
             [
                 self._user_row(question, attachment_urls),
-                {"role": "assistant", "content": reply, "round_no": rounds},
+                {
+                    "role": "assistant",
+                    "content": reply,
+                    "round_no": rounds,
+                    # The step-budget answer is truncated whenever the
+                    # provider cut it off, and the audit row already
+                    # records which.  The message row records it too, for
+                    # the same reason the ordinary answer's does.
+                    "truncated": bool(truncated),
+                },
             ],
         )
         self._log(
