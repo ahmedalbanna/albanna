@@ -497,6 +497,77 @@ def _validate_list_docs_inputs(meta, doctype, filters, field_list, order_by):
     return None
 
 
+#: The filter fieldname that means "assigned to the reader".
+#:
+#: It is not a column and not in any DocType's meta, because an
+#: assignment is not a field: Frappe keeps it in ``tabToDo``, keyed by
+#: (reference_type, reference_name, allocated_to).  A filter the model can
+#: write has to be a fieldname, so this one is a fieldname the tool
+#: resolves rather than passes on.
+#:
+#: It exists because "my open tickets" was a suggestion the assistant
+#: could not answer.  The reader was named in the system prompt already,
+#: but nothing let the model turn "mine" into a condition — so it listed
+#: every open ticket and called them the reader's.  A confident wrong
+#: answer is the worst kind, and this is the fix for it.
+ASSIGNED_TO_FILTER = "assigned_to"
+
+
+def _resolve_assigned_to(doctype: str, filters: Any) -> tuple[Any, str | None]:
+    """Replace an ``assigned_to`` filter with the reader's own documents.
+
+    Returns the filters with the condition rewritten as a ``name in
+    (...)`` over the documents ``tabToDo`` says are allocated to the
+    session's user, and an error envelope when the rewrite cannot be
+    made.
+
+    The value is ignored.  Whatever the model wrote there, the question
+    is "which documents are mine", and the answer is the session's — a
+    filter that named somebody else would be a filter that answered a
+    question about a third party, which is not what the reader asked.
+    """
+    if not isinstance(filters, list):
+        return filters, None
+
+    user = str(frappe.session.user or "")
+    if not user:
+        return filters, error(
+            "Cannot tell which documents are yours: no reader is signed in.",
+            doctype=doctype,
+        )
+
+    names = frappe.get_all(
+        "ToDo",
+        filters={
+            "reference_type": doctype,
+            "allocated_to": user,
+            "status": ["not in", ("Cancelled", "Closed")],
+        },
+        pluck="reference_name",
+        limit=MAX_LIMIT,
+    )
+
+    rewritten: list[Any] = []
+    replaced = False
+    for condition in filters:
+        if (
+            isinstance(condition, (list, tuple))
+            and len(condition) == 3
+            and str(condition[0]).strip() == ASSIGNED_TO_FILTER
+        ):
+            # An empty assignment list is not an error: it is the honest
+            # answer to "what is on my desk?" when nothing is.  The
+            # condition becomes one that matches nothing, rather than
+            # being dropped — dropping it would list everything, which is
+            # the bug this exists to fix.
+            rewritten.append(["name", "in", [str(name) for name in names] or ["__none__"]])
+            replaced = True
+            continue
+        rewritten.append(condition)
+
+    return (rewritten if replaced else filters), None
+
+
 def list_docs(
     doctype: str,
     filters: Any = None,
@@ -527,6 +598,13 @@ def list_docs(
     invalid = _validate_list_docs_inputs(meta, doctype, filters, field_list, order_by)
     if invalid:
         return invalid
+
+    # "Assigned to me" is resolved here, before the query is built: the
+    # assignment lives in ``tabToDo`` and not on the document, so there is
+    # no column for the condition to name.
+    filters, refusal = _resolve_assigned_to(doctype, filters)
+    if refusal:
+        return refusal
 
     # Every listing carries the document's name and the DocType's title
     # field.  The name is the document's identity — the Desk shows it in

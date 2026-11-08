@@ -4710,6 +4710,30 @@ class TestListDocsFilters(AlbannaTestCase):
         self._as(email)
         return ToolContext(principal=current_principal(), site=frappe.local.site)
 
+    def _customer(self, label: str) -> str:
+        """A customer of this test's own, to be assigned or not.
+
+        The name carries the label, so two of them cannot collide — and
+        the assignment tests need two documents that differ only in who
+        they belong to.
+        """
+        name = f"Albanna {label} {self._testMethodName}"
+        if not frappe.db.exists("Customer", name):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                customer = frappe.new_doc("Customer")
+                customer.customer_name = name
+                customer.customer_type = "Company"
+                customer.customer_group = frappe.db.get_value(
+                    "Customer", {"disabled": 0}, "customer_group"
+                )
+                customer.flags.ignore_permissions = True
+                customer.insert()
+            finally:
+                frappe.set_user(former)
+        return name
+
     def _call(self, name, arguments):
         return self.backend.call(TOOL_MANIFEST.get(name), arguments, self._context(self.sales_user))
 
@@ -4719,6 +4743,117 @@ class TestListDocsFilters(AlbannaTestCase):
             {"doctype": "Customer", "filters": [["customer_name", "like", "%"]], "limit": 5},
         )
         self.assertTrue(result.ok, result.content)
+
+    # -- "assigned to me" -------------------------------------------------
+
+    def _assign(self, doctype: str, name: str, who: str) -> None:
+        """Allocate *name* to *who*, the way the Desk's assignment does."""
+        former = frappe.session.user
+        frappe.set_user("Administrator")
+        try:
+            todo = frappe.new_doc("ToDo")
+            todo.reference_type = doctype
+            todo.reference_name = name
+            todo.allocated_to = who
+            todo.status = "Open"
+            # The description is mandatory on ToDo, and the allocation is
+            # what this test is about — so the sentence says that rather
+            # than being filler.
+            todo.description = f"Assigned to {who} for the assignment filter test"
+            todo.flags.ignore_permissions = True
+            todo.insert()
+        finally:
+            frappe.set_user(former)
+        self.addCleanup(frappe.delete_doc, "ToDo", todo.name, force=True, ignore_permissions=True)
+
+    def test_assigned_to_returns_only_the_readers_own_documents(self):
+        """The suggestion "Show my open tickets" was one the assistant
+        could not answer.
+
+        The reader was named in the system prompt already, but nothing
+        turned "mine" into a condition — so the model listed every open
+        ticket and called them the reader's.  A confident wrong answer is
+        the worst kind, and this is the fix for it.
+        """
+        mine = self._customer("Albanna Mine")
+        theirs = self._customer("Albanna Theirs")
+        self._assign("Customer", mine, self.sales_user)
+
+        result = self._call(
+            "list_docs",
+            {"doctype": "Customer", "filters": [["assigned_to", "=", "anything"]], "limit": 50},
+        )
+
+        self.assertTrue(result.ok, result.content)
+        names = [row.get("name") for row in (result.data or [])]
+        self.assertIn(mine, names)
+        self.assertNotIn(theirs, names, "somebody else's document was called the reader's")
+
+    def test_assigned_to_with_nothing_assigned_returns_nothing(self):
+        """An empty desk is the honest answer to "what is on my desk?".
+
+        The condition becomes one that matches nothing rather than being
+        dropped: dropping it would list everything, which is the bug this
+        exists to fix.
+        """
+        self._customer("Albanna Unassigned")
+
+        result = self._call(
+            "list_docs",
+            {"doctype": "Customer", "filters": [["assigned_to", "=", "anything"]], "limit": 50},
+        )
+
+        self.assertTrue(result.ok, result.content)
+        self.assertEqual(result.data or [], [], "an unassigned reader was given everything")
+
+    def test_assigned_to_ignores_a_cancelled_assignment(self):
+        """A cancelled assignment is not a document on anybody's desk."""
+        mine = self._customer("Albanna Cancelled")
+        self._assign("Customer", mine, self.sales_user)
+
+        former = frappe.session.user
+        frappe.set_user("Administrator")
+        try:
+            todo = frappe.get_doc(
+                "ToDo", {"reference_type": "Customer", "reference_name": mine}, for_update=True
+            )
+            todo.status = "Cancelled"
+            todo.flags.ignore_permissions = True
+            todo.save()
+        finally:
+            frappe.set_user(former)
+
+        result = self._call(
+            "list_docs",
+            {"doctype": "Customer", "filters": [["assigned_to", "=", "anything"]], "limit": 50},
+        )
+
+        self.assertTrue(result.ok, result.content)
+        self.assertNotIn(mine, [row.get("name") for row in (result.data or [])])
+
+    def test_assigned_to_composes_with_an_ordinary_filter(self):
+        """ "My open tickets" is two conditions, not one."""
+        mine = self._customer("Albanna Composed")
+        theirs = self._customer("Albanna Composed Theirs")
+        self._assign("Customer", mine, self.sales_user)
+        self._assign("Customer", theirs, self.sales_user)
+
+        result = self._call(
+            "list_docs",
+            {
+                "doctype": "Customer",
+                "filters": [
+                    ["assigned_to", "=", "anything"],
+                    ["customer_name", "like", "%Composed%"],
+                ],
+                "limit": 50,
+            },
+        )
+
+        self.assertTrue(result.ok, result.content)
+        names = [row.get("name") for row in (result.data or [])]
+        self.assertIn(mine, names)
+        self.assertIn(theirs, names)
 
     def test_a_list_value_filter_is_rejected(self):
         result = self._call(

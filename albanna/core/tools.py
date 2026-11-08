@@ -267,7 +267,13 @@ LIST_DOCS = ToolSpec(
                     "date use YYYY-MM-DD, for a number use digits, and for "
                     "'in' or 'not in' write one condition per value rather "
                     "than a list. A condition with a list or an object as its "
-                    "value is rejected. Omit to list everything."
+                    "value is rejected. Omit to list everything. "
+                    "The fieldname 'assigned_to' is not a column: it means "
+                    "'allocated to the reader', and the tool resolves it "
+                    "against the site's assignments. Use it when the reader "
+                    "asks for something of theirs — 'my open tickets' — "
+                    "because listing everything and calling it theirs is a "
+                    "wrong answer, not an approximation."
                 ),
                 "items": {
                     "type": "array",
