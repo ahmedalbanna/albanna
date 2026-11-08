@@ -293,3 +293,30 @@ class TestChatAccess(AlbannaTestCase):
         payload = options()
         self.assertTrue(payload["visible"])
         self.assertTrue(payload["chat_access"])
+
+    def test_the_widget_says_whether_this_reader_may_escalate(self):
+        """The escalate button follows a permission, not a hope.
+
+        It used to be shown to everybody with a conversation open, and
+        only a reader who may create an Issue can escalate — so most
+        readers were offered a button that answered with a refusal.  The
+        site now says who may, and the button is drawn for them.
+
+        The answer is the framework's own: whoever Frappe lets create an
+        Issue.  This test asserts the site publishes it at all, and that
+        it is a boolean rather than something a reader has to interpret.
+        """
+        from albanna.api.widget import options
+
+        self._set_policy(self.plain, "On")
+        self._as(self.plain)
+
+        payload = options()
+
+        self.assertIn("can_escalate", payload)
+        self.assertIsInstance(payload["can_escalate"], bool)
+        # The question's ceiling is published too, so the browser and the
+        # door cannot drift about the number.
+        self.assertIn("max_question_length", payload)
+        self.assertIsInstance(payload["max_question_length"], int)
+        self.assertGreater(payload["max_question_length"], 0)

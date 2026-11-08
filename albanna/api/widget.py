@@ -109,14 +109,25 @@ def options() -> dict[str, Any]:
     visible = enabled and chat_access
 
     tools: list[str] = []
+    can_escalate = False
     if chat_access and visible:
         principal = current_principal()
+        checker = FrappePermissionChecker()
         authority = Authority(
             tool_registry(principal.user),
             principal,
-            FrappePermissionChecker(),
+            checker,
         )
         tools = list(authority.visible_names())
+        # Whether this reader may hand a conversation to a human.  The
+        # escalate button used to be shown to everybody with a
+        # conversation open, and only a reader who may create an Issue
+        # can actually escalate — so most readers were offered a button
+        # that answered with a generic refusal.  The question "who may
+        # escalate" already has an answer in the system: whoever Frappe
+        # lets create an Issue.  This reads that answer rather than
+        # inventing a second one.
+        can_escalate = checker.can_create("Issue")
 
     return {
         "visible": visible,
@@ -126,6 +137,7 @@ def options() -> dict[str, Any]:
         "position": settings.widget_position,
         "position_default": settings.widget_position,
         "tools": tools,
+        "can_escalate": can_escalate,
         "attachment_support": settings.attachment_support,
         "max_attachment_size_kb": settings.max_attachment_size_kb,
         # The question's ceiling, published for the same reason the

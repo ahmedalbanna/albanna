@@ -324,6 +324,16 @@ let unwatch = () => {};
 const locked = computed(() => props.config.locked === true);
 const canChat = computed(() => props.config.chat_access === true && !locked.value);
 
+/** Whether this reader may hand a conversation to a human.
+ *
+ * The site says, because the answer is a permission and not a
+ * preference: escalating creates an Issue, and only a reader Frappe lets
+ * create one can do it.  The button used to be shown to everybody with a
+ * conversation open, so most readers were offered something that
+ * answered with a refusal — a button that cannot work is worse than no
+ * button, because it looks like the assistant is broken. */
+const canEscalate = computed(() => props.config.can_escalate === true);
+
 /** The waits of the thread the reader is looking at, oldest last. */
 const visibleWaits = computed(() =>
 	waitsOfConversation([...turnWaits.entries()], conversationId.value),
@@ -2470,7 +2480,7 @@ onBeforeUnmount(() => {
 
 			<div class="albanna-chat__actions">
 				<button
-					v-if="conversationId"
+					v-if="conversationId && canEscalate"
 					type="button"
 					class="albanna-chat__icon"
 					:aria-label="__('Escalate to support')"
