@@ -235,6 +235,60 @@ class TestToolPath(AlbannaTestCase):
         self.assertTrue(name, result.content)
         self.assertEqual(frappe.db.get_value("Sales Invoice", name, "owner"), self.accounts_user)
 
+    def test_a_fieldname_invented_inside_a_child_table_is_refused(self):
+        """A row's fieldnames are checked against the child DocType's meta.
+
+        A table field is replaced whole, so the rows the model sends are
+        the rows the document will have — and a fieldname that is not in
+        the child DocType's meta is dropped by the framework without a
+        word.  The model believes it set something, the reader believes
+        it, and nobody discovers otherwise until somebody opens the form.
+
+        The top level has had this check since the FR-4 pass.  This is
+        the same check one level down, and it is the level a model is
+        *more* likely to get wrong: the schema it was given names the
+        parent's fields and says "items" without saying what an item
+        holds.
+        """
+        arguments = self._invoice_arguments()
+        arguments["data"]["items"] = [
+            {
+                "item_code": arguments["data"]["items"][0]["item_code"],
+                "qty": 1,
+                "rate": 10,
+                # Not a Sales Invoice Item field.
+                "quntity": 2,
+            }
+        ]
+
+        context = self._context(self.accounts_user)
+        result = self.backend.call(TOOL_MANIFEST.get("create_doc"), arguments, context)
+
+        self.assertFalse(result.ok, result.content)
+        self.assertIn("quntity", result.error or "")
+        self.assertIn("qty", result.error or "")
+        # The sentence says *where* the model put it, because the same
+        # wrong fieldname is plausible at the top level too.
+        self.assertIn("items", result.error or "")
+        self.assertIn("Sales Invoice Item", result.error or "")
+
+    def test_a_child_table_row_with_the_right_fieldnames_is_allowed(self):
+        """The check refuses invented fieldnames, not child tables.
+
+        A create that carries a well-formed row must still go through:
+        a guard that refused every table field would be a guard that
+        made the tool useless for exactly the documents that have them.
+        """
+        arguments = self._invoice_arguments()
+        arguments["data"]["items"] = [
+            {"item_code": arguments["data"]["items"][0]["item_code"], "qty": 1, "rate": 10}
+        ]
+
+        context = self._context(self.accounts_user)
+        result = self.backend.call(TOOL_MANIFEST.get("create_doc"), arguments, context)
+
+        self.assertTrue(result.ok, result.content)
+
     def test_the_tool_runs_as_the_caller_and_leaves_the_session_alone(self):
         """The tool runs as the caller, and does not change who is logged in.
 

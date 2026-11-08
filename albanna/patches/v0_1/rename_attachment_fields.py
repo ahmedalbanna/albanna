@@ -71,6 +71,9 @@ def _rename_column(doctype: str, old: str, new: str, numeric: bool) -> None:
         # for one field is a schema nobody can read, and Frappe's sync
         # does not drop a column the DocType no longer names.
         _copy_across(doctype, old, new, numeric)
+        # The identifiers are the constants in COLUMNS above, never
+        # anything a caller supplied — the same shape
+        # ``permissions.py`` already uses for ``ptype``.
         frappe.db.sql_ddl(f"alter table `tab{doctype}` drop column `{old}`")
         return
 

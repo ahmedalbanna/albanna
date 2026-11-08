@@ -1185,6 +1185,69 @@ def _submit_created(document, doctype: str) -> tuple[bool, str]:
         return False, f"Created {doctype} '{document.name}' but could not submit it: {exc}"
 
 
+def _child_table_refusal(meta, doctype: str, data: dict[str, Any]) -> str | None:
+    """The refusal for a fieldname invented inside a child table.
+
+    A table field is replaced whole, so the rows the model sends are the
+    rows the document will have — and a fieldname that is not in the
+    *child* DocType's meta is dropped by the framework without a word.
+    The model believes it set something, the reader believes it, and
+    nobody discovers otherwise until somebody opens the form.
+
+    The top level has had this check since the FR-4 pass.  This is the
+    same check one level down, and it is the level a model is *more*
+    likely to get wrong: the child DocType's fieldnames are the ones it
+    has never been shown, because the schema it was given names the
+    parent's fields and says "items" without saying what an item holds.
+
+    Only the rows' keys are checked, and only against the child
+    DocType's own meta.  The correction names the closest matches from
+    that meta, which is safe to show: the caller is creating the parent
+    document, so they can already see the parent's form, and the form
+    shows the child table's columns.
+    """
+    for df in getattr(meta, "fields", []) or []:
+        if getattr(df, "fieldtype", "") != "Table":
+            continue
+        fieldname = getattr(df, "fieldname", "")
+        rows = data.get(fieldname)
+        if not isinstance(rows, list) or not rows:
+            continue
+
+        child = getattr(df, "options", "") or ""
+        if not child:
+            continue
+
+        child_meta = _meta(child)
+        if isinstance(child_meta, str):
+            # A child DocType that cannot be read is not a child DocType
+            # whose fields may be named.  Refuse rather than guess: the
+            # rows would be written against a meta nobody has seen.
+            return child_meta
+
+        keys: list[str] = []
+        for row in rows:
+            if isinstance(row, dict):
+                keys.extend(str(key) for key in row if key)
+
+        invalid = _validate_fields(child_meta, child, keys)
+        if invalid:
+            # The sentence names the child DocType, because "field 'quntity'
+            # (closest: 'qty')" on its own does not say *where* the model
+            # put it — and the same wrong fieldname is plausible at the
+            # top level too.
+            return error(
+                f"Unknown field(s) in the rows of '{fieldname}' for DocType '{child}': "
+                + invalid.split(": ", 1)[-1],
+                doctype=doctype,
+                actionable=(
+                    f"Call get_doctype_meta for '{child}' to see the fieldnames a row may carry."
+                ),
+            )
+
+    return None
+
+
 def _create_refusal_for(doctype: str, data: Any) -> str | None:
     """The refusal for a creation that may not be made, or ``None``.
 
@@ -1221,6 +1284,14 @@ def _create_refusal_for(doctype: str, data: Any) -> str | None:
         return meta
 
     invalid = _validate_fields(meta, doctype, list(data))
+    if invalid:
+        return invalid
+
+    # And the rows of any child table, against the child DocType's own
+    # meta.  A table field is replaced whole, so an invented fieldname in
+    # a row is dropped without a word — the one place a model can be
+    # silently ignored about something it just wrote.
+    invalid = _child_table_refusal(meta, doctype, data)
     if invalid:
         return invalid
 
