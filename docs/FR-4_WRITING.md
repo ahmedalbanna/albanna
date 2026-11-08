@@ -49,11 +49,20 @@ read is not attached to the new document.
   on a refused save had no coverage.  Covered in
   `albanna/tests/test_integration.py` (`TestRemainingPaths`).
 
-**Blocked.** Validating fieldnames inside child-table rows is not done:
-Stage 1 validates the top-level keys only, matching what
-`_validate_fields` already does and what the update path does.  Recursing
-into child-table rows is a real and common model error, but it is a
-bigger change and should be a deliberate one.
+**Blocked.** Nothing at the top level: Stage 1 validates the fieldnames
+the create is given, exactly as the update path does.  What remains is
+one level down — a fieldname invented inside a child-table row was still
+silently dropped, because a table field is replaced whole and the
+framework ignores a key the child DocType's meta does not have.  That is
+now checked too, against the child DocType's own meta, with the same
+close-match correction.  See ADR-0045.
+
+**Known limit, recorded rather than hidden:** the check stops at one
+level of nesting.  A child table's rows can themselves carry table
+fields, and those are not validated.  The common case is one level, and a
+model composing three-deep child rows has a bigger problem than a
+fieldname — but the limit is real and it is named here rather than left
+for somebody to discover.
 
 ---
 

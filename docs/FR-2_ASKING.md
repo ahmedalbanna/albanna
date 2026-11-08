@@ -40,9 +40,11 @@ typed, and must tell a screen reader how to submit.
   newline was cancelled and then nothing happened, while the send button
   in that exact state became a stop square and did something.  Fixed by
   routing Enter through `onAction()`.
-- **G2 (blocked).** No length cap on the question.  The two neighbouring
+- **G2 (closed).** No length cap on the question.  The two neighbouring
   fields are capped (conversation title at 120, `recent_questions` at
-  300); the question itself is not.  Needs a number from the owner.
+  300); the question itself was not.  It is now: 4000 characters,
+  enforced at both doors, with the length named in the refusal.  See
+  ADR-0043.
 - **G3 (fixed this pass).** The hint was a bare `<p>` with no
   `aria-describedby`, so a screen reader heard "Your question" and was
   never told how to submit it.
@@ -270,10 +272,12 @@ blocked.
   follow-up erased the previous answer's indication while that answer was
   still visible, and any other notice overwrote it.  It now lives on the
   answer message and renders beside it.
-- **G2 (blocked).** Persisting the flag needs a column on
+- **G2 (closed).** Persisting the flag needed a column on
   `tabAlbanna Message`, so a migrate (backup → build → maintenance mode
-  → migrate → every worker set restarted, per `docs/DEPLOYMENT.md`).  A
-  deploy decision, not a code change.
+  → migrate → every worker set restarted, per `docs/DEPLOYMENT.md`).  It
+  was a deploy decision, and it is now made: the column exists, both
+  paths that store an answer write it, and the transcript reads it back.
+  See ADR-0042.
 
 **Deliberate exclusions.** None.
 
@@ -335,10 +339,11 @@ mentioned and explained, not linked.
   — which is every real reader, because the site is served over plain
   HTTP.  `copyAnswer` beside it already guarded the same call.  Fixed to
   share the guard and the fallback.
-- **G1 (blocked).** Only the first table is copied.
-  `markdown.test.mjs:205` asserts it with the comment "Only the first
-  table is taken." — a statement with no reason.  The proper fix is a
-  copy affordance per rendered table, which is a real UI change.
+- **G1 (closed).** Only the first table was copied.
+  `markdown.test.mjs` asserted it with the comment "Only the first table
+  is taken." — a statement with no reason, which is how a bug survives in
+  a test.  The renderer now numbers the tables and puts a copy and a
+  download button beside each one.  See ADR-0044.
 
 **Deliberate exclusions.** None.
 
@@ -376,12 +381,23 @@ that question.
 - **FR-2.4 scope.** "A file" versus a document.  See FR-2.4.
 - **FR-2.4 G1.** PDF sent as an `image_url` part with no guarantee any
   provider can read it.
-- **FR-2.8 G2.** Persisting the truncation flag needs a column on
-  `tabAlbanna Message` and a migrate.
-- **FR-2.10 G1.** Only the first table is copied; a per-table affordance
-  is a real UI change.
-- **FR-2.1 G2.** No length cap on the question; needs a number from the
-  owner (2000 suggested).
+
+## Closed in the pass that followed
+
+- **FR-2.1 G2 — the question has a ceiling.**  4000 characters, enforced
+  at both doors, with the length named in the refusal.  The first
+  suggestion was 2000 and it was changed on checking what the question
+  actually carries: a pasted stack trace runs 1,500–3,000, so 2000 would
+  refuse a legitimate paste.  See ADR-0043.
+- **FR-2.8 G2 — the truncation flag is stored.**  A `truncated` Check
+  field on `tabAlbanna Message`, written by both paths that store an
+  answer and read back by the transcript, so a reader who reloads the
+  thread sees the indication the live view showed.  Stored rather than
+  inferred from the answer's length: a short answer is not an unfinished
+  one.  See ADR-0042.
+- **FR-2.10 G1 — every table can be copied.**  The renderer numbers the
+  tables and puts a copy and a download button beside each one, so a
+  reader with two tables has two of each.  See ADR-0044.
 
 ## Accepted — recorded, not acted on
 

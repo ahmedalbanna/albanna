@@ -207,11 +207,16 @@ gated the day it is registered.
 
 ## Blocked
 
-- **FR-3.1's operator-set narrowing.**  Enforcing the operator set
-  exactly as documented refuses an operator Frappe would have accepted.
-  Implemented as specified; the owner may want the validator to allow
-  anything Frappe allows and reject only the shape.  Recorded as a
-  decision awaiting confirmation.
+None.  FR-3.1's operator-set narrowing was recorded here as a decision
+awaiting confirmation, and it is now confirmed: the twelve operators stay
+exactly as the schema documents them.  The schema is the contract shown
+to the model, and a validator that accepts more than the contract
+documents is a contract that lies.  The narrowing is small and the
+capability is recoverable — a model that wants a subtree can ask for the
+tree, and a model that wants "last 30 days" can compute a date and use
+`>=`.  If the hierarchy operators are ever wanted, ADR-0046 names the
+shape: add them to the schema *and* the validator together, and accept
+the cost of explaining their value shapes.
 
 ## Deliberate exclusions
 
