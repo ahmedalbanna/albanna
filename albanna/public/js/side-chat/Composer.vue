@@ -19,8 +19,8 @@ const props = defineProps({
 	//: size the reader is shown, the address the file was stored under, and
 	//: whether it was.
 	files: { type: Array, default: () => [] },
-	imageSupport: { type: Boolean, default: false },
-	maxImageSizeKb: { type: Number, default: 0 },
+	attachmentsSupport: { type: Boolean, default: false },
+	maxAttachmentSizeKb: { type: Number, default: 0 },
 	//: The types the site attaches, as the site publishes them: a list of
 	//: ``{ mime, name }``.  The browser keeps no copy of its own — a
 	//: browser that accepts a file the server would refuse is a reader
@@ -381,20 +381,20 @@ function readAsDataUrl(file) {
  * @returns {Promise<object|null>} the attachment, or null when it was refused
  */
 async function storeFile(file) {
-	if (!props.imageSupport || !props.attachableTypes.length) {
+	if (!props.attachmentsSupport || !props.attachableTypes.length) {
 		// The site has not said which files it takes, so there is no file
 		// this browser may attach.  The sentence is the site's own: from
 		// the reader's side, a site that cannot attach is a site where
 		// attachments are not enabled.
-		noticeText.value = __("Image attachments are not enabled on this site.");
+		noticeText.value = __("Attachments are not enabled on this site.");
 		return null;
 	}
-	const maxBytes = props.maxImageSizeKb > 0 ? props.maxImageSizeKb * 1024 : 0;
+	const maxBytes = props.maxAttachmentSizeKb > 0 ? props.maxAttachmentSizeKb * 1024 : 0;
 	const refusal = checkAttachment(file, { types: attachableMimes.value, maxBytes });
 	if (!refusal.ok) {
 		noticeText.value =
 			refusal.reason === REFUSED_SIZE
-				? __("The file is larger than {0} KB.", [props.maxImageSizeKb])
+				? __("The file is larger than {0} KB.", [props.maxAttachmentSizeKb])
 				: __("Only {0} files can be attached.", [attachableNames.value.join(", ")]);
 		return null;
 	}
@@ -634,7 +634,7 @@ async function onChooseFile() {
 			     a second question between them and that is a second
 			     question too many. -->
 			<button
-				v-if="imageSupport"
+				v-if="attachmentsSupport"
 				type="button"
 				class="albanna-chat__attach"
 				:class="{ 'albanna-chat__attach--filled': files.length }"

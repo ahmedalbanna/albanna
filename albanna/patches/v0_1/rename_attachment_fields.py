@@ -92,7 +92,9 @@ def _copy_across(doctype: str, old: str, new: str, numeric: bool) -> None:
     else:
         where = f"ifnull(`{new}`, '') = '' and ifnull(`{old}`, '') != ''"
 
-    frappe.db.sql(f"update `tab{doctype}` set `{new}` = `{old}` where {where}")
+    frappe.db.sql(  # nosemgrep: identifiers are module constants
+        f"update `tab{doctype}` set `{new}` = `{old}` where {where}"
+    )
 
 
 def _move_single(doctype: str, old: str, new: str) -> None:

@@ -150,7 +150,7 @@ def refusal_sentence(reason: str, max_kb: int = 0) -> str:
     would be a sentence the translator could not translate.
     """
     if reason == DISABLED:
-        return _("Image attachments are not enabled on this site.")
+        return _("Attachments are not enabled on this site.")
     if reason == UNSUPPORTED_TYPE:
         # The types are named, because "only attachments" is not an answer a
         # reader can act on: an SVG *is* an image, and an SVG cannot be

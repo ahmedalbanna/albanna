@@ -1156,8 +1156,8 @@ msgstr "روابط المرفقات"
 msgid "The addresses the attachments were stored under, as a JSON list. The bytes travel with the turn; this is what outlives it."
 msgstr "العناوين التي خُزّنت المرفقات تحتها، كقائمة JSON. البايتات تسافر مع الدور؛ وهذا ما يبقى بعده."
 
-msgid "Image attachments are not enabled on this site."
-msgstr "إرفاق الصور غير مُفعّل على هذا الموقع."
+msgid "Attachments are not enabled on this site."
+msgstr "إرفاق الملفات غير مُفعّل على هذا الموقع."
 
 msgid "The file could not be read."
 msgstr "لم يتمكّن من قراءة الملف."
