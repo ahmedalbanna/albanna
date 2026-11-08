@@ -1340,6 +1340,21 @@ body.albanna-side-chat-docked-inline-start {
 	opacity: 0.8;
 }
 
+/* The character count, beside the hint it belongs to.  It appears only
+ * near the ceiling — a counter on every question is noise — and turns
+ * the danger colour when the question is over it, because the reader who
+ * has pasted too much needs to see it before they press Enter rather
+ * than after. */
+.albanna-chat__hint-count {
+	margin-inline-start: 6px;
+	font-variant-numeric: tabular-nums;
+}
+
+.albanna-chat__hint-count--over {
+	color: var(--albanna-danger, #c0392b);
+	font-weight: 600;
+}
+
 /* ---------------------------------------------------------------------------
  * The conversation list.
  *

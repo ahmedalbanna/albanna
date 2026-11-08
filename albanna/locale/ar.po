@@ -209,6 +209,15 @@ msgstr "انتقل إلى الأحدث"
 msgid "Enter to send or stop · Shift+Enter for a new line"
 msgstr "Enter للإرسال أو الإيقاف · Shift+Enter لسطر جديد"
 
+msgid "Your question is {0} characters; the limit is {1}."
+msgstr "سؤالك {0} حرفاً؛ الحد الأقصى {1}."
+
+msgid "Your question is {0} characters; the limit is {1}. Shorten it, or attach the detail as a file."
+msgstr "سؤالك {0} حرفاً؛ الحد الأقصى {1}. اختصره، أو أرفق التفاصيل كملف."
+
+msgid "{0} of {1} characters"
+msgstr "{0} من {1} حرف"
+
 
 
 

@@ -4796,6 +4796,88 @@ class TestPreviewBulk(AlbannaTestCase):
 
 
 @pytest.mark.integration
+class TestTheQuestionCeiling(AlbannaTestCase):
+    """A question over the ceiling is refused, at the door.
+
+    The composer enforces the number so the reader is told before they
+    send.  This is the door, and a door that trusts the browser is a door
+    that only honest callers use — so the endpoint refuses on its own,
+    and names the length, because a reader told only "too long" cannot
+    tell how much to cut.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.sales_user = self._make_user("albanna.test.ceiling@albanna.dev", "Sales User")
+
+    def _make_user(self, email: str, role: str) -> str:
+        if not frappe.db.exists("User", email):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Albanna"
+                user.last_name = "Ceiling"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        user = frappe.get_doc("User", email)
+        user.flags.ignore_permissions = True
+        user.add_roles(role, "Albanna User")
+        return email
+
+    def _as(self, email: str):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def test_a_question_over_the_ceiling_is_refused_with_its_length(self):
+        from albanna.api.chat import MAX_QUESTION_LENGTH, ask
+
+        self._as(self.sales_user)
+        result = ask(question="a" * (MAX_QUESTION_LENGTH + 1), page="test|ceiling|")
+
+        self.assertEqual(result.get("status"), "error")
+        self.assertIn(str(MAX_QUESTION_LENGTH + 1), result.get("error") or "")
+        self.assertIn(str(MAX_QUESTION_LENGTH), result.get("error") or "")
+
+    def test_a_question_at_the_ceiling_is_allowed_through_the_door(self):
+        """The ceiling is a bound, not a trap: a question at it is sent.
+
+        The turn itself is not stubbed here, so on a site with no
+        provider the answer is a provider error — which is the point: the
+        door let the question past, and what stopped it was something
+        else entirely.  A test that asserted a successful answer would be
+        asserting on the provider, not on the ceiling.
+        """
+        from albanna.api.chat import MAX_QUESTION_LENGTH, ask
+
+        self._as(self.sales_user)
+        result = ask(question="a" * MAX_QUESTION_LENGTH, page="test|ceiling|at|")
+
+        error = result.get("error") or ""
+        self.assertNotIn("characters", error, "the door refused a question at the ceiling")
+        self.assertNotIn("limit is", error, "the door refused a question at the ceiling")
+
+    def test_the_streaming_door_refuses_it_too(self):
+        """Both doors, or neither.
+
+        The streaming endpoint queues the turn in a worker, so a refusal
+        that only the synchronous door makes is a refusal a caller routes
+        around by asking for a stream.
+        """
+        from albanna.api.chat import MAX_QUESTION_LENGTH, ask_stream
+
+        self._as(self.sales_user)
+        result = ask_stream(question="a" * (MAX_QUESTION_LENGTH + 1), page="test|ceiling|stream|")
+
+        self.assertEqual(result.get("status"), "error")
+        self.assertIn(str(MAX_QUESTION_LENGTH + 1), result.get("error") or "")
+
+
 class TestRemainingPaths(AlbannaTestCase):
     """The paths that had no coverage before this pass."""
 

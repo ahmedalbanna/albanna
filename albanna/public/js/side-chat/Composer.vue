@@ -7,7 +7,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { checkAttachment, makeAttachment, REFUSED_SIZE, storeAll } from "./attachments.mjs";
 import { serverMessage } from "./errors.mjs";
 import { MAX_SESSION_MS, mergeTranscript, readResults, voiceErrorText } from "./voice.mjs";
-import { submitDecision } from "./submit.mjs";
+import { MAX_QUESTION_LENGTH, submitDecision } from "./submit.mjs";
 
 const props = defineProps({
 	modelValue: { type: String, default: "" },
@@ -213,7 +213,18 @@ function submit() {
 		busy: props.busy,
 		canChat: props.canChat,
 	});
-	if (!decision.ok) return;
+	if (!decision.ok) {
+		// The refusal is shown rather than swallowed.  A reader who
+		// presses Enter on an over-long question and nothing happens
+		// presses it again, and then assumes the panel is broken.
+		if (decision.reason === "too-long") {
+			noticeText.value = __("Your question is {0} characters; the limit is {1}.", [
+				decision.length,
+				MAX_QUESTION_LENGTH,
+			]);
+		}
+		return;
+	}
 	const question = decision.question;
 	// The question is on its way.  Whatever the microphone says now belongs
 	// to a turn that has already been sent, so it is closed and its
@@ -233,6 +244,16 @@ function onAction() {
 }
 
 const noticeText = ref("");
+//: How many characters the question has, and whether it is near the
+//: ceiling.  Shown only near the ceiling: a counter on every question is
+//: noise, and a counter that appears when it matters is the thing that
+//: stops the refusal being a surprise.  The reader who pastes a stack
+//: trace sees the number climb and knows to attach it as a file instead.
+const questionLength = computed(() => String(props.modelValue || "").trim().length);
+const nearLimit = computed(
+	() => questionLength.value > MAX_QUESTION_LENGTH * 0.8,
+);
+const overLimit = computed(() => questionLength.value > MAX_QUESTION_LENGTH);
 const uploading = ref(false);
 // Whether a file is being dragged over the composer's field.  The field
 // is the drop target, and without a visible affordance the reader cannot
@@ -685,6 +706,13 @@ async function onChooseFile() {
 		</div>
 		<p id="albanna-chat__hint" class="albanna-chat__hint">
 			{{ __("Enter to send or stop · Shift+Enter for a new line") }}
+			<span
+				v-if="nearLimit"
+				class="albanna-chat__hint-count"
+				:class="{ 'albanna-chat__hint-count--over': overLimit }"
+			>
+				{{ __("{0} of {1} characters", [questionLength, MAX_QUESTION_LENGTH]) }}
+			</span>
 		</p>
 	</div>
 </template>

@@ -194,6 +194,32 @@ def _render_page_context(raw: Any) -> str:
     )
 
 
+#: The longest question that may be asked, in characters.
+#:
+#: The composer enforces the same number so the reader is told before
+#: they send; this is the door, and a door that trusts the browser is a
+#: door that only honest callers use.  The number is here rather than in
+#: the settings because it is a bound on what one turn can carry, not an
+#: operator's preference — and a setting an operator can raise to a
+#: million is not a bound.
+MAX_QUESTION_LENGTH = 4000
+
+
+def _question_refusal(question: str) -> str:
+    """The refusal for a question over the ceiling, or ``""``.
+
+    The length is named, because a reader told only "too long" cannot
+    tell how much to cut — and a refusal the reader cannot act on is a
+    refusal they work around by asking a worse question.
+    """
+    text = (question or "").strip()
+    if len(text) <= MAX_QUESTION_LENGTH:
+        return ""
+    return _(
+        "Your question is {0} characters; the limit is {1}. Shorten it, or attach the detail as a file."
+    ).format(len(text), MAX_QUESTION_LENGTH)
+
+
 @frappe.whitelist()
 @redacted_request_text("question", "page_context", "attachments")
 def ask(
@@ -218,6 +244,10 @@ def ask(
     attachments, stored_urls, error = _read_attachments(attachments, attachment_urls, settings)
     if error:
         return {"status": "error", "error": error}
+
+    refusal = _question_refusal(question)
+    if refusal:
+        return {"status": "error", "error": refusal}
 
     request = TurnRequest(
         question=question or "",
@@ -259,6 +289,10 @@ def ask_stream(
     attachments, stored_urls, error = _read_attachments(attachments, attachment_urls, settings)
     if error:
         return {"status": "error", "error": error}
+
+    refusal = _question_refusal(question)
+    if refusal:
+        return {"status": "error", "error": refusal}
 
     stream_id = uuid.uuid4().hex
 
