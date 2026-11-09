@@ -892,6 +892,14 @@ The reader's own history — the list of it, the search through it, the
 thread that belongs to a page, the turns in it, and the hand-off to a
 human — is recorded in `docs/FR-6_CONVERSATIONS.md`.
 
+## Access and authority (FR-7)
+
+Who may use the chat, what they may be offered, and how the authority
+layer refuses everybody else — is recorded in `docs/FR-7_ACCESS.md`.
+All seven requirements were already met; what the pass found was that
+none of them was *held*, and the record says which invariant each one
+was missing.
+
 ## 6. Decision rule for new ideas
 
 Before adding any feature, answer three questions:
