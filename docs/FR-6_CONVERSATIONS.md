@@ -381,6 +381,11 @@ them.  The question "who may escalate" already had an answer in the
 system: whoever Frappe lets create an Issue.  What was missing was not a
 decision but the check that reads it.  See ADR-0048.
 
+**And "my open tickets" is answerable.**  The same pass gave `list_docs`
+an `assigned_to` filter the tool resolves against the site's
+assignments, because the reader was named in the prompt already and
+nothing turned "mine" into a condition.  See ADR-0051.
+
 ---
 
 ## Found on the way, and not part of any requirement
@@ -425,6 +430,10 @@ anything.
 - The search matches the *site's* translation of the placeholder.  A
   reader whose user language differs from the site's is the one case this
   does not cover, and it is recorded rather than hidden.
+- The model is told how many messages of a thread are behind the window
+  it can see, and instructed to say so rather than answer from the wrong
+  part of the thread.  A way to reach further back is not built.  See
+  ADR-0052.
 - The escalated transcript carries the tool calls' summaries and not the
   tool names, so the Issue reads as what the assistant did rather than
   as the model's vocabulary.

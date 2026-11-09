@@ -160,8 +160,12 @@ question recorded as blocked.
 **Accepted trade-offs.** None.
 
 **Blocked.**
-- **Scope.** "A file" may mean a document (PDF is the answer) or any
-  file.  Blocked on the same kind of owner decision.
+- **Scope.** "A file" may mean a document or any file.  The document
+  half is now answered: a PDF, a CSV, a JSON payload, a Markdown note and
+  a plain text file all travel as text, because no provider reads any of
+  them as a picture.  What remains open is the *arbitrary* file — an
+  office format, an archive — and that needs a library this bench does
+  not have.  See ADR-0054.
 
 **Closed in the pass that followed.**
 - **G1 — a PDF's text reaches the model, and its bytes do not.**  A PDF
@@ -405,11 +409,12 @@ that question.
 - **FR-2.10 G1 — every table can be copied.**  The renderer numbers the
   tables and puts a copy and a download button beside each one, so a
   reader with two tables has two of each.  See ADR-0044.
-- **FR-2.4 G1 — a PDF's text reaches the model.**  It was sent as an
-  `image_url` part nothing parses, and the app worked around it with a
-  caveat sentence.  The text is extracted with `pypdf` and travels with
-  the turn; the bytes are dropped from the provider payload.  See
-  ADR-0050.
+- **FR-2.4 G1 — an attachment's text reaches the model.**  A PDF was
+  sent as an `image_url` part nothing parses, and the app worked around it
+  with a caveat sentence.  The text is extracted and travels with the
+  turn; the bytes are dropped from the provider payload.  It now covers
+  every non-image type, and it is stored so a reloaded thread still has
+  it.  See ADR-0050, ADR-0053 and ADR-0054.
 
 ## Accepted — recorded, not acted on
 
