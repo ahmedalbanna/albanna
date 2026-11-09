@@ -1263,7 +1263,18 @@ def _submit_created(document, doctype: str) -> tuple[bool, str]:
         return False, f"Created {doctype} '{document.name}' but could not submit it: {exc}"
 
 
-def _child_table_refusal(meta, doctype: str, data: dict[str, Any]) -> str | None:
+#: How deep a create's child tables are checked.
+#:
+#: A child table's rows can themselves carry table fields, and those rows
+#: are checked too — but the recursion is bounded, because a DocType can
+#: name itself as its own child and a check without a bound is a check
+#: that never returns.  Three levels is deeper than any document this app
+#: has ever been asked to write, and a model composing four-deep child
+#: rows has a bigger problem than a fieldname.
+CHILD_TABLE_DEPTH = 3
+
+
+def _child_table_refusal(meta, doctype: str, data: dict[str, Any], depth: int = 0) -> str | None:
     """The refusal for a fieldname invented inside a child table.
 
     A table field is replaced whole, so the rows the model sends are the
@@ -1283,7 +1294,16 @@ def _child_table_refusal(meta, doctype: str, data: dict[str, Any]) -> str | None
     that meta, which is safe to show: the caller is creating the parent
     document, so they can already see the parent's form, and the form
     shows the child table's columns.
+
+    The check recurses, because a child table's rows can carry table
+    fields of their own and a row inside one of those is the same silent
+    drop one level further down.  It stops at
+    :data:`CHILD_TABLE_DEPTH`, which is recorded as a limit rather than
+    left for somebody to discover.
     """
+    if depth >= CHILD_TABLE_DEPTH:
+        return None
+
     for df in getattr(meta, "fields", []) or []:
         if getattr(df, "fieldtype", "") != "Table":
             continue
@@ -1322,6 +1342,16 @@ def _child_table_refusal(meta, doctype: str, data: dict[str, Any]) -> str | None
                     f"Call get_doctype_meta for '{child}' to see the fieldnames a row may carry."
                 ),
             )
+
+        # And the rows inside *those* rows, against their own child
+        # DocType's meta.  A row inside a child table's row is the same
+        # silent drop one level further down.
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            nested = _child_table_refusal(child_meta, child, row, depth + 1)
+            if nested:
+                return nested
 
     return None
 
