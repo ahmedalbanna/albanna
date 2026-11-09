@@ -7,6 +7,73 @@ and the app uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.8] — 2026-11-09
+
+Six requirements passes, and the open questions they left.
+
+The passes read the functional requirements against the code — FR-1 the
+Desk panel, FR-2 asking, FR-3 reading, FR-4 writing, FR-5 approval and
+undo, FR-6 conversations — and every one of them found the same shape: a
+rule that was true by inspection and unenforced by any test, and a check
+applied to one branch of a function while a comment claimed it covered
+both. Fifty-three commits, and the pattern behind most of them is that
+the code was right and nothing proved it.
+
+**What the reader gets.**
+
+An answer's tables can each be copied, not only the first — the old
+button took whichever table the model happened to write first, and the
+test asserted it with a comment that stated the behaviour rather than
+explaining it. A question has a ceiling, enforced at both doors, with the
+length named in the refusal. An answer that was cut off says so after a
+reload, not only while it is on screen. A bulk change can be taken back,
+and the undo puts every document back. A create validates the fieldnames
+inside its child tables, because a table field is replaced whole and an
+invented fieldname in a row is dropped without a word.
+
+An attached document is read. A PDF's bytes are not a picture and no
+provider parses one, so its text is extracted and travels with the turn
+while its bytes stay out of the payload — a two-megabyte PDF was the
+better part of a million tokens of base64 for a part nothing reads. The
+same now covers a CSV, a JSON payload, a Markdown note and a plain text
+file, and the text is stored so a thread reloaded tomorrow still knows
+what the document said.
+
+**What the reader stops being told.**
+
+"Show my open tickets" was a suggestion the assistant could not answer:
+the reader was named in the system prompt already, and nothing turned
+"mine" into a condition, so the model listed every open ticket and called
+them the reader's. `list_docs` resolves an `assigned_to` filter against
+the site's assignments now. The escalate button is drawn only for readers
+who may escalate, rather than for everybody with a conversation open. The
+search matches the words the drawer shows, so an Arabic reader searching
+for what they can see finds it. And the model is told how many messages
+of a thread are behind the window it can see, so a question about
+something decided early is answered with "I cannot see that" rather than
+with the wrong part of the thread.
+
+**What was renamed.** The attachment fields said `image` from the day
+PDFs were accepted, and `had_image` recorded in the audit row that a
+question "had an image" when it had a PDF. They are named for what they
+hold now, and the data moved with them.
+
+**Four "product decisions" turned out not to be.** The escalate button's
+visibility, the placeholder title's search, "my open tickets", and the
+question's ceiling were all recorded as blocked because the questions
+they raised sounded like policy questions. Each was a permission check or
+a translation nobody had written. The lesson is to ask whether the system
+already answers the question before asking the owner to.
+
+**Two things found on the way, belonging to no requirement.** The
+conversation trim had never once run: its DELETE put a `LIMIT` inside an
+`IN` subquery, which MariaDB refuses outright, so it failed only when a
+thread outgrew its bound — which is when it is needed — and surfaced as
+an error in whatever turn happened to push it there. And the attachment
+rename briefly disconnected the composer's props, which refused every
+file attachment on every site; both are recorded in their commits,
+because the way they presented is the thing worth remembering.
+
 ### Fixed
 
 - **Setting an image could publish somebody else's private file.**  An
