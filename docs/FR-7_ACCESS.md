@@ -122,16 +122,21 @@ read and write to *two* roles — "`System Manager` outright, and
 was removed on 2026-10-29. The comment described a matrix that had not
 existed for eleven days. Corrected.
 
-**Blocked — needs the owner's decision.** The row grants five rights
-beyond the four the requirement names: `share`, `print`, `email`,
-`report`, `export`. They are Frappe's default permission row, never
-trimmed, and no ADR mentions them. Four are harmless because `if_owner`
-scopes them to the owner's own rows. **`share` is not** — it lets a
-reader hand their conversation to another user through the Desk's Share
-dialog, crossing the owner-only boundary the rest of the app enforces
-(`assert_owns` checks ownership and ignores `DocShare` entirely). The
-app never creates or reads a share itself. Recommendation: drop `share`
-from `Albanna Conversation` and `Albanna Question`.
+**Closed.** The row granted five rights beyond the four the requirement
+names — `share`, `print`, `email`, `report`, `export` — all of them
+Frappe's default permission row, never trimmed, and none of them
+mentioned in any ADR. Four are harmless: `if_owner` scopes them to the
+owner's own rows, so a reader may only print, email, report on or
+export their own conversations.
+
+`share` was not harmless. It let a reader hand their conversation to
+another user through the Desk's Share dialog, crossing the owner-only
+boundary the rest of the app enforces — `assert_owns` checks ownership
+and ignores `DocShare` entirely, and `permission_query_conditions`
+narrows list views to the owner. The app never creates or reads a share
+itself, so the right was granted by accident and used by nobody. It is
+dropped from `Albanna Conversation` and `Albanna Question`, and the
+test now asserts it is absent.
 
 ---
 

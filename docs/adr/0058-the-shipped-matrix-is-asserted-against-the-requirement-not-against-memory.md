@@ -59,13 +59,22 @@ only holds until the next release is not a gate.
   comment described a matrix that had not existed for eleven days, and
   it is the kind of sentence that sends the next reader hunting for a
   row that is not there. Corrected.
-* The row still grants five rights beyond the four the requirement
-  names — `share`, `print`, `email`, `report`, `export`. They are
-  Frappe's default permission row, never trimmed, and no ADR mentions
-  them. `share` is the one that matters: it lets a reader hand their
-  conversation to another user, crossing the owner-only boundary the
-  rest of the app enforces. Recorded in the FR-7 record as needing the
-  owner's decision rather than changed here.
+* The row still grants four rights beyond the four the requirement
+  names — `print`, `email`, `report`, `export`. They are Frappe's
+  default permission row, never trimmed, and no ADR mentions them.
+  All four are harmless: `if_owner` scopes them to the owner's own
+  rows, so a reader may only print, email, report on or export their
+  own conversations.
+
+  `share` was the fifth, and it was not harmless. It let a reader hand
+  their conversation to another user through the Desk's Share dialog,
+  crossing the owner-only boundary the rest of the app enforces —
+  `assert_owns` checks ownership and ignores `DocShare` entirely, and
+  `permission_query_conditions` narrows list views to the owner. The
+  app never creates or reads a share itself, so the right was granted
+  by accident and used by nobody. It is dropped from `Albanna
+  Conversation` and `Albanna Question`, and the test now asserts it is
+  absent.
 * The general lesson is ADR-0055's first variant again: the held half
   was right there, and the unheld half was the one that would have
   changed quietly.

@@ -98,6 +98,18 @@ def test_the_chat_row_grants_the_four_rights_and_is_one_row():
             "take back a question they should not have asked."
         )
 
+    # The row grants exactly the four rights and nothing that crosses the
+    # owner boundary.  ``share`` in particular would let a reader hand
+    # their conversation to another user, which is the one right that
+    # contradicts the "the chat is the reader's" posture in ADR-0014 and
+    # decision 13.  It was granted by Frappe's default and never trimmed;
+    # it is trimmed now, and this is what holds it trimmed.
+    assert not rows[0].get("share"), (
+        f"the {CHAT_ROLE} row grants share. A reader who may share their "
+        "conversation hands it to somebody else, and the owner-only model "
+        "does not survive that."
+    )
+
 
 def test_the_chat_role_is_the_one_the_app_creates():
     """The role the matrix names is the role the installer makes."""
