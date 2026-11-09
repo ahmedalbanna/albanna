@@ -98,6 +98,33 @@ def _noop_emit(event: dict[str, Any]) -> None:
     return None
 
 
+def _messages_behind(conversation: str, limit: int) -> int:
+    """How many messages of *conversation* are older than the window.
+
+    The window is the last *limit* messages, so what is behind it is the
+    count minus the limit — and never less than nothing, because a thread
+    shorter than the window has nothing behind it.
+
+    Counted rather than guessed, and counted in one query: the model is
+    told a number it can act on, and a number that is wrong is worse than
+    no number.
+    """
+    from albanna.services.conversation_service import PARENT_FIELD
+
+    try:
+        total = frappe.db.sql(
+            "select count(*) from `tabAlbanna Message` where parent = %s and parentfield = %s",
+            (conversation, PARENT_FIELD),
+        )[0][0]
+    except Exception:
+        # A count that cannot be taken is a count of nothing behind: the
+        # model is told the window is the thread, which is the safe
+        # direction to be wrong in.
+        return 0
+
+    return max(0, int(total) - int(limit or 0))
+
+
 def _reader_error(exc: BaseException) -> str:
     """The sentence the reader is shown when a turn fails.
 
@@ -448,6 +475,13 @@ class ChatService:
         company = default_company()
         from albanna.user_policy import confirm_writes_for
 
+        # How much of this thread is behind the window the model is about
+        # to be given.  A long thread is worked on for days, and the
+        # model sees only the tail of it — it used to not know that, so a
+        # question about a decision made forty messages ago was answered
+        # from the window and wrong in a way nobody could see.
+        behind = _messages_behind(conversation, settings.history_limit)
+
         context = PromptContext(
             site=site,
             company=company,
@@ -457,6 +491,7 @@ class ChatService:
             writable=tuple(writable_doctypes(principal.user)),
             writes_require_approval=confirm_writes_for(principal.user),
             page_context=request.page_context,
+            history_behind=behind,
         )
 
         messages: list[Message] = [

@@ -140,3 +140,42 @@ def test_every_field_is_clipped():
     )
     assert len(context) <= 2000
     assert context.count("\n") == len(context.split("\n")) - 1
+
+
+def test_the_prompt_says_how_much_of_the_thread_is_behind_the_window():
+    """A long thread is worked on for days, and the model sees the tail.
+
+    It used to not know that — so a question about a decision made forty
+    messages ago was answered from the window, and wrong in a way nobody
+    could see.  Silence is not the whole truth, and this is the number
+    that lets the model say so.
+    """
+    prompt = build_system_prompt([], PromptContext(history_behind=290))
+
+    assert "290" in prompt
+    assert "behind what you can see" in prompt
+
+
+def test_a_short_thread_says_nothing_about_what_is_behind_it():
+    """A line about messages that do not exist is a line of noise.
+
+    The instruction to say so when there *are* messages behind is always
+    in the prompt — it is the rule.  What is conditional is the number,
+    and that is what this asserts is absent.
+    """
+    prompt = build_system_prompt([], PromptContext(history_behind=0))
+
+    assert "Messages of this thread behind" not in prompt
+
+
+def test_the_prompt_tells_the_model_what_mine_means():
+    """ "My open tickets" was a suggestion the assistant could not answer.
+
+    The reader was named in the site block already; what was missing was
+    the model knowing that "mine" means that user, and that there is a
+    filter for it.
+    """
+    prompt = build_system_prompt([], PromptContext(user="agent@albanna.dev"))
+
+    assert "assigned_to" in prompt
+    assert "mine" in prompt

@@ -4287,6 +4287,108 @@ class TestUndo(AlbannaTestCase):
 
 
 @pytest.mark.integration
+class TestALongThread(AlbannaTestCase):
+    """The model is told how much of the thread it cannot see.
+
+    A long thread is worked on for days, and the model sees only the last
+    ``history_limit`` of it.  It used to not know that — so a question
+    about a decision made forty messages ago was answered from the window,
+    and wrong in a way nobody could see.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.reader = self._make_user("albanna.test.longthread@albanna.dev", "Sales User")
+
+    def _make_user(self, email: str, role: str) -> str:
+        if not frappe.db.exists("User", email):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Albanna"
+                user.last_name = "Long"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        user = frappe.get_doc("User", email)
+        user.flags.ignore_permissions = True
+        user.add_roles(role, "Albanna User")
+        return email
+
+    def _as(self, email: str):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _thread(self, turns: int, page: str = "") -> str:
+        """A conversation with *turns* questions and answers.
+
+        The page is fixed by the caller when the turn that follows has to
+        land in the *same* conversation — a turn on another page starts
+        another thread, and the count would be of nothing.
+        """
+        page = page or f"test|long|{frappe.generate_hash(6)}|"
+        conversation = ensure_conversation(self.reader, page)
+        rows = []
+        for index in range(turns):
+            rows.append({"role": "user", "content": f"question {index}"})
+            rows.append({"role": "assistant", "content": f"answer {index}"})
+        append_messages(conversation, rows)
+        return conversation
+
+    def test_the_count_is_what_is_behind_the_window(self):
+        from albanna.services.chat_service import _messages_behind
+
+        conversation = self._thread(turns=30)  # 60 messages
+
+        # The window is the last 50, so ten are behind it.
+        self.assertEqual(_messages_behind(conversation, 50), 10)
+
+    def test_a_thread_shorter_than_the_window_has_nothing_behind_it(self):
+        from albanna.services.chat_service import _messages_behind
+
+        conversation = self._thread(turns=5)  # 10 messages
+
+        self.assertEqual(_messages_behind(conversation, 50), 0)
+
+    def test_the_model_is_told_the_number(self):
+        """The number reaches the prompt, because a number the model is
+        not told is a number that does not exist."""
+        from albanna.core.messages import Message
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.chat_service import ChatService, TurnRequest
+
+        # A page of this run's own: a fixed one would find the previous
+        # run's conversation still there, and the count would be of
+        # messages this test did not write.
+        page = f"test|long|prompt|{frappe.generate_hash(6)}|"
+        self._thread(turns=30, page=page)  # 60 messages, 10 behind a window of 50
+        self._as(self.reader)
+
+        seen = {}
+
+        def fake_complete(config, messages, tools, emit, stream):
+            seen["system"] = messages[0].content if messages else ""
+            return Completion(
+                message=Message(role="assistant", content="done"),
+                provider="openai",
+                model="a-model",
+                usage=Usage(input_tokens=10, output_tokens=5),
+            )
+
+        service = ChatService()
+        service._complete = fake_complete
+        outcome = service.run(TurnRequest(question="what did we decide?", page=page))
+
+        self.assertTrue(outcome.ok, outcome.error)
+        self.assertIn("Messages of this thread behind", seen.get("system") or "")
+        self.assertIn("10", seen.get("system") or "")
+
+
 class TestTurnDurability(AlbannaTestCase):
     """A write that ran is committed before the turn can die.
 

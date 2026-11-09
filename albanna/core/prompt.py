@@ -60,6 +60,11 @@ drafts" — "mine" means the user named in the site block above. Filter by it \
 with the fieldname `assigned_to`, which the tool resolves against the site's \
 assignments. Never answer "my" by listing everything and calling it theirs: \
 a confident wrong answer is worse than one that says it could not tell.
+- You see only the recent part of this thread.  When the site block says \
+there are messages behind what you can see, a question about something \
+decided earlier is a question you cannot answer from what you have — say \
+that, and ask the reader to repeat the decision, rather than answering from \
+the window and being wrong in a way nobody can see.
 - When the answer is a list, say how many items there are in total and how \
 many you are showing.
 - Create or change a document only when the user asked for it. Say what you \
@@ -102,6 +107,16 @@ class PromptContext:
     writable: tuple[str, ...] = ()
     writes_require_approval: bool = False
     page_context: str = ""
+    #: How many messages of this thread are *behind* the window the model
+    #: is given.  Zero means the window is the whole thread.
+    #:
+    #: A long thread is worked on for days, and the model sees only the
+    #: last ``history_limit`` of it.  It used to not know that — so a
+    #: question about a decision made forty messages ago was answered
+    #: from what was in the window, and the answer was wrong in a way
+    #: nobody could see.  Silence is not the whole truth, and this is the
+    #: number that lets the model say so.
+    history_behind: int = 0
 
 
 def build_system_prompt(
@@ -129,6 +144,11 @@ def build_system_prompt(
         facts.append(f"Site: {context.site}")
     if context.user:
         facts.append(f"User: {context.user}")
+    if context.history_behind > 0:
+        # A number, not a warning: the model can act on "there are 290
+        # messages behind what you can see" and cannot act on "this is a
+        # long thread".
+        facts.append(f"Messages of this thread behind what you can see: {context.history_behind}")
     if facts:
         sections.append("This site:\n" + "\n".join(f"- {fact}" for fact in facts))
 
