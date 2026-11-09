@@ -226,4 +226,10 @@ def build_provider(kind: str) -> ChatProvider:
         from albanna.providers.anthropic import AnthropicProvider
 
         return AnthropicProvider()
+    # OpenAI-compatible endpoints (OpenRouter, OpenAI, Groq, vLLM, LM Studio, Together, etc.)
+    # The OpenAIProvider adapter handles all of these; only the base URL and model differ.
+    if kind in (OPENAI, "openrouter", "groq", "vllm", "lmstudio", "together"):
+        from albanna.providers.openai import OpenAIProvider
+
+        return OpenAIProvider()
     raise ValueError(f"Unknown provider kind: {kind!r}. Known kinds: {', '.join(PROVIDER_KINDS)}.")

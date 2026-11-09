@@ -1390,3 +1390,19 @@ msgstr "أسماء الأدوات، مفصولة بفواصل أو بأسطر �
 
 msgid "and {0} more"
 msgstr "و{0} أخرى"
+
+# Provider kinds (FR-13.1)
+msgid "groq"
+msgstr "غروك"
+
+msgid "lmstudio"
+msgstr "استوديو LM"
+
+msgid "openrouter"
+msgstr "موجه مفتوح"
+
+msgid "together"
+msgstr "معاً"
+
+msgid "vllm"
+msgstr "VLLM"

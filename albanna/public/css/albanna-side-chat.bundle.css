@@ -2348,3 +2348,22 @@ body.albanna-side-chat-docked-inline-start {
 	color: var(--albanna-link, var(--gray-300, #a1a1aa));
 }
 
+
+/* RTL layout support for Arabic (FR-13.1) */
+body[dir="rtl"] .albanna-chat__message--user .albanna-chat__bubble {
+	border-bottom-left-radius: 2px;
+}
+
+body[dir="rtl"] .albanna-chat__message--assistant .albanna-chat__bubble {
+	border-bottom-right-radius: 2px;
+}
+
+body[dir="rtl"] #albanna-side-chat {
+	inset-inline-start: 16px;
+	inset-inline-end: auto;
+}
+
+body[dir="rtl"] .albanna-side-chat-launcher {
+	inset-inline-start: 16px;
+	inset-inline-end: auto;
+}
