@@ -175,6 +175,65 @@ class TestChatAccess(AlbannaTestCase):
 
         self.assertTrue(can_use_chat())
 
+    # -- the door itself ---------------------------------------------------
+
+    def test_the_door_refuses_a_system_manager(self):
+        """``require_chat_access`` is the function the endpoints call.
+
+        The tests above ask ``can_use_chat``, which is the *answer*.
+        This one asks the *door* — and they are different functions, so a
+        bypass written into one is invisible to the other.
+
+        Twenty-one endpoints call this function and nothing else.  A
+        ``if is_system_manager(): return`` at its top would open every
+        one of them to every account that runs the site, and every test
+        above would still pass, because none of them asks this function
+        about a System Manager.  That is the shape of FR-7.4's violation
+        and it is the reason this test exists.
+        """
+        self._as(self.manager)
+
+        with self.assertRaises(frappe.PermissionError):
+            require_chat_access()
+
+    def test_the_door_opens_for_a_system_manager_who_takes_the_role(self):
+        """The mirror of the above: the role is the door, at the door too."""
+        self._make_user(self.manager, "System Manager", "Albanna User")
+        self._as(self.manager)
+
+        # Returns None when the caller may pass.  Raising is the failure,
+        # so the call is the assertion.
+        require_chat_access()
+
+    def test_administrator_is_exempt_and_the_reason_is_not_the_role(self):
+        """The one account FR-7.4's letter does not cover, written down.
+
+        Frappe's ``has_permission`` returns True for Administrator before
+        it reads a single permission row — it is unconditional, in
+        ``frappe/permissions.py``.  The app's gate inherits that, and the
+        app's own hooks exempt Administrator deliberately: for the site
+        owner, the list of conversations is a fact about their own site.
+
+        This is recorded because it is *invisible*.  Administrator holds
+        no ``Albanna User`` row in ``tabHas Role``, and
+        ``frappe.get_roles()`` reports them as holding every role on the
+        site — so nothing an operator can look at tells them which of the
+        two is the reason.  A reader who concludes the gate must cover
+        Administrator and "fixes" it takes the chat away from the site
+        owner, for a reason that was never written down.
+
+        Every other account is decided by the matrix, and the tests above
+        hold that.
+        """
+        self._as("Administrator")
+
+        # The rows, not ``frappe.get_roles()``: that one answers with
+        # every role on the site for Administrator, which is the mask
+        # this test exists to see through.
+        held = frappe.db.get_all("Has Role", {"parent": "Administrator"}, pluck="role") or []
+        self.assertNotIn("Albanna User", held)
+        self.assertTrue(can_use_chat())
+
     # -- the transcript ----------------------------------------------------
 
     def test_a_system_manager_does_not_read_another_readers_conversation(self):
