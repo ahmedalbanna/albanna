@@ -20,6 +20,7 @@ the next migrate that touches this DocType.
 
 from __future__ import annotations
 
+import ast
 import json
 import pathlib
 
@@ -64,4 +65,42 @@ def test_the_chat_role_is_the_one_the_app_creates():
     assert f'role.role_name = "{CHAT_ROLE}"' in install, (
         f"the installer does not create {CHAT_ROLE}, so a fresh install has "
         "a permission row that names a role which does not exist."
+    )
+
+
+def test_the_installer_hands_the_chat_to_nobody():
+    """The role is made, and it is given to no one.
+
+    This is the other half of "off by default", and it is the half
+    nothing held.  The matrix says which role may chat; the installer
+    decides who *holds* that role — and the answer the requirement wants
+    is "nobody, until an operator says otherwise".
+
+    An ``add_roles`` anywhere in the install path would flip the default
+    for every account on the site, and every other test would still pass:
+    they each build their own user with explicit roles, so not one of
+    them reads what the installer handed out.  ``after_migrate`` is in
+    that path too, and a grant there would re-open the chat on every
+    migrate rather than only on install.
+
+    Parsed rather than searched for as text, because a comment that
+    mentions ``add_roles`` is not a grant and a string that contains it
+    is not a call.
+    """
+    tree = ast.parse((APP_ROOT / "install.py").read_text(encoding="utf-8"))
+
+    granted = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and (
+            getattr(node.func, "attr", None) == "add_roles"
+            or getattr(node.func, "id", None) == "add_roles"
+        )
+    ]
+
+    assert not granted, (
+        f"the installer grants {CHAT_ROLE} at line(s) {granted}. The chat "
+        "ships off for every account on the site; an operator turns it on, "
+        "in the permission matrix, for the accounts they choose."
     )

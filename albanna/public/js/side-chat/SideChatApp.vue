@@ -1838,18 +1838,6 @@ async function copyTable(message, index = 0) {
 }
 
 /**
- * Download the table in the answer, as a CSV.
- *
- * Copying puts the table on the clipboard, which is where a table goes
- * when it is going into a spreadsheet that is already open.  Sometimes
- * the reader wants the file itself — to attach to something, or to keep.
- *
- * The file is built here, in the browser, because the answer is already
- * here: the table is in the markdown the model wrote, and a round trip
- * to the server would move text that never needed to move.
- *
- * @param {object} message the message
- */
  * Download one table of the answer, as a CSV.
  *
  * Copying puts the table on the clipboard, which is where a table goes
