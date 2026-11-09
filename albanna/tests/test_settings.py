@@ -13,6 +13,7 @@ put back by hand as well: a suite that runs after this one reads them.
 from __future__ import annotations
 
 import frappe
+import pytest
 
 from albanna.core.tools import parse_tool_names
 from albanna.services.settings_service import get_settings
@@ -93,3 +94,82 @@ class TestDisabledToolsOnSave(AlbannaTestCase):
 
         with self.assertRaises(frappe.ValidationError):
             doc.save()
+
+
+@pytest.mark.integration
+class TestSettingsAccess(AlbannaTestCase):
+    """Who may read the settings, and who may not.
+
+    The settings hold the provider's key, so the gate is a security
+    question and not a convenience one.  The shipped matrix names one
+    role — System Manager, read and write — and the doctype is a Single,
+    so the configuration is site-wide rather than per account.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.manager = self._make_user("settings-manager@example.com", "System Manager")
+        self.plain = self._make_user("settings-plain@example.com", "Sales User")
+
+    def _make_user(self, email: str, *roles: str) -> str:
+        if not frappe.db.exists("User", email):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Settings"
+                user.last_name = "Access"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        frappe.db.delete("Has Role", {"parent": email})
+        user = frappe.get_doc("User", email)
+        user.flags.ignore_permissions = True
+        user.add_roles(*roles)
+        return email
+
+    def _as(self, email: str) -> None:
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def test_a_system_manager_may_read_the_settings(self):
+        self._as(self.manager)
+
+        self.assertTrue(
+            frappe.has_permission("Albanna Settings", "read"),
+            "a System Manager cannot read the settings",
+        )
+
+    def test_a_system_manager_may_write_the_settings(self):
+        self._as(self.manager)
+
+        self.assertTrue(
+            frappe.has_permission("Albanna Settings", "write"),
+            "a System Manager cannot write the settings",
+        )
+
+    def test_a_plain_user_may_not_read_the_settings(self):
+        """The settings hold the provider's key.
+
+        A reader who may not configure the provider may not read the
+        configuration either — the key is in it, and a key that every
+        account can read is a key that is not a key.
+        """
+        self._as(self.plain)
+
+        self.assertFalse(
+            frappe.has_permission("Albanna Settings", "read"),
+            "a plain user may read the settings, which hold the provider's key",
+        )
+
+    def test_a_plain_user_may_not_write_the_settings(self):
+        self._as(self.plain)
+
+        self.assertFalse(
+            frappe.has_permission("Albanna Settings", "write"),
+            "a plain user may write the settings",
+        )
