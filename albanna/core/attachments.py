@@ -80,12 +80,31 @@ class AttachableType:
 #: rather than stored under a guessed extension: a broad accept would
 #: happily file ``image/svg+xml`` (which executes as HTML) or
 #: ``text/html`` away as a ``.bin`` name the chromium postfix would not.
+#:
+#: The text types are here because a reader attaches them — a CSV of the
+#: month's orders, a JSON payload, a note they were sent — and their text
+#: is the whole of what they are.  An image goes to the provider as a
+#: picture; everything else goes as text, read here, because no provider
+#: reads a ``.csv`` as a picture.
 ATTACHABLE_TYPES: tuple[AttachableType, ...] = (
     AttachableType("image/png", ".png", "PNG"),
     AttachableType("image/jpeg", ".jpg", "JPEG"),
     AttachableType("image/webp", ".webp", "WebP"),
     AttachableType("image/gif", ".gif", "GIF"),
     AttachableType("application/pdf", ".pdf", "PDF"),
+    AttachableType("text/plain", ".txt", "plain text"),
+    AttachableType("text/csv", ".csv", "CSV"),
+    AttachableType("text/markdown", ".md", "Markdown"),
+    AttachableType("application/json", ".json", "JSON"),
+)
+
+#: The MIME types that travel to the provider as a picture.
+#:
+#: Everything else travels as text.  A ``.csv`` sent as an image part is
+#: a part nothing reads, at the cost of the tokens for its bytes — the
+#: same arithmetic that keeps a PDF's bytes out of the payload.
+IMAGE_MIME_TYPES = frozenset(
+    candidate.mime for candidate in ATTACHABLE_TYPES if candidate.mime.startswith("image/")
 )
 
 #: The site has attachments switched off.  Nothing is carried, and the
@@ -183,37 +202,53 @@ def read_attachment_list(value: Any) -> tuple[list[str], bool]:
     return [], False
 
 
-#: How much of a PDF's text is carried into the turn, in characters.
+#: How much of an attachment's text is carried into the turn, in
+#: characters.
 #:
-#: A PDF's text is not bounded by the file's size: a scanned contract is a
-#: hundred pages of nothing and a data sheet is two pages of everything.
 #: The bound is on what the *model* is given, because that is what costs
-#: tokens and what fills the context — and a document whose first pages
-#: say what it is worth more than one whose last pages do.
-PDF_TEXT_CEILING = 12000
+#: tokens and what fills the context.  A PDF's text is not bounded by the
+#: file's size — a scanned contract is a hundred pages of nothing and a
+#: data sheet is two pages of everything — and a text file is the same:
+#: a reader can attach a log that runs to a megabyte.
+TEXT_CEILING = 12000
 
 
-def pdf_text(data: bytes) -> str:
-    """The text of a PDF, or ``""`` when there is none to get.
+def attachment_text(data: bytes, mime: str) -> str:
+    """The text of an attachment, or ``""`` when there is none to get.
 
-    ``pypdf`` is a dependency of Frappe itself, so it is on every bench
-    this app runs on and nothing new is installed for this.
+    A PDF is read with ``pypdf``, which is a dependency of Frappe itself
+    and so is on every bench this app runs on.  A text file is decoded —
+    UTF-8 first, because that is what a browser writes, and Latin-1 after
+    it, because a CSV exported from a spreadsheet on an Arabic Windows
+    install is Windows-1256 and UTF-8 turns it into mojibake rather than
+    failing.
 
-    A PDF that yields no text is not an error.  A scanned document is
-    pictures of words, and no library reads those without OCR — so the
-    answer is empty and the caller says so, rather than letting the model
-    answer as though it had read the document.  That is the same "say
-    what it could not read" property the app already ships for refused
+    Every failure is the same answer: empty.  A malformed PDF, an
+    encrypted one, a library that changed its shape, bytes that are not
+    text at all — all of them mean "no text", and none of them is worth
+    failing a turn over.  The caller says so rather than letting the
+    model answer as though it had read the document, which is the same
+    "say what it could not read" property the app ships for refused
     reads.
-
-    Every failure is the same answer.  A malformed PDF, an encrypted one,
-    a library that changed its shape: all of them mean "no text", and
-    none of them is worth failing a turn over — the reader attached a
-    document, and the turn still has a question to answer.
     """
     if not data:
         return ""
 
+    if mime == "application/pdf":
+        text = _pdf_text(data)
+    elif mime.startswith("text/") or mime == "application/json":
+        text = _decoded_text(data)
+    else:
+        # Not a type this function knows how to read.  An image is read
+        # by the provider, not here.
+        return ""
+
+    if len(text) > TEXT_CEILING:
+        text = text[:TEXT_CEILING].rstrip()
+    return text
+
+
+def _pdf_text(data: bytes) -> str:
     try:
         import pypdf
 
@@ -222,41 +257,50 @@ def pdf_text(data: bytes) -> str:
     except Exception:
         return ""
 
-    text = "\n".join(part.strip() for part in parts if part and part.strip()).strip()
-    if len(text) > PDF_TEXT_CEILING:
-        text = text[:PDF_TEXT_CEILING].rstrip()
-    return text
+    return "\n".join(part.strip() for part in parts if part and part.strip()).strip()
+
+
+def _decoded_text(data: bytes) -> str:
+    for encoding in ("utf-8", "latin-1"):
+        try:
+            return data.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    # Latin-1 decodes any byte sequence, so this is unreachable — and it
+    # is here so that a future edit that removes the fallback fails
+    # loudly rather than returning nothing.
+    return ""
 
 
 def readable_attachments(data_urls: list[str]) -> list[str] | None:
     """The attachments a provider can actually read, or ``None``.
 
-    A PDF is dropped.  Its bytes are not a picture: no provider reads
-    them as an image part, and sending them costs the tokens for nothing
-    — a two-megabyte PDF is the better part of a million tokens of
-    base64, which is a turn that fails or a turn that costs a fortune.
-    Its text travels in the attachment note instead, so the model has the
-    document and not its encoding.
+    Only an image goes.  Everything else — a PDF, a CSV, a JSON payload —
+    is not a picture: no provider reads it as an image part, and sending
+    it costs the tokens for nothing.  A two-megabyte PDF is the better
+    part of a million tokens of base64, which is a turn that fails or a
+    turn that costs a fortune.  Its text travels in the attachment note
+    instead, so the model has the document and not its encoding.
 
     ``None`` rather than an empty list, because that is what "no
     attachment" looks like on the wire: a message with an empty list of
     parts is a message with a part that has nothing in it.
     """
-    kept = [url for url in (data_urls or []) if not _is_pdf(url)]
+    kept = [url for url in (data_urls or []) if _mime_of(url) in IMAGE_MIME_TYPES]
     return kept or None
 
 
-def _is_pdf(data_url: str) -> bool:
-    """Whether a data URL claims to be a PDF.
+def _mime_of(data_url: str) -> str:
+    """The type a data URL claims.
 
     The claim is the browser's, and it is the same claim
     :func:`check_attachment` already validated against the site's list —
     so it is the one thing about a data URL this app trusts.
     """
     if not isinstance(data_url, str):
-        return False
+        return ""
     header = data_url.partition(",")[0]
-    return header[len("data:") :].split(";")[0].strip().lower() == "application/pdf"
+    return header[len("data:") :].split(";")[0].strip().lower()
 
 
 def decode_data_url(data_url: str) -> tuple[bytes, str]:

@@ -30,11 +30,11 @@ from albanna.core.attachments import (
     attachable_mimes,
     attachable_names,
     attachable_type,
+    attachment_text,
     check_attachment,
     check_attachments,
     decode_data_url,
     paired_addresses,
-    pdf_text,
     read_attachment_list,
     readable_attachments,
 )
@@ -379,13 +379,27 @@ def test_the_mimes_are_the_mimes_the_browser_sends():
         "image/webp",
         "image/gif",
         "application/pdf",
+        "text/plain",
+        "text/csv",
+        "text/markdown",
+        "application/json",
     )
 
 
 def test_the_names_are_the_names_a_sentence_uses():
     """The names are what a refusal calls the types, and they are the
     names the types are known by — not a list of extensions."""
-    assert attachable_names() == ("PNG", "JPEG", "WebP", "GIF", "PDF")
+    assert attachable_names() == (
+        "PNG",
+        "JPEG",
+        "WebP",
+        "GIF",
+        "PDF",
+        "plain text",
+        "CSV",
+        "Markdown",
+        "JSON",
+    )
 
 
 # -- the one rule --------------------------------------------------------
@@ -430,26 +444,29 @@ def test_storage_rejects_a_bare_payload_with_no_type():
 def test_a_pdfs_text_comes_out():
     """A PDF's bytes are not a picture, so its text is the only thing
     about it the model can use — and it used to be thrown away."""
-    assert pdf_text(_pdf_bytes(b"Invoice 42, total 100.00")) == "Invoice 42, total 100.00"
+    assert (
+        attachment_text(_pdf_bytes(b"Invoice 42, total 100.00"), "application/pdf")
+        == "Invoice 42, total 100.00"
+    )
 
 
 def test_a_pdf_with_no_text_comes_back_empty_rather_than_raising():
     """A scanned document is pictures of words, and no library reads
     those without OCR.  Empty is the honest answer, and a turn that dies
     because a reader attached a scan is a turn that answers nothing."""
-    assert pdf_text(b"") == ""
-    assert pdf_text(b"this is not a pdf at all") == ""
+    assert attachment_text(b"", "application/pdf") == ""
+    assert attachment_text(b"this is not a pdf at all", "application/pdf") == ""
 
 
 def test_a_pdfs_text_is_bounded():
     """The bound is on what the *model* is given, because that is what
     costs tokens and what fills the context."""
-    from albanna.core.attachments import PDF_TEXT_CEILING
+    from albanna.core.attachments import TEXT_CEILING
 
-    long_line = b"x" * (PDF_TEXT_CEILING * 2)
-    text = pdf_text(_pdf_bytes(long_line))
+    long_line = b"x" * (TEXT_CEILING * 2)
+    text = attachment_text(_pdf_bytes(long_line), "application/pdf")
 
-    assert len(text) <= PDF_TEXT_CEILING
+    assert len(text) <= TEXT_CEILING
     assert text  # and it is not empty: the ceiling truncates, it does not refuse
 
 
@@ -481,3 +498,61 @@ def test_nothing_attached_is_none_rather_than_an_empty_list():
     nothing in it."""
     assert readable_attachments([]) is None
     assert readable_attachments(None) is None
+
+
+# -- a text file's text ----------------------------------------------------
+
+
+def _text_data_url(body: str, mime: str = "text/plain") -> str:
+    import base64
+
+    return f"data:{mime};base64," + base64.b64encode(body.encode("utf-8")).decode("ascii")
+
+
+def test_a_text_files_text_comes_out():
+    """A reader attaches a CSV of the month's orders, and its rows are
+    the whole of what it is."""
+    body = "order,customer,total\nSAL-1,Acme,100.00\n"
+    assert attachment_text(body.encode("utf-8"), "text/csv") == body
+
+
+def test_a_json_payload_comes_out():
+    body = '{"customer": "Acme", "total": 100.00}'
+    assert attachment_text(body.encode("utf-8"), "application/json") == body
+
+
+def test_a_text_files_text_is_bounded():
+    """A reader can attach a log that runs to a megabyte, and the bound is
+    on what the *model* is given."""
+    from albanna.core.attachments import TEXT_CEILING
+
+    body = "x" * (TEXT_CEILING * 2)
+    text = attachment_text(body.encode("utf-8"), "text/plain")
+
+    assert len(text) <= TEXT_CEILING
+    assert text
+
+
+def test_bytes_that_are_not_text_come_back_empty_rather_than_raising():
+    """Latin-1 decodes any byte sequence, so the fallback never fails —
+    and a payload that is not text at all is still not text."""
+    assert attachment_text(b"\xff\xfe\x00\x01", "text/plain") != ""
+    assert attachment_text(b"", "text/plain") == ""
+
+
+def test_an_image_carries_no_text_of_its_own():
+    """The provider is already looking at the picture."""
+    assert attachment_text(b"\x89PNG\r\n\x1a\n", "image/png") == ""
+
+
+def test_only_an_image_goes_to_the_provider_as_a_picture():
+    """A CSV sent as an image part is a part nothing reads, at the cost of
+    the tokens for its bytes."""
+    png = _data_url()
+    csv = _text_data_url("a,b\n1,2\n", "text/csv")
+    pdf = _pdf_data_url(b"a contract")
+
+    assert readable_attachments([png]) == [png]
+    assert readable_attachments([csv]) is None
+    assert readable_attachments([pdf]) is None
+    assert readable_attachments([png, csv, pdf]) == [png]

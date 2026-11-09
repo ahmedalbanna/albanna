@@ -2207,6 +2207,43 @@ class TestAnAttachedPdf(AlbannaTestCase):
             "a picture was dropped on its way to the provider",
         )
 
+    def test_a_csvs_text_reaches_the_model(self):
+        """A reader attaches a CSV of the month's orders, and its rows are
+        the whole of what it is.
+
+        No provider reads a ``.csv`` as a picture, so its text is read
+        here and travels with the turn — the same rule a PDF follows, for
+        the same reason.
+        """
+        import base64
+
+        self._as(self.reader)
+        body = "order,customer,total\nSAL-1,Acme,100.00\n"
+        csv = "data:text/csv;base64," + base64.b64encode(body.encode("utf-8")).decode("ascii")
+
+        outcome, _current, system = self._run([csv])
+
+        self.assertTrue(outcome.ok, outcome.error)
+        self.assertIsNotNone(system, "the turn sent no system message")
+        self.assertIn(
+            "SAL-1,Acme,100.00", str(system.content), "the CSV's rows never reached the model"
+        )
+
+    def test_a_csvs_bytes_do_not_reach_the_model(self):
+        """A CSV sent as an image part is a part nothing reads, at the cost
+        of the tokens for its bytes."""
+        import base64
+
+        self._as(self.reader)
+        body = "order,customer,total\nSAL-1,Acme,100.00\n"
+        csv = "data:text/csv;base64," + base64.b64encode(body.encode("utf-8")).decode("ascii")
+
+        outcome, current, _system = self._run([csv])
+
+        self.assertTrue(outcome.ok, outcome.error)
+        self.assertIsNotNone(current, "the turn sent no user message")
+        self.assertEqual(current.attachments, [], "the CSV's bytes were sent as a picture")
+
     def test_the_history_does_not_claim_a_pdf_it_never_looked_at(self):
         """The history is rebuilt from stored URLs, and it does not know
         whether a PDF's text was readable.

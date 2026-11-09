@@ -63,22 +63,21 @@ def attachment_note(urls: list[str], texts: list[str] | None = None) -> str:
     (``/private/files/albanna-8f2a1c.png``), and a vision provider
     cannot read a path it has no way to fetch.
 
-    *texts* is parallel to *urls*: the text a PDF's pages hold, for the
-    attachments that have any.  A PDF's bytes are not a picture — no
-    provider reads them as an image part — so its text is the only thing
-    about it the model can use, and it travels here rather than being
-    thrown away.
+    *texts* is parallel to *urls*: the text an attachment's contents hold,
+    for the attachments that have any.  Only an image goes to the provider
+    as a picture; everything else — a PDF, a CSV, a JSON payload — travels
+    as text read here, because no provider reads a ``.csv`` as a picture.
 
     ``None`` and an empty entry mean different things, and the difference
     is the whole point:
 
     * ``None`` — nobody looked.  The history is rebuilt from stored URLs
-      alone, and it does not know whether a PDF's text was readable.  It
-      says nothing about it, because a claim it cannot support is a lie
-      the model will repeat.
+      alone, and it does not know whether an attachment's text was
+      readable.  It says nothing about it, because a claim it cannot
+      support is a lie the model will repeat.
     * ``""`` — somebody looked and there was nothing to get.  A scanned
-      document is pictures of words, and the model is told so rather than
-      left to guess.
+      PDF is pictures of words, and bytes that are not text are not text;
+      the model is told so rather than left to guess.
     """
     if not urls:
         return ""
@@ -88,22 +87,20 @@ def attachment_note(urls: list[str], texts: list[str] | None = None) -> str:
     listed = ", ".join(urls)
 
     # What the model may read of each attachment, as a sentence per
-    # attachment.  A PDF with text says what it holds; a PDF that was
-    # looked at and yielded nothing says it could not be read; anything
-    # else says nothing, because there is nothing to say about a picture
-    # the provider is already looking at.
+    # attachment.  An attachment with text says what it holds; one that
+    # was looked at and yielded nothing says it could not be read; an
+    # image says nothing, because the provider is already looking at it.
     carried = []
     for index, url in enumerate(urls):
-        if not url.lower().endswith(".pdf"):
+        if url.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
             continue
         text = extracted[index] if index < len(extracted) else ""
         if text:
             carried.append(f"The text of {url} follows.\n\n{text}")
         elif looked:
             carried.append(
-                f"The contents of {url} could not be read — it is a scanned or "
-                "image-only document, and only its address is available. Do not "
-                "describe what it says."
+                f"The contents of {url} could not be read as text, and only its "
+                "address is available. Do not describe what it says."
             )
 
     body = ""

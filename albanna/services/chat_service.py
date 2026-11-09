@@ -49,9 +49,9 @@ import frappe
 from frappe import _
 
 from albanna.core.attachments import (
+    attachment_text,
     decode_data_url,
     paired_addresses,
-    pdf_text,
     readable_attachments,
 )
 from albanna.core.authority import Authority
@@ -922,11 +922,11 @@ class ChatService:
             if not stored:
                 continue
             urls.append(stored)
-            # A PDF's text is the only thing about it the model can use,
-            # so it is read here rather than thrown away.  The bytes are
-            # already in hand — the data URL the browser sent — so there
-            # is no file to open and no path to resolve.
-            texts.append(self._pdf_text(attachments) if stored.lower().endswith(".pdf") else "")
+            # Anything that is not a picture travels as text: a PDF's
+            # pages, a CSV's rows, a JSON payload.  The bytes are already
+            # in hand — the data URL the browser sent — so there is no
+            # file to open and no path to resolve.
+            texts.append(self._attachment_text(attachments, stored))
 
         if urls:
             # The count is the count that was *stored*.  A turn that sent
@@ -943,12 +943,19 @@ class ChatService:
         return urls, note
 
     @staticmethod
-    def _pdf_text(data_url: str) -> str:
-        """The text of an attached PDF, or "" when there is none to get."""
+    def _attachment_text(data_url: str, stored_url: str) -> str:
+        """The text of an attached file, or "" when there is none to get.
+
+        An image is read by the provider and not here, so it carries no
+        text of its own.  Everything else — a PDF, a CSV, a JSON payload
+        — is read, because no provider reads it as a picture.
+        """
         raw, mime = decode_data_url(data_url)
-        if mime != "application/pdf" or not raw:
+        if not raw:
             return ""
-        return pdf_text(raw)
+        if mime.startswith("image/"):
+            return ""
+        return attachment_text(raw, mime)
 
     def _store_attachment(self, attachments: str, user: str) -> str:
         """Store an attached file as a Frappe File and return its URL."""

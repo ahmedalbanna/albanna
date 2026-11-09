@@ -213,11 +213,11 @@ def test_a_pdfs_text_travels_with_the_note():
     assert "could not be read" not in note
 
 
-def test_a_pdf_with_no_text_says_so_rather_than_going_quiet():
-    """A scanned document is pictures of words, and no library reads
-    those without OCR.
+def test_an_attachment_with_no_text_says_so_rather_than_going_quiet():
+    """A scanned PDF is pictures of words, and bytes that are not text are
+    not text.
 
-    The model is told, because a reader who attached a contract and got
+    The model is told, because a reader who attached a document and got
     an answer that ignored it has been answered about a document nobody
     read — the same "say what it could not read" property the app ships
     for refused reads.
@@ -225,8 +225,17 @@ def test_a_pdf_with_no_text_says_so_rather_than_going_quiet():
     note = attachment_note(["/private/files/a.pdf"], [""])
 
     assert "/private/files/a.pdf" in note
-    assert "could not be read" in note
+    assert "could not be read as text" in note
     assert "Do not describe what it says." in note
+
+
+def test_a_csv_with_no_text_says_so_too():
+    """The sentence is the attachment's, not the PDF's: a file that was
+    looked at and yielded nothing is the same fact whatever its type."""
+    note = attachment_note(["/private/files/a.csv"], [""])
+
+    assert "/private/files/a.csv" in note
+    assert "could not be read as text" in note
 
 
 def test_a_picture_carries_no_text_of_its_own():
@@ -237,6 +246,19 @@ def test_a_picture_carries_no_text_of_its_own():
     assert "/private/files/a.png" in note
     assert "could not be read" not in note
     assert "The text of" not in note
+
+
+def test_a_csv_among_pictures_is_described_on_its_own():
+    """One attachment's text does not become every attachment's, and the
+    rule is the attachment's type rather than its position."""
+    note = attachment_note(
+        ["/private/files/a.png", "/private/files/b.csv"],
+        ["", "order,customer\nSAL-1,Acme"],
+    )
+
+    assert "order,customer" in note
+    assert "The text of /private/files/b.csv" in note
+    assert "The text of /private/files/a.png" not in note
 
 
 def test_a_pdf_among_pictures_is_described_on_its_own():
