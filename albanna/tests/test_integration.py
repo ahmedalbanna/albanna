@@ -3742,6 +3742,70 @@ class TestAToolTheUserCannotUse(AlbannaTestCase):
         self.assertIn("submit_doc", seen.get("tools") or [])
         self.assertIn("submit_doc", seen.get("system") or "")
 
+    def test_the_registry_asks_each_right_its_own_question(self):
+        """``tool_registry`` hands six lists to six parameters, in order.
+
+        FR-7.6 is a statement about *which* list governs *which* tool,
+        and the lists reach ``without_writes_out_of_reach`` as six
+        positional arguments.  A swap — ``submittable`` where
+        ``cancellable`` belongs — would offer ``submit_doc`` to a caller
+        who may only cancel, and refuse it to one who may submit.
+
+        The pure tests prove the mapping *inside* the registry.  This
+        proves the wiring that feeds it, which is the other half of the
+        same sentence and the half nothing had asked about.
+
+        Each list is given a name of its own, one at a time, and the
+        tools are asked which one they followed.
+        """
+        from albanna.services import toolset
+
+        # The same pairing ``tests/test_tool_switches.py`` asserts
+        # against, repeated here because that module is not importable
+        # from a site suite.
+        write_tools = {
+            "create_doc": "create",
+            "update_doc": "write",
+            "bulk_update_doc": "write",
+            "submit_doc": "submit",
+            "cancel_doc": "cancel",
+            "amend_doc": "amend",
+            "delete_doc": "delete",
+        }
+        names = (
+            "creatable",
+            "writable",
+            "submittable",
+            "cancellable",
+            "amendable",
+            "deletable",
+        )
+        rights = ("create", "write", "submit", "cancel", "amend", "delete")
+        original = {name: getattr(toolset, f"{name}_doctypes") for name in names}
+
+        try:
+            for name, right in zip(names, rights, strict=True):
+                # Only this one list is non-empty, so only the tools it
+                # governs may be offered.
+                for other in names:
+                    value = {"A DocType"} if other == name else set()
+                    setattr(toolset, f"{other}_doctypes", lambda _user, _v=value: _v)
+
+                registry = toolset.tool_registry(self.reader)
+
+                for tool, tool_right in write_tools.items():
+                    self.assertIs(
+                        registry.get(tool).enabled,
+                        tool_right == right,
+                        f"holding only {right} switched {tool} "
+                        f"{'on' if tool_right == right else 'off'} when it should "
+                        f"have done the opposite — the six lists are wired to the "
+                        f"wrong parameters",
+                    )
+        finally:
+            for name, fn in original.items():
+                setattr(toolset, f"{name}_doctypes", fn)
+
 
 @pytest.mark.integration
 class TestContextEndpoints(AlbannaTestCase):
