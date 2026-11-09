@@ -3808,6 +3808,89 @@ class TestAToolTheUserCannotUse(AlbannaTestCase):
 
 
 @pytest.mark.integration
+class TestTheAuthorityFailsClosedOnAnUnresolvedCall(AlbannaTestCase):
+    """The branches of FR-7.7's fail-closed rule that nothing had asked about.
+
+    All six denials the requirement names are tested: five in the
+    authority layer, purely, and the site mismatch in the backend --
+    twice, in two classes.
+
+    What was not tested is the *unresolved* half of two of them.  A
+    mismatch is a call bound to the wrong site; an unresolved call is
+    bound to no site at all, and ``_assert_site`` keeps a separate
+    branch for it.  The same is true of the actor.  Both branches
+    refuse, both are cheap, and neither had a test -- so a change that
+    turned either into a pass-through would have opened the gate for a
+    call whose destination, or whose actor, nobody had established.
+
+    The backend is built with a stub tool, so the test asks about the
+    gate and not about what runs behind it.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.spec = TOOL_MANIFEST.get("get_doc")
+        self.backend = ErpnextBackend({"get_doc": lambda **kwargs: '{"status": "ok"}'})
+
+    def _context(self, site: str, user: str | None = None) -> ToolContext:
+        from albanna.core.authority import Principal
+
+        # ``None`` means "whoever is signed in"; an empty string is a
+        # value of its own, and the gate has a branch for it.  Writing
+        # this as ``user or frappe.session.user`` would quietly turn the
+        # empty string into the session user and the branch would never
+        # be reached -- which is how this test failed the first time.
+        return ToolContext(
+            principal=Principal(
+                user=frappe.session.user if user is None else user,
+                roles=frozenset(),
+            ),
+            site=site,
+        )
+
+    def test_a_call_with_no_site_resolved_is_refused(self):
+        """An empty site is not a site that happens to match.
+
+        The mismatch branch refuses a call bound to the wrong site.  This
+        one refuses a call bound to no site -- and the difference matters,
+        because a pass-through here would run a tool whose destination
+        nobody established, which is the failure the whole check exists
+        to prevent.
+        """
+        with self.assertRaises(RuntimeError) as caught:
+            self.backend.call(self.spec, {"doctype": "Item", "name": "X"}, self._context(""))
+
+        self.assertIn("no site", str(caught.exception).lower())
+
+    def test_a_call_with_no_user_resolved_is_refused(self):
+        """The actor's own unresolved case, for the same reason.
+
+        The framework applies the session user's roles to every read and
+        write, so a call with no user is a call whose permissions nobody
+        checked.  It is refused rather than run as whoever happens to be
+        signed in.
+        """
+        with self.assertRaises(RuntimeError) as caught:
+            self.backend.call(
+                self.spec,
+                {"doctype": "Item", "name": "X"},
+                self._context(frappe.local.site, user=""),
+            )
+
+        self.assertIn("no user", str(caught.exception).lower())
+
+    def test_a_call_whose_site_and_actor_are_both_resolved_runs(self):
+        """The mirror: the gates refuse an unresolved call and nothing else."""
+        result = self.backend.call(
+            self.spec,
+            {"doctype": "Item", "name": "X"},
+            self._context(frappe.local.site),
+        )
+
+        self.assertTrue(result.ok, result.content)
+
+
+@pytest.mark.integration
 class TestContextEndpoints(AlbannaTestCase):
     """The list-page context endpoints: counts and nudges."""
 

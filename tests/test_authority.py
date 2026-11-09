@@ -8,6 +8,8 @@ proves very little about a gate.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from albanna.core.authority import Authority, Principal
@@ -74,8 +76,6 @@ def test_a_disabled_tool_is_refused_and_never_offered():
 def test_a_tool_needing_a_role_the_user_lacks_is_refused():
     registry = ToolRegistry([GET_DOC])
     # A read tool with a role requirement.
-    from dataclasses import replace
-
     guarded = replace(GET_DOC, required_roles=("Sales Manager",))
     registry = ToolRegistry([guarded])
 
@@ -96,6 +96,29 @@ def test_a_write_tool_without_a_target_doctype_is_refused():
     decision = authority.authorize("create_doc", {"data": {}})
     assert not decision.allowed
     assert decision.code == "missing_doctype"
+
+
+def test_a_write_tool_that_names_no_target_at_all_is_refused():
+    """A write with no document to check is a write nobody authorised.
+
+    The manifest ships no such tool, so this branch is unreachable
+    through it today -- which is exactly why it needs a test of its own.
+    The day somebody adds a mutating tool without a ``doctype_arg`` is
+    the day the branch starts mattering, and a branch that has never run
+    is a branch that has never been proved to refuse.
+
+    Refusing is the safe reading of a manifest mistake: the alternative
+    is to run a write whose permission was never established, on the
+    grounds that nobody said it should not be.
+    """
+    unbound = replace(CREATE_DOC, doctype_arg="")
+    registry = ToolRegistry([unbound])
+
+    authority = Authority(registry, principal(), Checker(creatable={"Item"}))
+    decision = authority.authorize("create_doc", {"data": {}})
+
+    assert not decision.allowed
+    assert decision.code == "unbound_write_tool"
 
 
 def test_a_write_tool_is_refused_when_the_user_may_not_create_the_doctype():
