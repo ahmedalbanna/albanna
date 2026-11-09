@@ -2,13 +2,16 @@
 
 The owner is forced from the session on insert.
 
-The doctype grants read and write to two roles, and no more: ``System
-Manager`` outright, and ``Albanna User`` for the rows the account owns
-(``if_owner``).  The hooks in ``hooks.py`` are the other half of that:
-``permission_query_conditions`` narrows the *list views* to the owner's
-rows, and ``has_permission`` answers the *document* question the same
-way.  The permission rows and the hooks are edited together; changing
-one without the other widens or breaks the other.
+The doctype grants its rights to one role and no more: ``Albanna User``,
+with read, write, create and delete, every one of them ``if_owner``.  A
+``System Manager`` row used to sit beside it and was removed on
+2026-10-29 — a row is a door for everybody who holds that role, and the
+owner of the site asked for one door (ADR-0008).  The hooks in
+``hooks.py`` are the other half of that: ``permission_query_conditions``
+narrows the *list views* to the owner's rows, and ``has_permission``
+answers the *document* question the same way.  The permission rows and
+the hooks are edited together; changing one without the other widens or
+breaks the other.
 """
 
 import frappe

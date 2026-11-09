@@ -32,6 +32,13 @@ CONVERSATION = (
 #: The role the chat ships for.  It is the whole of the shipped gate.
 CHAT_ROLE = "Albanna User"
 
+#: The rights FR-7.3 names on that role.  The row is asserted against
+#: this list rather than against a memory of it, because the four are
+#: what the requirement asks for and a row that quietly lost one of them
+#: would still be ``if_owner`` and would still pass every other test
+#: here.
+CHAT_RIGHTS = ("read", "write", "create", "delete")
+
 
 def _permissions() -> list[dict]:
     doc = json.loads(CONVERSATION.read_text(encoding="utf-8"))
@@ -56,6 +63,39 @@ def test_the_chat_row_is_scoped_to_the_owner():
         assert row.get("if_owner"), (
             f"the {CHAT_ROLE} row is not if_owner, so it would grant read on "
             "everybody's conversations rather than the reader's own."
+        )
+
+
+def test_the_chat_row_grants_the_four_rights_and_is_one_row():
+    """Read, write, create and delete — the four FR-7.3 names.
+
+    The test above holds *whose* rows these are.  This one holds *which*
+    rights, and how many rows there are.
+
+    A row that lost its delete would still be ``if_owner`` and would
+    still pass every other test in this file: the reader could no longer
+    take back a thread they should not have kept, and nothing would say
+    so.  The four are asserted against :data:`CHAT_RIGHTS` rather than
+    against a memory of the row.
+
+    One row, not two.  Frappe applies *every* matching row, so a second
+    row for the same role is a second shape — and the wider of the two is
+    the one that governs.  A row added later "for a special case" is how
+    a gate that was one door becomes two.
+    """
+    rows = [row for row in _permissions() if row.get("role") == CHAT_ROLE]
+
+    assert len(rows) == 1, (
+        f"the shipped matrix has {len(rows)} {CHAT_ROLE} rows. One row is "
+        "one door with one shape; two rows are two shapes, and Frappe "
+        "applies both."
+    )
+
+    for right in CHAT_RIGHTS:
+        assert rows[0].get(right), (
+            f"the {CHAT_ROLE} row does not grant {right}. FR-7.3 names all "
+            "four, and a reader who cannot delete their own thread cannot "
+            "take back a question they should not have asked."
         )
 
 
