@@ -9,7 +9,7 @@
 // prevent.
 
 import assert from "node:assert/strict";
-import { destructiveConsequence, isDestructiveTool } from "./write-safety.mjs";
+import { destructiveConsequence, diffValue, isDestructiveTool } from "./write-safety.mjs";
 
 global.__ = (text) => text;
 
@@ -79,5 +79,22 @@ assert.deepEqual(
 	["cancel_doc", "delete_doc"],
 	"the warning does not match the list",
 );
+
+// -- what an empty value shows as ---------------------------------------
+
+// Nothing was there, and now something is: the dash, not a blank cell.
+assert.equal(diffValue(null), "—");
+assert.equal(diffValue(undefined), "—");
+assert.equal(diffValue(""), "—");
+
+// A real zero and a real "false" are values, and they keep their faces:
+// a rate of 0 that read as "—" would be a lie in a card about money.
+assert.equal(diffValue(0), "0");
+assert.equal(diffValue("0"), "0");
+assert.equal(diffValue(false), "false");
+
+// A value is shown as it is, stringified for the template.
+assert.equal(diffValue("Acme"), "Acme");
+assert.equal(diffValue(42), "42");
 
 console.log("write-safety: all assertions passed");

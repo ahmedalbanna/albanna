@@ -422,10 +422,29 @@ body.albanna-side-chat-docked-inline-start {
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: auto;
-	padding: 12px;
+	padding: 14px 12px;
 	display: flex;
 	flex-direction: column;
-	gap: 10px;
+	gap: 14px;
+	/* A scrollbar the width of a hair: the thread is the thing to look
+	 * at, and the browser's default gutter is a slab of chrome down the
+	 * panel's edge.  The standard property is read by Firefox and by
+	 * recent Chromium; the webkit rules below carry the rest. */
+	scrollbar-width: thin;
+	scrollbar-color: var(--albanna-border, #e2e6e9) transparent;
+}
+
+.albanna-chat__transcript::-webkit-scrollbar {
+	width: 6px;
+}
+
+.albanna-chat__transcript::-webkit-scrollbar-thumb {
+	background: var(--albanna-border, #e2e6e9);
+	border-radius: 3px;
+}
+
+.albanna-chat__transcript::-webkit-scrollbar-track {
+	background: transparent;
 }
 
 .albanna-chat__empty {
@@ -434,7 +453,11 @@ body.albanna-side-chat-docked-inline-start {
 	color: var(--albanna-muted, #6c7680);
 }
 
+/* The greeting is the one place the panel raises its voice: a line the
+ * size of a heading, the way the chat pages the reader already knows
+ * open with a question, not with a label. */
 .albanna-chat__empty-title {
+	font-size: 17px;
 	font-weight: 600;
 	color: var(--albanna-text, #1f272e);
 	margin-bottom: 10px;
@@ -450,10 +473,15 @@ body.albanna-side-chat-docked-inline-start {
 	color: var(--albanna-muted, #7c7c7c);
 }
 
+/* The suggestions, as cards: two columns of questions the reader can
+ * press, the way the chat pages they already use offer their openers.
+ * `minmax(0, 1fr)` so a long question wraps inside its card instead of
+ * stretching the grid past the panel. */
 .albanna-chat__examples {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 8px;
+	margin-top: 14px;
 }
 
 .albanna-chat__example {
@@ -463,13 +491,16 @@ body.albanna-side-chat-docked-inline-start {
 	color: var(--albanna-text, #1f272e);
 	background: var(--albanna-surface, #fff);
 	border: 1px solid var(--albanna-border, #ededed);
-	border-radius: 7px;
-	padding: 7px 10px;
+	border-radius: 10px;
+	padding: 9px 12px;
 	cursor: pointer;
+	transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
 }
 
 .albanna-chat__example:hover {
 	background: var(--albanna-hover, #f3f3f3);
+	border-color: var(--albanna-muted, #6c7680);
+	transform: translateY(-1px);
 }
 
 /* The transcript is not given `content-visibility`, and that was measured.
@@ -487,20 +518,98 @@ body.albanna-side-chat-docked-inline-start {
  * in the wrong place every time.  So the transcript is laid out in full,
  * and the cost of a very long thread is paid in one go. */
 .albanna-chat__message {
+	/* A row of two: the speaker's mark, then what they said.  The row
+	 * follows the reading direction, so the avatar sits where the
+	 * reader's eye starts; the reader's own row is reversed, which puts
+	 * their mark at the inline *end*, beside the bubble that ends there
+	 * — and `row-reverse` is logical, so the RTL sheet has nothing to
+	 * mirror. */
 	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	max-width: 92%;
+	align-items: flex-start;
+	gap: 8px;
 }
 
 .albanna-chat__message--user {
-	align-self: flex-end;
+	flex-direction: row-reverse;
+}
+
+/* The speaker's mark.  A circle, small enough to be a margin note and
+ * not a portrait: the assistant wears the same chat bubble the launcher
+ * does, and the reader wears their own initial from the session.  Both
+ * are decoration, so the template hides them from the screen reader. */
+.albanna-chat__avatar {
+	flex: 0 0 auto;
+	box-sizing: border-box;
+	width: 24px;
+	height: 24px;
+	margin-top: 2px;
+	border-radius: 50%;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.albanna-chat__avatar--assistant {
+	background: var(--albanna-accent, #171717);
+	color: var(--albanna-on-accent, #ffffff);
+}
+
+.albanna-chat__avatar--user {
+	background: var(--albanna-accent-soft, #f3f3f3);
+	color: var(--albanna-text, #1f272e);
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 1;
+}
+
+/* Everything the speaker said, beside their mark: the words, the tools
+ * they ran, the sources, the actions.  A column, so the parts keep
+ * their own order and the actions can fade in without moving anything. */
+.albanna-chat__message-main {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	min-width: 0;
+}
+
+/* The answer takes the row's full width — prose runs from the avatar to
+ * the panel's other edge, the way a page does, rather than being
+ * squeezed into a speech bubble. */
+.albanna-chat__message--assistant .albanna-chat__message-main {
+	flex: 1 1 auto;
+}
+
+/* The reader's own words take the room they need and no more, and the
+ * group of them hugs the inline end — where their avatar already is. */
+.albanna-chat__message--user .albanna-chat__message-main {
+	flex: 0 1 auto;
+	max-width: 85%;
 	align-items: flex-end;
 }
 
-.albanna-chat__message--assistant {
-	align-self: flex-start;
-	align-items: flex-start;
+/* A message arrives, it does not blink into place: a short rise, the
+ * kind that reads as "added" and not as "flashed".  It runs only for
+ * the reader who has not asked for less motion, and the reduce block
+ * further down kills it a second time for the readers whose systems
+ * set the preference after this sheet was written. */
+@media (prefers-reduced-motion: no-preference) {
+	.albanna-chat__message,
+	.albanna-chat__confirm,
+	.albanna-chat__question {
+		animation: albanna-message-in 160ms ease;
+	}
+}
+
+@keyframes albanna-message-in {
+	from {
+		opacity: 0;
+		transform: translateY(4px);
+	}
+
+	to {
+		opacity: 1;
+		transform: none;
+	}
 }
 
 .albanna-chat__bubble {
@@ -681,16 +790,22 @@ body.albanna-side-chat-docked-inline-start {
 	font-weight: 600;
 }
 
+/* The reader's own words keep the bubble — it is what marks them as
+ * theirs, now that the answer has none.  The tail points at the
+ * speaker's mark. */
 .albanna-chat__message--user .albanna-chat__bubble {
 	background: var(--albanna-accent, #171717);
 	color: var(--albanna-on-accent, #ffffff);
 	border-bottom-right-radius: 2px;
 }
 
+/* The answer is prose on the page, not a bubble: no fill, no border, no
+ * padding of its own.  The code blocks and tables inside it keep their
+ * own backgrounds, so they still read as the things set apart. */
 .albanna-chat__message--assistant .albanna-chat__bubble {
-	background: var(--albanna-bubble, #f3f3f3);
-	border: 1px solid var(--albanna-border, #ededed);
-	border-bottom-left-radius: 2px;
+	background: transparent;
+	border: 0;
+	padding: 0;
 }
 
 /* The activity line: what the assistant is doing, right now.
@@ -804,7 +919,16 @@ body.albanna-side-chat-docked-inline-start {
 	display: flex;
 	align-items: center;
 	gap: 8px;
-	padding: 0 10px;
+	/* The answer's words start at the main's edge now, so the actions
+	 * line up with them instead of with a bubble's padding that is no
+	 * longer there. */
+	padding: 0;
+}
+
+/* The reader's own actions keep the bubble's inset, so the time does
+ * not hang past the bubble's edge. */
+.albanna-chat__message--user .albanna-chat__footer {
+	padding-inline-end: 10px;
 }
 
 .albanna-chat__time {
@@ -829,6 +953,40 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__copy:hover {
 	background: var(--albanna-hover, #f2f4f5);
 	color: var(--albanna-text, #1f272e);
+}
+
+/* A rating that the reader has given: the mark that carries the opinion
+ * is the one that stands out, and the colour is the theme's own primary
+ * rather than a red or a green, so that neither direction is dressed as
+ * an error or a success. */
+.albanna-chat__rating--on {
+	color: var(--albanna-link, var(--primary, #2490ef));
+	background: var(--albanna-hover, #f2f4f5);
+}
+
+/* The message's actions are quiet until the reader points at the
+ * message — the way the chat widgets they already use keep a thread
+ * readable and its actions still one glance away.
+ *
+ * They are never hover-*only*: a keyboard reader brings them in with
+ * focus, and a reader on a touch screen, where there is no hover, has
+ * them all the time — the rule lives inside `hover: hover` for exactly
+ * that reason.  A rating the reader gave stays lit with the pointer
+ * elsewhere: their own opinion is not hidden from them. */
+@media (hover: hover) {
+	.albanna-chat__message .albanna-chat__copy,
+	.albanna-chat__message .albanna-chat__remove {
+		opacity: 0;
+		transition: opacity 120ms ease;
+	}
+
+	.albanna-chat__message:hover .albanna-chat__copy,
+	.albanna-chat__message:hover .albanna-chat__remove,
+	.albanna-chat__message:focus-within .albanna-chat__copy,
+	.albanna-chat__message:focus-within .albanna-chat__remove,
+	.albanna-chat__message .albanna-chat__rating--on {
+		opacity: 1;
+	}
 }
 
 /* The button that takes a turn away.
@@ -893,15 +1051,6 @@ body.albanna-side-chat-docked-inline-start {
 	line-height: 1.4;
 	color: var(--albanna-muted, #7c7c7c);
 	padding: 2px 6px;
-}
-
-/* A rating that the reader has given: the mark that carries the opinion
- * is the one that stands out, and the colour is the theme's own primary
- * rather than a red or a green, so that neither direction is dressed as
- * an error or a success. */
-.albanna-chat__rating--on {
-	color: var(--albanna-link, var(--primary, #2490ef));
-	background: var(--albanna-hover, #f2f4f5);
 }
 
 /* Jump to the end of the transcript, for the reader who has scrolled up to
@@ -970,7 +1119,7 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__error {
 	margin: 0 0 8px;
 	padding: 8px 10px;
-	border-radius: 6px;
+	border-radius: 8px;
 	background: var(--albanna-error-bg, #fff1f0);
 	color: var(--albanna-error-text, #a1231f);
 	font-size: 12px;
@@ -1002,7 +1151,7 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__notice {
 	margin: 0 0 8px;
 	padding: 7px 10px;
-	border-radius: 6px;
+	border-radius: 8px;
 	background: var(--albanna-hover, #f2f4f5);
 	color: var(--albanna-muted, #6c7680);
 	font-size: 12px;
@@ -1074,11 +1223,52 @@ body.albanna-side-chat-docked-inline-start {
 	color: var(--albanna-text, var(--gray-200, #e2e2e2));
 }
 
-/* What is being changed — the reader reads this first. */
+/* The card's body: the preview and the diff.
+ *
+ * It scrolls rather than growing, because a preview that is a whole
+ * system prompt would otherwise push the buttons — the one thing the
+ * card exists for — off the bottom of the panel.  Nothing is hidden
+ * and nothing is cut off: the reader scrolls the body, and the header
+ * and the buttons stay where they are.
+ *
+ * `overscroll-behavior` keeps the scroll inside the card: a reader who
+ * reaches the end of a long preview should not find the thread behind
+ * it moving instead. */
+.albanna-chat__confirm-body {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-height: 38vh;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	scrollbar-width: thin;
+	scrollbar-color: var(--albanna-border, #e2e6e9) transparent;
+}
+
+.albanna-chat__confirm-body::-webkit-scrollbar {
+	width: 6px;
+}
+
+.albanna-chat__confirm-body::-webkit-scrollbar-thumb {
+	background: var(--albanna-border, #e2e6e9);
+	border-radius: 3px;
+}
+
+.albanna-chat__confirm-body::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+/* What is being changed — the reader reads this first.
+ *
+ * It is the subject of the card, so it is set a little above the
+ * panel's body text — but not so far above it that it shouts.  At
+ * fifteen pixels and bold it was louder than anything else on the
+ * screen, including the buttons the reader has to press. */
 .albanna-chat__confirm-preview {
-	margin: 0 0 8px;
-	font-size: 15px;
-	font-weight: 700;
+	margin: 0;
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1.45;
 	color: var(--albanna-text, #1f2328);
 	word-break: break-word;
 }
@@ -1086,7 +1276,7 @@ body.albanna-side-chat-docked-inline-start {
 /* A destructive write names its consequence before the reader looks at
    the clock. */
 .albanna-chat__confirm-consequence {
-	margin: 0 0 8px;
+	margin: 0;
 	font-size: 12px;
 	color: var(--albanna-danger, var(--red, #e02424));
 	font-weight: 600;
@@ -1104,14 +1294,81 @@ body.albanna-side-chat-docked-inline-start {
 	flex: 0 0 auto;
 }
 
-/* The field-by-field diff of what will change. */
+/* The field-by-field diff of what will change.
+ *
+ * It is an inset panel — the treatment the code blocks in an answer
+ * get — because this is the card's data, and data set apart from the
+ * words around it is data the reader checks rather than skims. */
 .albanna-chat__confirm-diff {
-	margin: 0 0 10px;
-	padding: 0;
+	margin: 0;
+	padding: 8px 10px;
 	list-style: none;
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: 8px;
+	border-radius: 8px;
+	background: var(--albanna-hover, #f3f3f3);
+}
+
+[data-theme="dark"] .albanna-chat__confirm-diff {
+	background: var(--albanna-bubble, #232323);
+}
+
+/* One field per row: its name on top, the two values under it.  A row
+ * that put all three on one line wrapped into a maze in a 400px panel;
+ * stacked, a long value wraps within its own line and the field names
+ * scan down the inline start. */
+.albanna-chat__confirm-diff-row {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	min-width: 0;
+}
+
+/* The field's name.  It is the schema's word for the thing, not the
+ * reader's — so it is quiet, and the values are what carry the ink. */
+.albanna-chat__confirm-diff-field {
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	color: var(--albanna-muted, #6c7680);
+}
+
+.albanna-chat__confirm-diff-values {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 2px 6px;
+	/* The values are data, and data wears the mono face — the same one
+	 * the code blocks wear.  A size down from the panel's body text,
+	 * because a value is read, not read at a glance. */
+	font-family: var(--font-stack-monospace, monospace);
+	font-size: 12px;
+	min-width: 0;
+}
+
+/* What the field carried: struck through, in the error ink — the
+ * theme's own red, which is a light red in the dark theme. */
+.albanna-chat__confirm-diff-before {
+	color: var(--albanna-error-text, #a1231f);
+	text-decoration: line-through;
+	overflow-wrap: anywhere;
+}
+
+/* What the field will carry: the theme's own success green, the colour
+ * the reader has already learned means "added". */
+.albanna-chat__confirm-diff-after {
+	color: var(--green-700, #278f5e);
+	font-weight: 600;
+	overflow-wrap: anywhere;
+}
+
+[data-theme="dark"] .albanna-chat__confirm-diff-after {
+	color: var(--green-300, #cae5d4);
+}
+
+.albanna-chat__confirm-diff-arrow {
+	color: var(--albanna-muted, #6c7680);
 }
 
 /* The countdown, and what it becomes when the wait runs out.
@@ -1143,13 +1400,19 @@ body.albanna-side-chat-docked-inline-start {
 	border: 1px solid var(--albanna-border, #ededed);
 	background: var(--albanna-surface, #ffffff);
 	color: var(--albanna-text, #1f2328);
-	border-radius: 6px;
+	/* The cards' radius, on the buttons that sit in them. */
+	border-radius: 8px;
 	padding: 6px 16px;
 	font-size: 13px;
 	font-weight: 600;
 	font-family: inherit;
 	cursor: pointer;
 	transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.albanna-chat__confirm-button:focus-visible {
+	outline: 2px solid var(--albanna-accent, #171717);
+	outline-offset: 2px;
 }
 
 [data-theme="dark"] .albanna-chat__confirm-button {
@@ -1276,10 +1539,12 @@ body.albanna-side-chat-docked-inline-start {
 	 * padding is *logical*, so the text keeps its room in a right-to-left
 	 * interface too — a physical padding would give the Arabic text the
 	 * button's space and the button the text's. */
-	padding-block: 6px;
-	padding-inline: 11px 6px;
+	padding-block: 7px;
+	padding-inline: 14px 8px;
+	/* The pill: a radius past half the field's height, so the ends come
+	 * out round whether the question is one line or five. */
 	border: 1px solid var(--albanna-border, #d8dee2);
-	border-radius: 12px;
+	border-radius: 22px;
 	background: var(--albanna-surface, #fff);
 	transition: border-color 120ms ease, box-shadow 120ms ease;
 }
@@ -1402,6 +1667,22 @@ body.albanna-side-chat-docked-inline-start {
 	min-height: 0;
 	overflow-y: auto;
 	padding: 8px;
+	/* The transcript's hair of a scrollbar, for the same reason. */
+	scrollbar-width: thin;
+	scrollbar-color: var(--albanna-border, #e2e6e9) transparent;
+}
+
+.albanna-drawer::-webkit-scrollbar {
+	width: 6px;
+}
+
+.albanna-drawer::-webkit-scrollbar-thumb {
+	background: var(--albanna-border, #e2e6e9);
+	border-radius: 3px;
+}
+
+.albanna-drawer::-webkit-scrollbar-track {
+	background: transparent;
 }
 
 .albanna-drawer__loading,
@@ -1477,18 +1758,22 @@ body.albanna-side-chat-docked-inline-start {
 	display: flex;
 	align-items: flex-start;
 	gap: 6px;
-	padding: 8px 9px;
-	border-radius: 7px;
+	padding: 8px 10px;
+	border-radius: 8px;
 	border: 1px solid transparent;
+	transition: background 120ms ease, border-color 120ms ease;
 }
 
 .albanna-drawer__item:hover {
 	background: var(--albanna-hover, #f3f3f3);
 }
 
+/* The conversation the reader is in: a surface of its own, not just the
+ * hover grey — the list should say where they are after the pointer has
+ * moved away. */
 .albanna-drawer__item--active {
 	border-color: var(--albanna-border, #ededed);
-	background: var(--albanna-hover, #f3f3f3);
+	background: var(--albanna-accent-soft, #f3f3f3);
 }
 
 .albanna-drawer__item-main {
@@ -1716,13 +2001,16 @@ body.albanna-side-chat-docked-inline-start {
 
 .albanna-drawer__search-input {
 	width: 100%;
-	padding: 6px 10px;
+	padding: 7px 12px;
 	font-size: 13px;
+	/* The pill the composer wears: one shape for the things the reader
+	 * types into. */
 	border: 1px solid var(--albanna-border, #ededed);
-	border-radius: 6px;
+	border-radius: 18px;
 	background: var(--albanna-surface, #ffffff);
 	color: var(--albanna-text, #1f2328);
 	font-family: inherit;
+	transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .albanna-drawer__search-input:focus {
@@ -1740,8 +2028,8 @@ body.albanna-side-chat-docked-inline-start {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	gap: 4px 8px;
-	padding: 0 10px;
+	gap: 4px 6px;
+	padding: 0;
 	font-size: 11px;
 	color: var(--albanna-muted, #7c7c7c);
 }
@@ -1750,19 +2038,26 @@ body.albanna-side-chat-docked-inline-start {
 	font-weight: 600;
 }
 
+/* A source is a pill, not an underlined word: it is a thing the reader
+ * presses to go somewhere, and a pill survives a crowded answer better
+ * than a bare link does.  The ink stays the link colour — on the dark
+ * theme that is the only ink on this surface a reader can see. */
 .albanna-chat__source {
-	border: 0;
-	background: transparent;
+	border: 1px solid var(--albanna-border, #ededed);
+	background: var(--albanna-surface, #ffffff);
 	color: var(--albanna-link, #171717);
 	font-size: 11px;
 	cursor: pointer;
-	padding: 0;
+	padding: 2px 9px;
+	border-radius: 999px;
 	font-family: inherit;
-	text-decoration: underline;
+	text-decoration: none;
+	transition: background 120ms ease, border-color 120ms ease;
 }
 
 .albanna-chat__source:hover {
-	opacity: 0.8;
+	background: var(--albanna-hover, #f3f3f3);
+	border-color: var(--albanna-muted, #6c7680);
 }
 
 /* A question the assistant asked, waiting for the reader's answer.
@@ -1773,7 +2068,9 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__question {
 	margin: 0 0 8px;
 	padding: 10px 12px;
-	border-radius: 8px;
+	/* The approval card's radius: the two cards are the same kind of
+	 * thing — a form the thread carries — and one shape says so. */
+	border-radius: 10px;
 	border: 1px solid var(--albanna-border, #ededed);
 	background: var(--albanna-surface, #ffffff);
 	display: flex;
@@ -1953,43 +2250,6 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__question-free-send:disabled {
 	opacity: 0.55;
 	cursor: not-allowed;
-}
-
-/* Diff preview in the approval card. */
-.albanna-chat__confirm-diff {
-	margin: 0;
-	padding: 0;
-	list-style: none;
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-}
-
-.albanna-chat__confirm-diff-row {
-	display: flex;
-	flex-wrap: wrap;
-	align-items: baseline;
-	gap: 4px 6px;
-	font-size: 12px;
-}
-
-.albanna-chat__confirm-diff-field {
-	font-weight: 600;
-	color: var(--albanna-text, #1f2328);
-}
-
-.albanna-chat__confirm-diff-before {
-	color: var(--albanna-muted, #6c7680);
-	text-decoration: line-through;
-}
-
-.albanna-chat__confirm-diff-after {
-	color: var(--albanna-text, #1f2328);
-	font-weight: 500;
-}
-
-.albanna-chat__confirm-diff-arrow {
-	color: var(--albanna-muted, #6c7680);
 }
 
 /* Proactive nudge. */

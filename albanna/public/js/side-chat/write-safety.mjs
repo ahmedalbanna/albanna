@@ -42,3 +42,22 @@ export function destructiveConsequence(toolName) {
 	}
 	return "";
 }
+
+/**
+ * The value a diff row shows, when the field had nothing in it.
+ *
+ * A field that was empty and now is not is the commonest diff there is,
+ * and an empty cell does not say "nothing was here" — it says "broken".
+ * The dash is the mark every diff the reader has seen uses for it.  A
+ * real zero and a real "false" are values: only null, undefined and the
+ * empty string count as nothing, so a rate of 0 still reads as 0.
+ *
+ * @param {*} value the value the field carried
+ * @returns {string} the value to show
+ */
+export function diffValue(value) {
+	if (value === null || value === undefined || value === "") {
+		return "—";
+	}
+	return String(value);
+}
