@@ -9,6 +9,7 @@
         "role",
         "content",
         "attachment_urls",
+        "attachment_texts",
         "truncated",
         "tool_name",
         "round_no",
@@ -39,6 +40,13 @@
             "fieldname": "attachment_urls",
             "fieldtype": "Data",
             "label": "Attachment URLs",
+            "read_only": 1
+        },
+        {
+            "description": "The text the attachments' contents held, as a JSON list parallel to the URLs. Stored so a reader who reloads the thread and asks a follow-up about the document is answered about it, rather than about a file nobody has read since.",
+            "fieldname": "attachment_texts",
+            "fieldtype": "Long Text",
+            "label": "Attachment Texts",
             "read_only": 1
         },
         {

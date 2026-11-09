@@ -8,3 +8,4 @@ albanna.patches.v0_1.rename_attachment_fields
 # Patches added in this section will be executed after doctypes are migrated
 albanna.patches.v0_1.move_provider_cost
 albanna.patches.v0_1.add_lookup_indexes
+albanna.patches.v0_1.store_attachment_texts

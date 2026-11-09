@@ -159,7 +159,8 @@ def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]
     is a row that can be addressed later.
 
     Each row is a dict with ``role``, ``content`` and optionally
-    ``tool_name``, ``round_no``, ``tool_calls`` and ``truncated``.
+    ``tool_name``, ``round_no``, ``tool_calls``, ``truncated`` and
+    ``attachment_texts``.
 
     The rows continue the conversation's existing order.  The index is *not*
     restarted at one: a conversation whose second turn is indexed from one
@@ -184,11 +185,13 @@ def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]
             insert into `tabAlbanna Message`
                 (name, owner, creation, modified, modified_by, docstatus, idx,
                  parent, parentfield, parenttype,
-                 role, content, attachment_urls, truncated, tool_name, round_no, tool_calls)
+                 role, content, attachment_urls, attachment_texts, truncated,
+                 tool_name, round_no, tool_calls)
             values
                 (%s, %s, %s, %s, %s, 0, %s,
                  %s, %s, %s,
-                 %s, %s, %s, %s, %s, %s, %s)
+                 %s, %s, %s, %s, %s,
+                 %s, %s, %s)
             """,
             (
                 name,
@@ -203,6 +206,12 @@ def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]
                 row.get("role") or "assistant",
                 row.get("content") or "",
                 row.get("attachment_urls") or "",
+                # The text the attachments held, stored so a reader who
+                # reloads the thread and asks a follow-up about the
+                # document is answered about it.  Without it the history
+                # knows a file was attached and nothing about what was in
+                # it — which is honest, and useless.
+                row.get("attachment_texts") or "",
                 # Only an answer is ever truncated, and the flag is stored
                 # rather than inferred from the answer's length: a short
                 # answer is not an unfinished one, and a reader who
@@ -255,7 +264,7 @@ def load_messages(conversation: str, limit: int = 20) -> list[Message]:
     """
     rows = frappe.db.sql(
         """
-        select role, content, attachment_urls, tool_name, tool_calls
+        select role, content, attachment_urls, attachment_texts, tool_name, tool_calls
         from `tabAlbanna Message`
         where parent = %s and parentfield = %s
         order by idx asc
@@ -297,12 +306,20 @@ def load_messages(conversation: str, limit: int = 20) -> list[Message]:
         # refused, and the second turn of every conversation with an
         # attachment dies with it.
         #
+        # The row also knows the text those attachments held, stored when
+        # the turn ran.  It is replayed here, so a reader who reloads the
+        # thread and asks a follow-up about the document is answered
+        # about it — rather than about a file nobody has read since.  A
+        # row written before the column existed carries no text, and the
+        # note says nothing about readability, because it does not know.
+        #
         # The widget's own view of the thread keeps the URLs
         # (:func:`load_transcript`), and the reader sees the picture.
         stored, _readable = read_attachment_list(row.attachment_urls or "")
+        texts, _texts_readable = read_attachment_list(row.attachment_texts or "")
         content = row.content or ""
         if stored and role == "user":
-            content += attachment_note(stored)
+            content += attachment_note(stored, texts or None)
 
         messages.append(
             Message(

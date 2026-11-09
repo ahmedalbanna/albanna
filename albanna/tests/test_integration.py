@@ -2044,6 +2044,42 @@ class TestTheSettingsRefuseNonsense(AlbannaTestCase):
 
 
 @pytest.mark.integration
+def _pdf_url(line: bytes) -> str:
+    """The smallest PDF that holds one line of text, as the browser sends it."""
+    import base64
+
+    return "data:application/pdf;base64," + base64.b64encode(_pdf_bytes(line)).decode("ascii")
+
+
+def _pdf_bytes(line: bytes) -> bytes:
+    """The smallest PDF that holds one line of text."""
+    import io
+
+    objects = [
+        b"<</Type/Catalog/Pages 2 0 R>>",
+        b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
+        b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R"
+        b"/Resources<</Font<</F1 5 0 R>>>>>>",
+        b"<</Length " + str(len(line) + 34).encode() + b">>stream\n"
+        b"BT /F1 12 Tf 20 100 Td (" + line + b") Tj ET\nendstream",
+        b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
+    ]
+    out = io.BytesIO()
+    out.write(b"%PDF-1.4\n")
+    offsets = []
+    for index, body in enumerate(objects, start=1):
+        offsets.append(out.tell())
+        out.write(f"{index} 0 obj".encode() + body + b"endobj\n")
+    xref_at = out.tell()
+    size = len(objects) + 1
+    out.write(f"xref\n0 {size}\n".encode())
+    out.write(b"0000000000 65535 f \n")
+    for offset in offsets:
+        out.write(f"{offset:010d} 00000 n \n".encode())
+    out.write(f"trailer<</Size {size}/Root 1 0 R>>\nstartxref\n{xref_at}\n%%EOF\n".encode())
+    return out.getvalue()
+
+
 class TestAnAttachedPdf(AlbannaTestCase):
     """A PDF's text reaches the model, and its bytes do not.
 
@@ -2084,36 +2120,7 @@ class TestAnAttachedPdf(AlbannaTestCase):
         frappe.local.role_permissions = {}
         frappe.local.perms = {}
 
-    def _pdf(self, line: bytes) -> str:
-        """A one-page PDF, as the data URL the browser would send."""
-        import base64
-        import io
-
-        objects = [
-            b"<</Type/Catalog/Pages 2 0 R>>",
-            b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
-            b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]/Contents 4 0 R"
-            b"/Resources<</Font<</F1 5 0 R>>>>>>",
-            b"<</Length " + str(len(line) + 34).encode() + b">>stream\n"
-            b"BT /F1 12 Tf 20 100 Td (" + line + b") Tj ET\nendstream",
-            b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
-        ]
-        out = io.BytesIO()
-        out.write(b"%PDF-1.4\n")
-        offsets = []
-        for index, body in enumerate(objects, start=1):
-            offsets.append(out.tell())
-            out.write(f"{index} 0 obj".encode() + body + b"endobj\n")
-        xref_at = out.tell()
-        size = len(objects) + 1
-        out.write(f"xref\n0 {size}\n".encode())
-        out.write(b"0000000000 65535 f \n")
-        for offset in offsets:
-            out.write(f"{offset:010d} 00000 n \n".encode())
-        out.write(f"trailer<</Size {size}/Root 1 0 R>>\nstartxref\n{xref_at}\n%%EOF\n".encode())
-        return "data:application/pdf;base64," + base64.b64encode(out.getvalue()).decode("ascii")
-
-    def _run(self, attachments):
+    def _run(self, attachments, page: str = ""):
         """Run a turn carrying *attachments*, and return what the model saw."""
         from albanna.core.messages import Message
         from albanna.providers.base import Completion, Usage
@@ -2135,7 +2142,7 @@ class TestAnAttachedPdf(AlbannaTestCase):
         outcome = service.run(
             TurnRequest(
                 question="what is the total?",
-                page="test|pdf|",
+                page=page or "test|pdf|",
                 attachments=attachments,
             )
         )
@@ -2154,7 +2161,7 @@ class TestAnAttachedPdf(AlbannaTestCase):
 
     def test_the_pdfs_text_reaches_the_model(self):
         self._as(self.reader)
-        outcome, current, system = self._run([self._pdf(b"Invoice 42, total 100.00")])
+        outcome, current, system = self._run([_pdf_url(b"Invoice 42, total 100.00")])
 
         self.assertTrue(outcome.ok, outcome.error)
         self.assertIsNotNone(current, "the turn sent no user message")
@@ -2183,7 +2190,7 @@ class TestAnAttachedPdf(AlbannaTestCase):
         built at all.
         """
         self._as(self.reader)
-        outcome, current, _system = self._run([self._pdf(b"Invoice 42, total 100.00")])
+        outcome, current, _system = self._run([_pdf_url(b"Invoice 42, total 100.00")])
 
         self.assertTrue(outcome.ok, outcome.error)
         self.assertIsNotNone(current, "the turn sent no user message")
@@ -2244,6 +2251,43 @@ class TestAnAttachedPdf(AlbannaTestCase):
         self.assertIsNotNone(current, "the turn sent no user message")
         self.assertEqual(current.attachments, [], "the CSV's bytes were sent as a picture")
 
+    def test_a_reloaded_thread_still_knows_what_the_document_said(self):
+        """The text is stored, so a follow-up after a reload is answered
+        about the document.
+
+        Without it the history knew a file had been attached and nothing
+        about what was in it — honest, and useless: the reader asks "what
+        was the total?" and the model has to say it cannot tell.
+        """
+        import base64
+
+        self._as(self.reader)
+        pdf = "data:application/pdf;base64," + base64.b64encode(
+            _pdf_bytes(b"Invoice 42, total 100.00")
+        ).decode("ascii")
+
+        # A page of this run's own: the class shares one, and a thread
+        # another test started holds rows written before the column
+        # existed — which is exactly the case this test is not about.
+        page = f"test|pdf|reload|{frappe.generate_hash(6)}|"
+        outcome, _current, _system = self._run([pdf], page=page)
+        self.assertTrue(outcome.ok, outcome.error)
+
+        from albanna.services.conversation_service import load_messages
+
+        conversation = frappe.db.get_value("Albanna Conversation", {"page": page}, "name")
+        self.assertTrue(conversation, "the turn stored no conversation")
+
+        history = load_messages(conversation)
+        text = "\n".join(str(m.content) for m in history)
+
+        self.assertIn("Invoice 42, total 100.00", text, "the reloaded thread lost the document")
+        self.assertNotIn(
+            "could not be read as text",
+            text,
+            "the reloaded thread claimed a document it had read was unreadable",
+        )
+
     def test_the_history_does_not_claim_a_pdf_it_never_looked_at(self):
         """The history is rebuilt from stored URLs, and it does not know
         whether a PDF's text was readable.
@@ -2254,7 +2298,7 @@ class TestAnAttachedPdf(AlbannaTestCase):
         it did not, and they say nothing.
         """
         self._as(self.reader)
-        self._run([self._pdf(b"Invoice 42, total 100.00")])
+        self._run([_pdf_url(b"Invoice 42, total 100.00")])
 
         from albanna.services.conversation_service import load_messages
 

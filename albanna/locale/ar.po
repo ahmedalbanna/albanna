@@ -1153,6 +1153,12 @@ msgstr "ملف مرفق"
 msgid "Attachment URLs"
 msgstr "روابط المرفقات"
 
+msgid "Attachment Texts"
+msgstr "نصوص المرفقات"
+
+msgid "The text the attachments' contents held, as a JSON list parallel to the URLs. Stored so a reader who reloads the thread and asks a follow-up about the document is answered about it, rather than about a file nobody has read since."
+msgstr "النص الذي حملته محتويات المرفقات، كقائمة JSON موازية للروابط. يُخزَّن حتى إذا أعاد القارئ تحميل المحادثة وسأل متابعة عن المستند، يُجاب عنه بدلاً من ملف لم يقرأه أحد منذ ذلك الحين."
+
 msgid "The addresses the attachments were stored under, as a JSON list. The bytes travel with the turn; this is what outlives it."
 msgstr "العناوين التي خُزّنت المرفقات تحتها، كقائمة JSON. البايتات تسافر مع الدور؛ وهذا ما يبقى بعده."
 

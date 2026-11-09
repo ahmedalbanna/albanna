@@ -440,7 +440,7 @@ class ChatService:
         # that the assistant can refer to them by address — for example, to
         # set one as a document's attachments field.  The bytes travel with the
         # turn; what is stored is the files, not the chat.
-        attachment_urls, extra = self._store_attachments(request, principal.user)
+        attachment_urls, extra, attachment_texts = self._store_attachments(request, principal.user)
         if extra:
             # The request is whole after this, not a half of one.  It is
             # copied by the dataclass rather than field by field, so a
@@ -599,7 +599,7 @@ class ChatService:
                 written = append_messages(
                     conversation,
                     [
-                        self._user_row(question, attachment_urls),
+                        self._user_row(question, attachment_urls, attachment_texts),
                         {
                             "role": "assistant",
                             "content": reply,
@@ -709,7 +709,7 @@ class ChatService:
         written = append_messages(
             conversation,
             [
-                self._user_row(question, attachment_urls),
+                self._user_row(question, attachment_urls, attachment_texts),
                 {
                     "role": "assistant",
                     "content": reply,
@@ -881,34 +881,50 @@ class ChatService:
 
     # -- the tools --------------------------------------------------------
 
-    def _user_row(self, question: str, attachment_urls: list[str]) -> dict[str, Any]:
+    def _user_row(
+        self, question: str, attachment_urls: list[str], attachment_texts: list[str] | None = None
+    ) -> dict[str, Any]:
         """The row that holds the reader's question.
 
         It is built in one place, because a turn that writes the
         question and a turn that writes it differently are two records of
         the same question — and the difference shows up as an attachment
         the reader sent and the transcript does not have.
+
+        *attachment_texts* is parallel to the URLs: the text each
+        attachment's contents held.  Stored so a reader who reloads the
+        thread and asks a follow-up about the document is answered about
+        it, rather than about a file nobody has read since.
         """
         return {
             "role": "user",
             "content": question,
             "round_no": 0,
             "attachment_urls": json.dumps(attachment_urls),
+            "attachment_texts": json.dumps(attachment_texts or []),
         }
 
-    def _store_attachments(self, request: TurnRequest, user: str) -> tuple[list[str], str]:
+    def _store_attachments(
+        self, request: TurnRequest, user: str
+    ) -> tuple[list[str], str, list[str]]:
         """Store the turn's attachments, and say where they went.
 
-        Returns the stored URLs and the note that tells the model about
-        them.  The note is empty when there was nothing to store, and
-        the turn's page context is left alone then.
+        Returns the stored URLs, the note that tells the model about
+        them, and the text each attachment's contents held.  The note is
+        empty when there was nothing to store, and the turn's page
+        context is left alone then.
+
+        The texts are returned as well as carried in the note, because
+        they are stored on the message row: a reader who reloads the
+        thread and asks a follow-up about the document is answered about
+        it, rather than about a file nobody has read since.
 
         A file the reader already uploaded is reused rather than stored a
         second time: the bytes have already been written, and writing
         them twice leaves two files for one picture.
         """
         if not request.attachments:
-            return [], ""
+            return [], "", []
 
         # The addresses and the bytes are parallel lists.  They are used
         # only when they can be matched: an address that belongs to
@@ -940,7 +956,7 @@ class ChatService:
                 )
         else:
             note = unstored_note(len(request.attachments), len(request.attachments))
-        return urls, note
+        return urls, note, texts
 
     @staticmethod
     def _attachment_text(data_url: str, stored_url: str) -> str:
