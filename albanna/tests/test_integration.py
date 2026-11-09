@@ -3625,6 +3625,125 @@ class TestDisabledToolsAreHonoured(AlbannaTestCase):
 
 
 @pytest.mark.integration
+class TestAToolTheUserCannotUse(AlbannaTestCase):
+    """A tool the reader cannot use is never mentioned to the model.
+
+    FR-7.5.  The rule is stated in the authority layer's own docstring —
+    *"a tool the principal may not reach is never mentioned to the
+    model"* — and it is honoured in two separate places: the tool
+    schemas that travel in the request body, and the tool list inside
+    the system prompt.  Both are built from the same filtered list, and
+    both are separate code.
+
+    Every test below the service stops at the registry.  They assert
+    ``visible_names()`` excludes the tool, or that ``tool_registry``
+    switched it off — which is the rule *computed*, not the rule
+    *obeyed*.  A change that handed the whole manifest to either
+    consumer would re-open the mention and pass every one of them, so
+    the two consumers are asked directly here.
+
+    The reader is one who holds no submit right anywhere on the site:
+    ``Albanna User`` grants rights on two DocTypes, neither of them
+    submittable, and the ``Desk User`` role Frappe adds alongside it
+    grants none either.  A Sales User is the mirror — they hold the
+    right, so they are told about the tool.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.reader = self._make_user("albanna.test.nosubmit@albanna.dev", "Albanna User")
+        self.writer = self._make_user("albanna.test.withsubmit@albanna.dev", "Sales User")
+
+    def _make_user(self, email: str, role: str) -> str:
+        if not frappe.db.exists("User", email):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Albanna"
+                user.last_name = "Tools"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        frappe.db.delete("Has Role", {"parent": email})
+        user = frappe.get_doc("User", email)
+        user.flags.ignore_permissions = True
+        user.add_roles(role, "Albanna User")
+        return email
+
+    def _as(self, email: str):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _turn(self, email: str):
+        """Run one turn as *email*, and return what the model was sent."""
+        from albanna.core.messages import Message
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.chat_service import ChatService, TurnRequest
+
+        seen = {}
+
+        def fake_complete(config, messages, tools, emit, stream):
+            seen["system"] = messages[0].content if messages else ""
+            # The third argument is the round's tool list, as specs.  The
+            # names are what the provider is given to choose from.
+            seen["tools"] = [spec.name for spec in (tools or [])]
+            return Completion(
+                message=Message(role="assistant", content="done"),
+                provider="openai",
+                model="a-model",
+                usage=Usage(input_tokens=10, output_tokens=5),
+            )
+
+        service = ChatService()
+        service._complete = fake_complete
+        self._as(email)
+        outcome = service.run(
+            TurnRequest(
+                question="what is open?",
+                page=f"test|tools|{frappe.generate_hash(6)}|",
+            )
+        )
+        return outcome, seen
+
+    def test_a_tool_the_reader_cannot_use_is_not_in_the_prompt(self):
+        outcome, seen = self._turn(self.reader)
+
+        self.assertTrue(outcome.ok, outcome.error)
+        self.assertNotIn(
+            "submit_doc",
+            seen.get("system") or "",
+            "the model was told about a tool this reader cannot use",
+        )
+
+    def test_a_tool_the_reader_cannot_use_is_not_sent_as_a_schema(self):
+        outcome, seen = self._turn(self.reader)
+
+        self.assertTrue(outcome.ok, outcome.error)
+        self.assertNotIn(
+            "submit_doc",
+            seen.get("tools") or [],
+            "the provider was handed a schema for a tool this reader cannot use",
+        )
+
+    def test_a_reader_who_holds_the_right_is_told_about_the_tool(self):
+        """The filter drops what the reader cannot use and nothing else.
+
+        A guard that hid every tool would pass the two tests above and
+        make the assistant useless, so the mirror is asserted too.
+        """
+        outcome, seen = self._turn(self.writer)
+
+        self.assertTrue(outcome.ok, outcome.error)
+        self.assertIn("submit_doc", seen.get("tools") or [])
+        self.assertIn("submit_doc", seen.get("system") or "")
+
+
+@pytest.mark.integration
 class TestContextEndpoints(AlbannaTestCase):
     """The list-page context endpoints: counts and nudges."""
 
