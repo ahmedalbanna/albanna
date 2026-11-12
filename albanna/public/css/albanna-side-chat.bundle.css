@@ -1420,15 +1420,25 @@ body.albanna-side-chat-docked-inline-start {
 }
 
 /* What the field carried: struck through, in the error ink — the
- * theme's own red, which is a light red in the dark theme. */
+ * theme's own red, which is a light red in the dark theme.  A very
+ * light background makes the removal visible at a glance, without
+ * needing to parse the text colour, and the opacity is low enough that
+ * the text stays legible against it. */
 .albanna-chat__confirm-diff-before {
 	color: var(--albanna-error-text, #a1231f);
 	text-decoration: line-through;
+	background: var(--albanna-error-bg, var(--red, #e02424));
+	opacity: 0.15;
+	padding-inline: 2px 4px;
+	border-radius: 3px;
 	overflow-wrap: anywhere;
 }
 
 /* What the field will carry: the theme's own success green, the colour
- * the reader has already learned means "added". */
+ * the reader has already learned means "added".  The mark at the end
+ * is a dot, not a glyph: it says "this is the value the change
+ * produces" without adding a word to a card that is already full of
+ * them, and it is quiet enough to leave alone in a list of several. */
 .albanna-chat__confirm-diff-after {
 	color: var(--green-700, #278f5e);
 	font-weight: 600;
@@ -1437,6 +1447,12 @@ body.albanna-side-chat-docked-inline-start {
 
 [data-theme="dark"] .albanna-chat__confirm-diff-after {
 	color: var(--green-300, #cae5d4);
+}
+
+.albanna-chat__confirm-diff-after::after {
+	content: "·";
+	opacity: 0.3;
+	margin-inline-start: 2px;
 }
 
 .albanna-chat__confirm-diff-arrow {
