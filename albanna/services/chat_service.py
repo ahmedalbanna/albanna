@@ -217,6 +217,13 @@ class TurnRequest:
     #: already on the site, and writing it twice leaves two files for one
     #: picture.
     attachment_urls: list[str] = field(default_factory=list)
+    #: The text each stored attachment's contents held, read when the
+    #: attachments' turn first ran, and parallel to ``attachment_urls``.
+    #: A turn that regenerates an old question has no bytes to send — the
+    #: reader edited the words, they did not re-upload the files — so it
+    #: carries the old row's stored texts instead, and the model is told
+    #: about the files in the same words it was told the first time.
+    attachment_texts: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -472,7 +479,12 @@ class ChatService:
             running.status = "running"
             running.rounds = 0
             running.tool_calls = 0
-            running.had_attachment = 1 if bool(request.attachments) else 0
+            # A regenerate turn carries no bytes, but its files are
+            # real: the ledger says what the turn carried, and the
+            # carried URLs are the files.
+            running.had_attachment = (
+                1 if bool(request.attachments or request.attachment_urls) else 0
+            )
             running.insert(ignore_permissions=True)
             self._audit_name = running.name
             frappe.db.commit()
@@ -575,7 +587,7 @@ class ChatService:
                         error_class="provider_error",
                         error_message=str(exc),
                         price_per_million=settings.price_per_million,
-                        had_attachment=bool(request.attachments),
+                        had_attachment=bool(request.attachments or request.attachment_urls),
                         round_ms=round_durations,
                     )
                 )
@@ -650,7 +662,7 @@ class ChatService:
                         started=started,
                         status="truncated" if completion.truncated else "ok",
                         price_per_million=settings.price_per_million,
-                        had_attachment=bool(request.attachments),
+                        had_attachment=bool(request.attachments or request.attachment_urls),
                         round_ms=round_durations,
                     )
                 )
@@ -952,7 +964,18 @@ class ChatService:
         them twice leaves two files for one picture.
         """
         if not request.attachments:
-            return [], "", []
+            # A turn whose bytes were never sent — the regenerate turn,
+            # which carries the old question's stored files rather than
+            # re-uploading them — still tells the model about them, in
+            # the same note a first turn writes.  Nothing is stored:
+            # the files are already on the site, and storing them again
+            # is how two files come to answer for one picture.
+            urls = list(request.attachment_urls or [])
+            texts = list(request.attachment_texts or [])
+            if not urls:
+                return [], "", []
+            note = attachment_note(urls, texts or None, can_read_files=self._can_read_files)
+            return urls, note, texts
 
         # The addresses and the bytes are parallel lists.  They are used
         # only when they can be matched: an address that belongs to

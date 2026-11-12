@@ -814,6 +814,88 @@ def delete_turn(conversation: str, message: str) -> int:
     return len(names)
 
 
+def validate_regenerate(conversation: str, message: str, user: str) -> dict[str, Any]:
+    """The check an edited-and-regenerated question must pass, and what it carries.
+
+    A reader may edit the thread's **last** question and have its answer
+    made again.  Three things make a question editable, and each refusal
+    says which one failed rather than a generic no:
+
+    *   it is the caller's own thread (``assert_owns``);
+    *   the row is a question — an answer is not a thing to edit, and an
+        edited answer would be a forgery of what the assistant said;
+    *   nothing was asked after it, and its turn finished — an answer
+        follows it.  A question whose turn is still running has no answer
+        to replace yet, and regenerating under a live turn would race it.
+
+    What it returns is what the new turn has to carry, read off the row
+    the reader is editing: the page the question was born on, and the
+    attachments it brought — the stored addresses and, where they were
+    read at the time, the text of their contents.  The endpoint does not
+    re-derive any of it; the old row is the record.
+
+    The reads are direct SQL, like the rest of this module's row work, so
+    the ownership check above is what stands between a caller and another
+    reader's history.
+    """
+    assert_owns(conversation, user)
+
+    rows = frappe.db.sql(
+        """
+        select name, role, idx, page_identity, attachment_urls, attachment_texts
+        from `tabAlbanna Message`
+        where name = %s and parent = %s and parentfield = %s
+        """,
+        (message, conversation, PARENT_FIELD),
+        as_dict=True,
+    )
+    if not rows:
+        frappe.throw(_("That message does not exist."), frappe.DoesNotExistError)
+    row = rows[0]
+
+    if row.role != "user":
+        frappe.throw(
+            _("Only one of your own questions can be edited."),
+            frappe.ValidationError,
+        )
+
+    later_user = frappe.db.sql(
+        """
+        select name from `tabAlbanna Message`
+        where parent = %s and parentfield = %s and role = 'user' and idx > %s
+        limit 1
+        """,
+        (conversation, PARENT_FIELD, row.idx),
+    )
+    if later_user:
+        frappe.throw(
+            _("Only the thread's last question can be edited."),
+            frappe.ValidationError,
+        )
+
+    answered = frappe.db.sql(
+        """
+        select name from `tabAlbanna Message`
+        where parent = %s and parentfield = %s and role = 'assistant' and idx > %s
+        limit 1
+        """,
+        (conversation, PARENT_FIELD, row.idx),
+    )
+    if not answered:
+        frappe.throw(
+            _("That question's turn has not finished yet."),
+            frappe.ValidationError,
+        )
+
+    urls, _readable = read_attachment_list(row.attachment_urls or "")
+    texts, _texts_readable = read_attachment_list(row.attachment_texts or "")
+    return {
+        "page_identity": str(row.page_identity or ""),
+        "attachment_urls": urls,
+        "attachment_texts": texts,
+    }
+
+
 def rate_message(conversation: str, message: str, rating: str) -> None:
     """Record the reader's rating of an answer.
 

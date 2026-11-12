@@ -5,7 +5,7 @@ commits that follow this document.  Every claim below names the file and
 the line that supports it, so a reader can check the claim rather than
 trust it.
 
-**Scope:** the ten functional requirements FR-6.1 … FR-6.10, which
+**Scope:** the eleven functional requirements FR-6.1 … FR-6.11, which
 describe the reader's own history: the list of it, the search through
 it, the thread that belongs to a page, the turns in it, and the hand-off
 to a human.
@@ -394,6 +394,75 @@ decision but the check that reads it.  See ADR-0048.
 an `assigned_to` filter the tool resolves against the site's
 assignments, because the reader was named in the prompt already and
 nothing turned "mine" into a condition.  See ADR-0051.
+
+---
+
+## FR-6.11 — The last question can be edited, and its answer made again
+
+**Requirement.** A reader who chose their words wrong does not remove
+the turn and lose its place: they edit the thread's last question, and
+the answer is made again as a *new* turn.  The old pair — the question
+and the answer that followed it — is removed by the new turn's own
+job, inside the job, so a worker that never picks the job up leaves
+the old answer exactly where it was.
+
+**Status.** Shipped.
+
+**The decisions the requirement forced.**
+- **Which question is editable.** Only the thread's last one, and only
+  a question — an answer is not a thing to edit, and a question whose
+  turn has not finished has no answer to replace yet.  A question
+  asked after it disqualifies the one before; an answer row is refused;
+  an unanswered last question is refused until its turn writes one.
+  (`validate_regenerate`, `albanna/services/conversation_service.py`.)
+- **What the new turn carries.** The old row is the record: the new
+  turn is asked from the page the old question was born on
+  (`page_identity`), and its stored files — the URLs and, where they
+  were read at the time, the texts of their contents — travel with it.
+  Nothing is re-parsed and nothing is stored twice; the files are
+  already on the site.
+- **Who removes the old pair.** The job, not the endpoint.  An
+  endpoint that deleted first and queued second would leave the reader
+  with neither answer if the queue refused the job.  The removal is
+  its own transaction, committed before the turn runs, because the
+  turn loads its history from the database and a history that still
+  held the old question would have the model read its own replaced
+  words as still true.  A row that is already gone — the reader
+  removed the turn between the endpoint's check and the job's pickup —
+  is not an error; the turn runs anyway.
+- **The price.** A regenerate spends a rate-limit slot like any other
+  turn, and it cancels the thread's pending question cards like any
+  other turn that speaks (the reader answered the thread by typing,
+  and an edited question is typing).  The undo entries of the old
+  turn's tool calls live in its own rows and go with them: a turn that
+  is replaced was never taken, and there is nothing left to undo.
+
+**Evidence.**
+- `albanna/api/chat.py` — `edit_and_regenerate`, the endpoint: chat
+  access, the stream rate-limit surface, the question ceiling, the
+  validation, and the queue — through the same `_queue_turn_job` the
+  plain question takes, so the two are queued identically.
+- `albanna/services/conversation_service.py` — `validate_regenerate`,
+  the three refusals and what the old row carries.
+- `albanna/services/chat_job.py` — `run_turn_job`'s `replace_message`
+  and `_replace_old_pair`, the removal in its own transaction.
+- `albanna/services/chat_service.py` — `TurnRequest.attachment_texts`,
+  and `_store_attachments`' URL-only path, which builds the same
+  attachment note a first turn writes without storing anything twice.
+- Tested (`albanna/tests/test_integration.py`,
+  `TestEditingAndRegenerating`): the last question carries its page and
+  files; an answer, an earlier question, an unfinished turn, another
+  user's row and a missing row are each refused with the refusal that
+  names which one failed; the endpoint queues with `replace_message`,
+  the old page and the old files in the marker; a question over the
+  ceiling is refused before anything is queued; the job removes the
+  old pair before the turn runs, and the model's history no longer
+  holds the replaced words; a row that is already gone does not stop
+  the job.
+
+**Gaps found.** None.
+
+**Blocked.** Nothing.
 
 ---
 

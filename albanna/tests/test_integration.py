@@ -40,10 +40,12 @@ from __future__ import annotations
 
 import contextlib
 import json
+from unittest import mock
 
 import frappe
 import pytest
 
+from albanna.api.chat import MAX_QUESTION_LENGTH, TURN_CACHE_KEY, edit_and_regenerate
 from albanna.api.conversations import (
     delete_conversation,
     delete_turn,
@@ -55,6 +57,7 @@ from albanna.api.conversations import (
 from albanna.core.authority import Authority
 from albanna.core.tools import TOOL_MANIFEST
 from albanna.permissions import FrappePermissionChecker, current_principal
+from albanna.services.chat_job import _replace_old_pair
 from albanna.services.conversation_service import (
     append_messages,
     ensure_thread,
@@ -62,6 +65,7 @@ from albanna.services.conversation_service import (
     load_transcript,
     name_after_question,
     transcript_window,
+    validate_regenerate,
 )
 from albanna.services.conversation_service import (
     # A thread a test stands up itself, distinct from the one
@@ -561,6 +565,211 @@ class TestRemovingATurn(AlbannaTestCase):
 
         stored = [row["name"] for row in load_transcript(conversation)]
         self.assertEqual(stored, names)
+
+
+@pytest.mark.integration
+class TestEditingAndRegenerating(AlbannaTestCase):
+    """A reader edits the thread's last question and has it answered again.
+
+    The words a reader first chose are often not the words they meant:
+    rather than remove the turn and lose its place, they fix the
+    question and the answer is made again.  The old pair is removed by
+    the *turn's own job*, inside the job, so a worker that never picks
+    the job up leaves the old answer exactly where it was.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.owner = "albanna.test.edit.owner@albanna.dev"
+        self.other = "albanna.test.edit.other@albanna.dev"
+        for email in (self.owner, self.other):
+            if not frappe.db.exists("User", email):
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = "Albanna"
+                user.last_name = "Test"
+                user.flags.ignore_permissions = True
+                user.insert()
+            user = frappe.get_doc("User", email)
+            user.flags.ignore_permissions = True
+            user.add_roles("Sales User", "Albanna User")
+        frappe.db.commit()
+
+    def tearDown(self):
+        frappe.cache().delete_value(
+            TURN_CACHE_KEY.format(stream_id=getattr(self, "stream_id", ""))
+        )
+        super().tearDown()
+
+    def _as(self, email):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _fresh(self, page: str = "", user: str = "") -> str:
+        conversation = new_thread(user or self.owner, page or f"test|edit|{self.id()}|")
+        frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
+        return conversation
+
+    def _thread(self, page: str = ""):
+        """A conversation whose last turn carries a page and a file."""
+        conversation = self._fresh(page or f"test|edit|{self.id()}|")
+        append_messages(
+            conversation,
+            [
+                {"role": "user", "content": "first question"},
+                {"role": "assistant", "content": "first answer"},
+            ],
+        )
+        append_messages(
+            conversation,
+            [
+                {
+                    "role": "user",
+                    "content": "second question",
+                    "attachment_urls": json.dumps(["/files/smoke-attachment.png"]),
+                    "attachment_texts": json.dumps(["a picture of a chart"]),
+                    "page_identity": "form|Item|SMOKE-EDIT",
+                },
+                {"role": "assistant", "content": "second answer"},
+            ],
+        )
+        return conversation
+
+    def test_the_last_question_may_be_edited(self):
+        self._as(self.owner)
+        conversation = self._thread()
+
+        carried = validate_regenerate(
+            conversation, load_transcript(conversation)[2]["name"], self.owner
+        )
+
+        self.assertEqual(carried["page_identity"], "form|Item|SMOKE-EDIT")
+        self.assertEqual(carried["attachment_urls"], ["/files/smoke-attachment.png"])
+        self.assertEqual(carried["attachment_texts"], ["a picture of a chart"])
+
+    def test_an_answer_is_not_a_thing_to_edit(self):
+        self._as(self.owner)
+        conversation = self._thread()
+        names = [row["name"] for row in load_transcript(conversation)]
+
+        with self.assertRaises(frappe.ValidationError):
+            validate_regenerate(conversation, names[3], self.owner)
+
+    def test_only_the_last_question_may_be_edited(self):
+        self._as(self.owner)
+        conversation = self._thread()
+        names = [row["name"] for row in load_transcript(conversation)]
+
+        with self.assertRaises(frappe.ValidationError):
+            validate_regenerate(conversation, names[0], self.owner)
+
+    def test_a_turn_that_has_not_finished_is_refused(self):
+        self._as(self.owner)
+        conversation = self._fresh()
+        append_messages(conversation, [{"role": "user", "content": "still running"}])
+        names = [row["name"] for row in load_transcript(conversation)]
+
+        with self.assertRaises(frappe.ValidationError):
+            validate_regenerate(conversation, names[0], self.owner)
+
+    def test_another_users_question_is_refused(self):
+        conversation = self._thread()
+        names = [row["name"] for row in load_transcript(conversation)]
+
+        self._as(self.other)
+        with self.assertRaises(frappe.PermissionError):
+            validate_regenerate(conversation, names[2], self.other)
+
+    def test_a_message_that_is_not_there_is_refused(self):
+        self._as(self.owner)
+        conversation = self._thread()
+
+        with self.assertRaises(frappe.DoesNotExistError):
+            validate_regenerate(conversation, "nothing-at-all", self.owner)
+
+    def test_the_endpoint_queues_a_turn_that_replaces_the_old_one(self):
+        self._as(self.owner)
+        conversation = self._thread()
+        names = [row["name"] for row in load_transcript(conversation)]
+
+        captured = {}
+
+        def fake_enqueue(method, **kwargs):
+            captured["method"] = method
+            captured.update(kwargs)
+
+        with mock.patch("frappe.enqueue", side_effect=fake_enqueue):
+            result = edit_and_regenerate(
+                conversation=conversation,
+                message=names[2],
+                question="second question, edited",
+            )
+
+        self.assertEqual(result["status"], "queued")
+        self.assertEqual(captured["method"], "albanna.services.chat_job.run_turn_job")
+        self.assertEqual(captured["queue"], "chat")
+        self.assertEqual(captured["replace_message"], names[2])
+        # The turn is asked from the page the old question was born on,
+        # whatever page the reader is reading the thread from now.
+        self.assertEqual(captured["page"], "form|Item|SMOKE-EDIT")
+
+        # The marker carries the edited words and the old row's files,
+        # because the job reads them there and not from its arguments.
+        self.stream_id = result["stream_id"]
+        parked = frappe.cache().get_value(
+            TURN_CACHE_KEY.format(stream_id=self.stream_id), expires=True
+        )
+        self.assertEqual(parked["question"], "second question, edited")
+        self.assertEqual(
+            json.loads(parked["attachment_urls"]), ["/files/smoke-attachment.png"]
+        )
+        self.assertEqual(json.loads(parked["attachment_texts"]), ["a picture of a chart"])
+
+    def test_a_question_over_the_ceiling_is_refused_before_the_queue(self):
+        self._as(self.owner)
+        conversation = self._thread()
+        names = [row["name"] for row in load_transcript(conversation)]
+
+        with mock.patch("frappe.enqueue") as enqueue:
+            result = edit_and_regenerate(
+                conversation=conversation,
+                message=names[2],
+                question="x" * (MAX_QUESTION_LENGTH + 1),
+            )
+
+        self.assertEqual(result["status"], "error")
+        self.assertIn(str(MAX_QUESTION_LENGTH), result["error"])
+        enqueue.assert_not_called()
+
+    def test_the_job_removes_the_old_pair_before_the_turn_runs(self):
+        self._as(self.owner)
+        conversation = self._thread()
+        names = [row["name"] for row in load_transcript(conversation)]
+
+        _replace_old_pair(conversation, names[2])
+
+        # The model's history is read after this removal, so the
+        # replacement the turn writes is what it sees — the old words
+        # are not still in the thread for the model to read as true.
+        self.assertEqual(
+            [row["content"] for row in load_transcript(conversation)],
+            ["first question", "first answer"],
+        )
+        self.assertEqual(
+            [message.content for message in load_messages(conversation, 10)],
+            ["first question", "first answer"],
+        )
+
+    def test_the_job_survives_a_row_that_is_already_gone(self):
+        self._as(self.owner)
+        conversation = self._thread()
+
+        # Not raised: the reader may have removed the turn themselves
+        # between the endpoint's check and the job's pickup.
+        _replace_old_pair(conversation, "nothing-at-all")
+        self.assertEqual(len(load_transcript(conversation)), 4)
 
 
 @pytest.mark.integration

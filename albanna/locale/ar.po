@@ -411,6 +411,15 @@ msgstr "إزالة هذه المحادثة"
 msgid "That message does not exist."
 msgstr "هذه الرسالة غير موجودة."
 
+msgid "Only one of your own questions can be edited."
+msgstr "يمكن تعديل أسئلتك أنت فقط."
+
+msgid "Only the thread's last question can be edited."
+msgstr "يمكن تعديل آخر سؤال في المحادثة فقط."
+
+msgid "That question's turn has not finished yet."
+msgstr "لم ينته دورُ هذا السؤال بعد."
+
 msgid "The question and its answer were removed."
 msgstr "أُزيل السؤال وإجابته."
 

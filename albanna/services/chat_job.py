@@ -58,6 +58,7 @@ def run_turn_job(
     page: str = "",
     question: str = "",
     page_context: str = "",
+    replace_message: str = "",
 ) -> None:
     """Run one turn and publish its progress.
 
@@ -66,6 +67,14 @@ def run_turn_job(
     arguments are logged, and the log is read by operators and copied off
     the host.  The two parameters are kept only so that a turn queued
     before the change still runs; nothing enqueues them any more.
+
+    *replace_message* names the row of a question being edited and made
+    again: the old pair — the question and the answer that followed it —
+    is removed here, inside the job, before the turn runs.  It is the
+    job that removes and not the endpoint that queued it, so a job the
+    queue refuses, or a worker that dies before it starts, leaves the
+    old answer exactly where it was: the reader edits their words and
+    loses nothing they had.
     """
     from albanna.services.chat_service import ChatService, TurnRequest, turn_payload
 
@@ -95,6 +104,12 @@ def run_turn_job(
             parked.get("attachments") or parked.get("attachments")
         )
         attachment_urls, _readable = read_attachment_list(parked.get("attachment_urls"))
+        attachment_texts, _readable = read_attachment_list(parked.get("attachment_texts"))
+    else:
+        attachments, attachment_urls, attachment_texts = [], [], []
+
+    if replace_message:
+        _replace_old_pair(conversation_id, replace_message)
 
     try:
         outcome = ChatService().run(
@@ -106,6 +121,7 @@ def run_turn_job(
                 stream=True,
                 attachments=attachments,
                 attachment_urls=attachment_urls,
+                attachment_texts=attachment_texts,
             ),
             emit=emit,
         )
@@ -133,9 +149,37 @@ def run_turn_job(
         logger.exception("Could not commit the chat turn")
 
 
+def _replace_old_pair(conversation_id: str, replace_message: str) -> None:
+    """Remove the pair a regenerate turn replaces, and commit the removal.
+
+    The removal is its own transaction, committed before the turn runs:
+    the turn loads its history from the database, and a history that
+    still held the old question would have the model read its own
+    replaced words as still true.
+
+    A row that is no longer there is not an error: the reader may have
+    removed the turn themselves between the endpoint's check and the
+    job's pickup, and a question that is already gone needs no
+    replacing.  Anything else — another user's row, a queue that will
+    not take the write — is raised, and the turn never starts: the
+    marker's ``running`` is answered by ``status`` with the
+    turn-lost sentence, and the old pair is still in the thread.
+    """
+    from albanna.services.conversation_service import delete_turn
+
+    try:
+        delete_turn(conversation_id, replace_message)
+    except frappe.DoesNotExistError:
+        logger.warning(
+            "The turn to replace (%s) was already gone; regenerating anyway",
+            replace_message,
+        )
+        return
+    frappe.db.commit()
+
+
 def _realtime_emit(stream_id: str, user: str):
     """Build the emit callback that publishes progress to one user."""
-
     def emit(event: dict[str, Any]) -> None:
         _mirror_to_marker(stream_id, user, event)
         try:

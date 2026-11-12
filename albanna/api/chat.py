@@ -281,7 +281,7 @@ def ask_stream(
     require_chat_access()
 
     from albanna.services.rate_limit import SURFACE_STREAM, check_turn_allowed
-    from albanna.services.settings_service import get_settings, job_budget_seconds
+    from albanna.services.settings_service import get_settings
 
     check_turn_allowed(str(frappe.session.user or ""), SURFACE_STREAM)
 
@@ -293,6 +293,37 @@ def ask_stream(
     refusal = _question_refusal(question)
     if refusal:
         return {"status": "error", "error": refusal}
+
+    return _queue_turn_job(
+        question=question or "",
+        conversation_id=conversation_id or "",
+        page=page or "",
+        page_context=_render_page_context(page_context),
+        attachments=attachments,
+        attachment_urls=stored_urls,
+        attachment_texts=[],
+        settings=settings,
+    )
+
+
+def _queue_turn_job(
+    question: str,
+    conversation_id: str,
+    page: str,
+    page_context: str,
+    attachments: list[str],
+    attachment_urls: list[str],
+    attachment_texts: list[str],
+    settings: Any,
+    replace_message: str = "",
+) -> dict[str, Any]:
+    """Park the turn's marker, queue the job, and name both to the browser.
+
+    The one place a turn is queued, so that a plain question and an
+    edited one are queued identically — the difference between them is
+    what the marker carries, not how the queue is spoken to.
+    """
+    from albanna.services.settings_service import job_budget_seconds
 
     stream_id = uuid.uuid4().hex
 
@@ -315,10 +346,11 @@ def ask_stream(
         {
             "status": "running",
             "started_at": time.time(),
-            "question": question or "",
+            "question": question,
             "attachments": json.dumps(attachments),
-            "attachment_urls": json.dumps(stored_urls),
-            "page_context": _render_page_context(page_context),
+            "attachment_urls": json.dumps(attachment_urls),
+            "attachment_texts": json.dumps(attachment_texts),
+            "page_context": page_context,
         },
         # No ``user=``: the marker is parked in the site's namespace, not
         # the reader's — see ``TURN_CACHE_KEY``.  The marker has to
@@ -351,11 +383,76 @@ def ask_stream(
         timeout=job_budget_seconds(settings),
         job_id=f"albanna-turn-{stream_id}",
         stream_id=stream_id,
-        conversation_id=conversation_id or "",
-        page=page or "",
+        conversation_id=conversation_id,
+        page=page,
+        replace_message=replace_message,
     )
 
     return {"status": "queued", "stream_id": stream_id, "event": STREAM_EVENT}
+
+
+@frappe.whitelist()
+@redacted_request_text("question", "page_context")
+def edit_and_regenerate(
+    conversation: str = "",
+    message: str = "",
+    question: str = "",
+    page_context: Any = None,
+) -> dict[str, Any]:
+    """Edit the thread's last question, and have its answer made again.
+
+    The reader found their words wrong, not their curiosity: they keep
+    the turn's place in the thread, its page and its files, and the
+    question's text is theirs to fix.  What comes back is a *new* turn
+    — a stream id, the same queue, the same clocks — and the old pair
+    of rows is removed by the turn's own job, inside the job, so a
+    worker that dies on the way leaves the old answer where it was.
+
+    The job, not this endpoint, does the removing.  An endpoint that
+    deleted first and queued second would leave the reader with neither
+    answer if the queue refused the job; queued work that removes its
+    own predecessor can only fail with everything still in place.
+
+    The turn spends a rate-limit slot like any other: it is a model
+    call like any other, and the ceiling is what protects the site.
+    """
+    require_chat_access()
+
+    from albanna.services.rate_limit import SURFACE_STREAM, check_turn_allowed
+
+    check_turn_allowed(str(frappe.session.user or ""), SURFACE_STREAM)
+
+    from albanna.services.conversation_service import validate_regenerate
+    from albanna.services.settings_service import get_settings
+
+    question = (question or "").strip()
+    refusal = _question_refusal(question)
+    if refusal:
+        return {"status": "error", "error": refusal}
+
+    # The old row is the record: the turn it named is looked up rather
+    # than trusted, and what the new turn carries — the page the
+    # question was born on, its stored files and their texts — is read
+    # off that row.  A caller that names somebody else's row, an
+    # answer, a question that is not the last one, or a turn that has
+    # not finished, is refused here and nothing is queued.
+    carried = validate_regenerate(
+        (conversation or "").strip(),
+        (message or "").strip(),
+        str(frappe.session.user or ""),
+    )
+
+    return _queue_turn_job(
+        question=question,
+        conversation_id=(conversation or "").strip(),
+        page=carried["page_identity"],
+        page_context=_render_page_context(page_context),
+        attachments=[],
+        attachment_urls=carried["attachment_urls"],
+        attachment_texts=carried["attachment_texts"],
+        settings=get_settings(),
+        replace_message=(message or "").strip(),
+    )
 
 
 @frappe.whitelist()
