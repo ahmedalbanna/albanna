@@ -44,6 +44,32 @@ class TestReadToolsAreGated(AlbannaTestCase):
         user.add_roles("Sales User", "Albanna User")
         self.sales_user = SALES_USER
         self.backend = ErpnextBackend()
+        self._private_file_url = self._ensure_private_file()
+
+    def _ensure_private_file(self) -> str:
+        """A private file the Sales User does not own, for read_file's case.
+
+        A private file belongs to the account that uploaded it, and the
+        Desk shows it to nobody else — so it is the one file a caller
+        with every role still may not read.  It is made here, as
+        Administrator, rather than assumed, because the site's own
+        files are nobody's fixture.
+        """
+        file_name = "readguard-private.txt"
+        existing = frappe.db.get_value("File", {"file_name": file_name, "is_private": 1}, "name")
+        if existing:
+            return frappe.db.get_value("File", existing, "file_url")
+        former = frappe.session.user
+        frappe.set_user("Administrator")
+        try:
+            document = frappe.new_doc("File")
+            document.file_name = file_name
+            document.content = "private to its owner"
+            document.is_private = 1
+            document.insert()
+            return document.file_url
+        finally:
+            frappe.set_user(former)
 
     def _as(self, email: str):
         frappe.set_user(email)
@@ -76,7 +102,12 @@ class TestReadToolsAreGated(AlbannaTestCase):
             if spec.tier == "read" and spec.name != "ask_question"
         ]
 
-        missing = [name for name in read_tools if name not in self.DENIED]
+        # read_file's target is the private file made in setUp — a file
+        # the caller does not own, which is the one file no role lets
+        # them read.
+        denied = {**self.DENIED, "read_file": {"file": self._private_file_url}}
+
+        missing = [name for name in read_tools if name not in denied]
         self.assertFalse(
             missing,
             "no denied case is written for the read tool(s): " + ", ".join(missing),
@@ -85,7 +116,7 @@ class TestReadToolsAreGated(AlbannaTestCase):
         for name in read_tools:
             result = self.backend.call(
                 TOOL_MANIFEST.get(name),
-                self.DENIED[name],
+                denied[name],
                 self._context(self.sales_user),
             )
             if result.ok:

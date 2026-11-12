@@ -50,12 +50,18 @@ export function toolLabel(name) {
 			return __("Reading");
 		case "get_doctype_meta":
 			return __("Checking fields");
+		case "read_file":
+			return __("Reading a file");
 		case "run_report":
 			return __("Running a report");
 		case "create_doc":
 			return __("Creating");
 		case "update_doc":
 			return __("Editing");
+		case "write_file":
+			return __("Creating a file");
+		case "edit_file":
+			return __("Editing a file");
 		case "submit_doc":
 			return __("Submitting");
 		case "cancel_doc":
@@ -86,6 +92,10 @@ export function toolAction(name) {
 			return __("Creating");
 		case "update_doc":
 			return __("Updating");
+		case "write_file":
+			return __("Creating a file");
+		case "edit_file":
+			return __("Editing a file");
 		case "submit_doc":
 			return __("Submitting");
 		case "cancel_doc":

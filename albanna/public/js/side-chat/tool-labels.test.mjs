@@ -6,7 +6,7 @@
 // through to a label nobody notices being wrong.
 
 import assert from "node:assert/strict";
-import { describeTool, statusLabel, toolLabel, toolSummary } from "./tool-labels.mjs";
+import { describeTool, statusLabel, toolAction, toolLabel, toolSummary } from "./tool-labels.mjs";
 
 // The page's translation function, as the widget uses it: the string
 // itself in this suite, so a label is compared as the string the reader
@@ -29,8 +29,11 @@ assert.equal(statusLabel("running"), "");
 assert.equal(toolLabel("list_docs"), "Searching");
 assert.equal(toolLabel("get_doc"), "Reading");
 assert.equal(toolLabel("get_doctype_meta"), "Checking fields");
+assert.equal(toolLabel("read_file"), "Reading a file");
 assert.equal(toolLabel("run_report"), "Running a report");
 assert.equal(toolLabel("create_doc"), "Creating");
+assert.equal(toolLabel("write_file"), "Creating a file");
+assert.equal(toolLabel("edit_file"), "Editing a file");
 
 // A tool with no label of its own reads as "Working" — which is true, and
 // is the one label the reader is not misled by.
@@ -47,6 +50,19 @@ assert.equal(describeTool("get_doc", { doctype: "Sales Order" }), "Reading Sales
 assert.equal(describeTool("list_docs", {}), "Searching");
 assert.equal(describeTool("list_docs", undefined), "Searching");
 assert.equal(describeTool("list_docs", { doctype: "   " }), "Searching");
+
+// -- what the card says the change is -----------------------------------
+
+assert.equal(toolAction("create_doc"), "Creating");
+assert.equal(toolAction("update_doc"), "Updating");
+assert.equal(toolAction("write_file"), "Creating a file");
+assert.equal(toolAction("edit_file"), "Editing a file");
+assert.equal(toolAction("delete_doc"), "Deleting");
+
+// A read never reaches the card, so it carries no verb.
+assert.equal(toolAction("list_docs"), "");
+assert.equal(toolAction("read_file"), "");
+assert.equal(toolAction(""), "");
 
 // -- what the turn did --------------------------------------------------
 

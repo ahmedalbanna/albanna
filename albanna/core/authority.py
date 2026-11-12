@@ -253,26 +253,32 @@ class Authority:
         """Check a write call against the document it would create.
 
         The target DocType is chosen by the model, so the check happens here,
-        at call time, against the argument the model actually supplied.
+        at call time, against the argument the model actually supplied —
+        unless the tool's target is fixed, in which case the argument is
+        the model's to get wrong about *what to write*, never about *what
+        kind of thing it may write*.
         """
-        if not spec.doctype_arg:
-            # A write tool with no document target has no document-level
-            # permission to check.  That is a manifest mistake, and the
-            # safe reading of it is to refuse the call.
-            return Decision.deny(
-                "unbound_write_tool",
-                f"The tool '{spec.name}' writes but names no target DocType, "
-                f"so its permission cannot be established.",
-            )
+        if spec.fixed_doctype:
+            doctype = spec.fixed_doctype
+        else:
+            if not spec.doctype_arg:
+                # A write tool with no document target has no document-level
+                # permission to check.  That is a manifest mistake, and the
+                # safe reading of it is to refuse the call.
+                return Decision.deny(
+                    "unbound_write_tool",
+                    f"The tool '{spec.name}' writes but names no target DocType, "
+                    f"so its permission cannot be established.",
+                )
 
-        doctype = arguments.get(spec.doctype_arg)
-        if not isinstance(doctype, str) or not doctype.strip():
-            return Decision.deny(
-                "missing_doctype",
-                f"The tool '{spec.name}' needs a '{spec.doctype_arg}' naming the DocType to write.",
-            )
+            doctype = arguments.get(spec.doctype_arg)
+            if not isinstance(doctype, str) or not doctype.strip():
+                return Decision.deny(
+                    "missing_doctype",
+                    f"The tool '{spec.name}' needs a '{spec.doctype_arg}' naming the DocType to write.",
+                )
 
-        doctype = doctype.strip()
+            doctype = doctype.strip()
         verb = write_verb(spec.write_permission)
 
         if self._checker is None:

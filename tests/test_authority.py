@@ -134,6 +134,25 @@ def test_a_write_tool_is_allowed_when_the_user_may_create_the_doctype():
     assert decision.allowed
 
 
+def test_a_fixed_target_write_is_checked_against_its_own_doctype():
+    """The file writes act on File, and the model does not choose that.
+
+    The arguments carry no doctype at all — the target is a fact about
+    the tool — so the check is against File and against nothing the
+    model could have named wrongly.
+    """
+    from albanna.core.tools import EDIT_FILE, WRITE_FILE
+
+    registry = ToolRegistry([WRITE_FILE, EDIT_FILE])
+    allowed = Authority(registry, principal(), Checker(creatable={"File"}, writable={"File"}))
+    assert allowed.authorize("write_file", {"file_name": "a.csv", "content": "x"}).allowed
+    assert allowed.authorize("edit_file", {"file": "/files/a.csv", "content": "x"}).allowed
+
+    refused = Authority(registry, principal(), Checker(creatable={"Item"}, writable={"Item"}))
+    assert not refused.authorize("write_file", {"file_name": "a.csv", "content": "x"}).allowed
+    assert not refused.authorize("edit_file", {"file": "/files/a.csv", "content": "x"}).allowed
+
+
 def test_an_update_is_refused_when_the_user_may_not_write_the_doctype():
     """Changing a document is checked against the *write* permission.
 

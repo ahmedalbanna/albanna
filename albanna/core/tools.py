@@ -74,6 +74,15 @@ class ToolSpec:
     tier: str = READ
     required_roles: tuple[str, ...] = ()
     doctype_arg: str = ""
+    #: The DocType a write acts on, when the model does not choose it.
+    #:
+    #: A write tool whose target is fixed — the file tools act on File,
+    #: whatever the arguments say — names it here, and the authority
+    #: layer checks that DocType instead of reading one from the
+    #: arguments.  Asking the model to pass ``doctype: "File"`` would
+    #: make the target a claim the model could get wrong; a fixed
+    #: target is a fact about the tool.
+    fixed_doctype: str = ""
     write_permission: str = "create"
     max_result_chars: int = MAX_RESULT_CHARS
     enabled: bool = True
@@ -193,6 +202,7 @@ class ToolRegistry:
                 tier=spec.tier,
                 required_roles=spec.required_roles,
                 doctype_arg=spec.doctype_arg,
+                fixed_doctype=spec.fixed_doctype,
                 write_permission=spec.write_permission,
                 max_result_chars=spec.max_result_chars,
                 enabled=enabled.get(spec.name, spec.enabled),
@@ -352,8 +362,7 @@ GET_DOC = ToolSpec(
 )
 
 GET_DOCTYPE_META = ToolSpec(
-    name="get_doctype_meta",
-    description=(
+    name="get_doctype_meta",    description=(
         "Get the field definitions of a DocType — fieldname, type, label, "
         "whether it is mandatory, and its options. Call this before you "
         "filter on or write to a field you are not certain about, so you use "
@@ -376,6 +385,116 @@ GET_DOCTYPE_META = ToolSpec(
         "required": ["doctype"],
     },
     tier=READ,
+)
+
+READ_FILE = ToolSpec(
+    name="read_file",
+    description=(
+        "Read the text of a file stored on this site — a document's "
+        "attachment, or a file attached in this chat. Pass the file's URL "
+        "(/files/... or /private/files/...) or the name of its File record. "
+        "A PDF or a text file comes back as text; a picture cannot be read "
+        "as text. A long file comes back in parts: read again with the "
+        "next_offset the result names to continue."
+    ),
+    parameters={
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "file": {
+                "type": "string",
+                "description": (
+                    "The file's URL, e.g. '/private/files/albanna-8f2a1c.pdf', "
+                    "or the name of its File record."
+                ),
+            },
+            "offset": {
+                "type": "integer",
+                "description": (
+                    "The character to start reading from, for a file too "
+                    "long for one read. Omit to read from the beginning."
+                ),
+            },
+        },
+        "required": ["file"],
+    },
+    tier=READ,
+    # The envelope around the text — the counts and the next offset —
+    # must survive the backend's truncation of the whole result, so the
+    # spec's ceiling is the read's ceiling plus the headroom for it.
+    max_result_chars=MAX_RESULT_CHARS + 2000,
+)
+
+WRITE_FILE = ToolSpec(
+    name="write_file",
+    description=(
+        "Create a new file on this site with the text content you provide. "
+        "Use this when the reader asks for a file to be made — a CSV to "
+        "import, a note, a JSON payload. The content is text: a binary "
+        "kind (a picture, a PDF) cannot be written this way. The file is "
+        "private unless the reader asks otherwise."
+    ),
+    parameters={
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "file_name": {
+                "type": "string",
+                "description": (
+                    "The file's name, with its extension — e.g. "
+                    "'customers.csv'. The extension decides how the site "
+                    "serves it, so name the kind the content really is."
+                ),
+            },
+            "content": {
+                "type": "string",
+                "description": "The full text of the file, as it should be stored.",
+            },
+            "is_private": {
+                "type": "boolean",
+                "description": (
+                    "True for a private file (only those with permission "
+                    "may read it), false for a public one. Omit for private."
+                ),
+            },
+        },
+        "required": ["file_name", "content"],
+    },
+    tier=WRITE,
+    write_permission="create",
+    fixed_doctype="File",
+)
+
+EDIT_FILE = ToolSpec(
+    name="edit_file",
+    description=(
+        "Replace the text content of a file that already exists on this "
+        "site. Pass the file's URL (/files/... or /private/files/...) or "
+        "the name of its File record, and the full new text — the whole "
+        "content is replaced, not appended. A picture cannot be edited "
+        "this way. The reader approves this change before it runs."
+    ),
+    parameters={
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "file": {
+                "type": "string",
+                "description": (
+                    "The file's URL, e.g. '/private/files/albanna-8f2a1c.csv', "
+                    "or the name of its File record."
+                ),
+            },
+            "content": {
+                "type": "string",
+                "description": "The full new text of the file, replacing what it held.",
+            },
+        },
+        "required": ["file", "content"],
+    },
+    tier=WRITE,
+    write_permission="write",
+    fixed_doctype="File",
 )
 
 RUN_REPORT = ToolSpec(
@@ -800,6 +919,9 @@ TOOL_MANIFEST = ToolRegistry(
         LIST_DOCS,
         GET_DOC,
         GET_DOCTYPE_META,
+        READ_FILE,
+        WRITE_FILE,
+        EDIT_FILE,
         RUN_REPORT,
         CREATE_DOC,
         UPDATE_DOC,

@@ -261,6 +261,18 @@ msgid "Checking fields"
 msgstr "يتحقق من الحقول"
 
 
+msgid "Reading a file"
+msgstr "يقرأ ملفًا"
+
+
+msgid "Creating a file"
+msgstr "ينشئ ملفًا"
+
+
+msgid "Editing a file"
+msgstr "يعدل ملفًا"
+
+
 msgid "Running a report"
 msgstr "يشغّل تقريراً"
 

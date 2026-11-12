@@ -373,6 +373,11 @@ class ChatService:
         # The conversation this turn is in.  A tool that needs to know
         # which thread it is in is told, through the port's context.
         self._conversation: str = ""
+        # Whether this turn's tool set includes read_file.  The
+        # attachment note names the tool only when the model has been
+        # given it — a note that names a tool the request does not carry
+        # is an instruction to fail.
+        self._can_read_files: bool = False
 
     # -- the turn ---------------------------------------------------------
 
@@ -432,6 +437,7 @@ class ChatService:
         registry = self._tool_registry(principal.user)
         authority = Authority(registry, principal, FrappePermissionChecker())
         visible = authority.visible()
+        self._can_read_files = "read_file" in authority.visible_names()
 
         conversation = self._resolve_conversation(request, principal.user, question)
         self._conversation = conversation
@@ -451,7 +457,9 @@ class ChatService:
                 attachment_urls=attachment_urls,
             )
 
-        history = load_messages(conversation, settings.history_limit)
+        history = load_messages(
+            conversation, settings.history_limit, can_read_files=self._can_read_files
+        )
 
         # The audit row is written *before* the turn can die, so that a
         # turn that never finishes still leaves a record.  It starts as
@@ -949,7 +957,7 @@ class ChatService:
             # three pictures and stored two has told the reader it sent
             # three; a note that says "three were stored" would be a
             # claim about a file that does not exist.
-            note = attachment_note(urls, texts)
+            note = attachment_note(urls, texts, can_read_files=self._can_read_files)
             if len(urls) < len(request.attachments):
                 note += unstored_note(
                     len(request.attachments) - len(urls), len(request.attachments)

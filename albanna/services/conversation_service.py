@@ -249,7 +249,9 @@ def _next_index(conversation: str) -> int:
     return int(current[0][0]) + 1 if current else 1
 
 
-def load_messages(conversation: str, limit: int = 20) -> list[Message]:
+def load_messages(
+    conversation: str, limit: int = 20, can_read_files: bool = False
+) -> list[Message]:
     """The last *limit* messages of a conversation, oldest first.
 
     Only the tail is loaded.  A conversation with four hundred messages must
@@ -261,6 +263,10 @@ def load_messages(conversation: str, limit: int = 20) -> list[Message]:
     their arguments: history is replayed with the tool calls stripped (see
     :func:`albanna.core.messages.as_plain_history`), because the assistant's
     own answer already says what it learned.
+
+    *can_read_files* is whether this turn's tool set includes read_file.
+    The attachment note names the tool only when the model has been given
+    it, and the caller — the one that built the registry — is who knows.
     """
     rows = frappe.db.sql(
         """
@@ -319,7 +325,7 @@ def load_messages(conversation: str, limit: int = 20) -> list[Message]:
         texts, _texts_readable = read_attachment_list(row.attachment_texts or "")
         content = row.content or ""
         if stored and role == "user":
-            content += attachment_note(stored, texts or None)
+            content += attachment_note(stored, texts or None, can_read_files=can_read_files)
 
         messages.append(
             Message(

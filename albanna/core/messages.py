@@ -43,13 +43,17 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+from albanna.core.tools import READ_FILE
+
 Role = Literal["system", "user", "assistant", "tool"]
 
 #: The only tool-call type this app speaks.
 TOOL_CALL_TYPE = "function"
 
 
-def attachment_note(urls: list[str], texts: list[str] | None = None) -> str:
+def attachment_note(
+    urls: list[str], texts: list[str] | None = None, can_read_files: bool = False
+) -> str:
     """The note that tells the model where the attachments went.
 
     The bytes travel with the turn; the file is what outlives it.  A
@@ -107,14 +111,30 @@ def attachment_note(urls: list[str], texts: list[str] | None = None) -> str:
     if carried:
         body = "\n\n" + "\n\n".join(carried)
 
+    # What the model can do about a file later than the turn that carried
+    # it.  The note travels in the prompt; the tool travels in the same
+    # request's tool list, and the two must agree — a note that names a
+    # tool the model has not been given is an instruction to fail.  So
+    # the sentence is the caller's to switch on, and the caller is the
+    # one that built the registry.
+    on_demand = (
+        f" The {READ_FILE.name} tool can read the text of a stored file on demand."
+        if can_read_files
+        else ""
+    )
+
     if len(urls) == 1:
         return (
             f"\n\n1 attachment was stored as a Frappe File: {listed}. "
-            "If the user asks to set it as a document's field, use its URL as the value." + body
+            "If the user asks to set it as a document's field, use its URL as the value."
+            + on_demand
+            + body
         )
     return (
         f"\n\n{len(urls)} attachments were stored as Frappe Files: {listed}. "
-        "If the user asks to set one as a document's field, use its URL as the value." + body
+        "If the user asks to set one as a document's field, use its URL as the value."
+        + on_demand
+        + body
     )
 
 

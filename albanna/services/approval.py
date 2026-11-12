@@ -166,8 +166,41 @@ def write_preview(name: str, arguments: dict) -> str:
         return _preview_update(doctype, arguments, data)
     if name == "bulk_update_doc":
         return _preview_bulk(doctype, arguments, data)
+    if name == "write_file":
+        return _preview_write_file(arguments)
+    if name == "edit_file":
+        return _preview_edit_file(arguments)
 
     return f"{name}({doctype})"
+
+
+#: The most content a file card quotes, in characters.
+#:
+#: The card is read by a person deciding in seconds, and a diff of a
+#: whole document is a wall of text nobody reads — the same arithmetic
+#: that bounds a tool result.  The card quotes the head and says how
+#: much more there is.
+FILE_PREVIEW_CHARS = 600
+
+
+def _preview_write_file(arguments: dict) -> str:
+    """The card for a new file."""
+    file_name = str(arguments.get("file_name") or "").strip()
+    content = str(arguments.get("content") or "")
+    if not file_name:
+        return "Create a file"
+    size = len(content)
+    if size > FILE_PREVIEW_CHARS:
+        return f"Create file {file_name} ({size} characters)"
+    return f"Create file {file_name}: {content}"
+
+
+def _preview_edit_file(arguments: dict) -> str:
+    """The card for a change to a file that already exists."""
+    file = str(arguments.get("file") or "").strip()
+    if not file:
+        return "Change a file"
+    return f"Change file {file}"
 
 
 def _preview_create(doctype: str, data: dict) -> str:
@@ -325,6 +358,8 @@ def write_diff(name: str, arguments: dict):
     to the reader.
     """
     arguments = arguments or {}
+    if name == "edit_file":
+        return _file_diff(arguments)
     if name != "update_doc":
         return None
 
@@ -342,6 +377,46 @@ def write_diff(name: str, arguments: dict):
     from albanna.core.diff import diff_fields
 
     return diff_fields(before, data, list(data.keys()))
+
+
+def _file_diff(arguments: dict):
+    """The before/after of a file's text, as the card shows it.
+
+    The "field" is the file's content, and both sides are capped: a card
+    that quotes a whole document is a card nobody reads to the end.  The
+    cap is on the *card*, not on the write — the tool replaces the whole
+    content whatever the card shows.
+    """
+    file = str(arguments.get("file") or "").strip()
+    after = arguments.get("content")
+    if not file or not isinstance(after, str):
+        return None
+
+    from albanna.tools.erpnext import _may_read_file
+    from albanna.tools.files import _resolve
+
+    source = _resolve(file)
+    if source is None or not _may_read_file(source):
+        return None
+
+    try:
+        current = source.get_content()
+    except Exception:
+        return None
+    if isinstance(current, str):
+        current = current.encode("utf-8", errors="replace")
+
+    from albanna.core.attachments import attachment_text
+
+    before_text = attachment_text(current or b"", str(getattr(source, "mime_type", "") or ""))
+    return {"content": {"before": _clamped(before_text), "after": _clamped(after)}}
+
+
+def _clamped(text: str, limit: int = FILE_PREVIEW_CHARS) -> str:
+    """The head of a text, with a marker when there was more."""
+    if len(text) <= limit:
+        return text
+    return text[:limit] + f" … ({len(text) - limit} more characters)"
 
 
 def denial_message(decision: str) -> str:
@@ -521,6 +596,9 @@ def write_target(name: str, arguments: dict) -> dict:
             return {}
         return {"doctype": doctype, "names": [str(n) for n in names]}
 
+    if name == "edit_file":
+        return _file_target(arguments)
+
     if name != "update_doc":
         return {}
 
@@ -534,6 +612,28 @@ def write_target(name: str, arguments: dict) -> dict:
         "doctype": doctype,
         "name": docname,
         "modified": str(document.modified or ""),
+    }
+
+
+def _file_target(arguments: dict) -> dict:
+    """The file a change is about, and the stamp it had when asked.
+
+    The same stamp a document change carries: the reader approves a
+    change to the file as it was, and a file that has moved since is not
+    the one they were asked about.
+    """
+    from albanna.tools.erpnext import _may_read_file
+    from albanna.tools.files import _resolve
+
+    file = str(arguments.get("file") or "").strip()
+    source = _resolve(file) if file else None
+    if source is None or not _may_read_file(source):
+        return {}
+
+    return {
+        "doctype": "File",
+        "name": source.name,
+        "modified": str(getattr(source, "modified", "") or ""),
     }
 
 

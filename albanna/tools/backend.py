@@ -26,7 +26,7 @@ from typing import Any
 import frappe
 
 from albanna.core.tools import ToolSpec, compact_json, truncate_result
-from albanna.tools import erpnext, questions
+from albanna.tools import erpnext, files, questions
 from albanna.tools.base import ToolContext, ToolResult
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,9 @@ _BOUND_TOOLS: dict[str, Callable[..., str]] = {
     "list_docs": erpnext.list_docs,
     "get_doc": erpnext.get_doc,
     "get_doctype_meta": erpnext.get_doctype_meta,
+    "read_file": files.read_file,
+    "write_file": files.write_file,
+    "edit_file": files.edit_file,
     "run_report": erpnext.run_report,
     "create_doc": erpnext.create_doc,
     "update_doc": erpnext.update_doc,

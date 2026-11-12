@@ -34,6 +34,7 @@ class TestWriteToolsAreGated(AlbannaTestCase):
         self.accounts_user = self._make_user(ACCOUNTS_USER, "Accounts User")
         self.stock_user = self._make_user(STOCK_USER, "Stock User")
         self.backend = ErpnextBackend()
+        self._private_file_url = self._ensure_private_file()
 
     def _make_user(self, email: str, role: str) -> str:
         if not frappe.db.exists("User", email):
@@ -122,6 +123,37 @@ class TestWriteToolsAreGated(AlbannaTestCase):
     def _factory_delete_doc(self):
         return self.accounts_user, {"doctype": "Sales Invoice", "name": self._draft_invoice()}
 
+    def _factory_edit_file(self):
+        return self.stock_user, {
+            "file": self._private_file_url,
+            "content": "x",
+        }
+
+    def _ensure_private_file(self) -> str:
+        """A private file the Stock User does not own, for edit_file's case.
+
+        Every account that may sign in holds File create and File write
+        at the role level — the Desk lets any user upload — so the one
+        write a caller may not make is to a private file somebody else
+        uploaded.  It is made here, as Administrator, rather than
+        assumed, because the site's own files are nobody's fixture.
+        """
+        file_name = "writeguard-private.txt"
+        existing = frappe.db.get_value("File", {"file_name": file_name, "is_private": 1}, "name")
+        if existing:
+            return frappe.db.get_value("File", existing, "file_url")
+        former = frappe.session.user
+        frappe.set_user("Administrator")
+        try:
+            document = frappe.new_doc("File")
+            document.file_name = file_name
+            document.content = "private to its owner"
+            document.is_private = 1
+            document.insert()
+            return document.file_url
+        finally:
+            frappe.set_user(former)
+
     def _draft_sales_order(self) -> str:
         name = frappe.db.get_value("Sales Order", {"docstatus": 0}, "name")
         if name:
@@ -149,17 +181,27 @@ class TestWriteToolsAreGated(AlbannaTestCase):
         return doc.name
 
     def test_every_write_tool_refuses_a_caller_who_lacks_the_right(self):
-        write_tools = [spec.name for spec in TOOL_MANIFEST.all() if spec.tier == "write"]
-
         factories = {
             "create_doc": self._factory_create_doc,
             "update_doc": self._factory_update_doc,
             "bulk_update_doc": self._factory_bulk_update_doc,
+            "edit_file": self._factory_edit_file,
             "submit_doc": self._factory_submit_doc,
             "cancel_doc": self._factory_cancel_doc,
             "amend_doc": self._factory_amend_doc,
             "delete_doc": self._factory_delete_doc,
         }
+
+        # ``write_file`` is outside the factories, and that is a decision
+        # rather than an oversight: every account that may sign in holds
+        # File create — the Desk lets any user upload — so there is no
+        # caller a role refusal could be written for.  Its gate is the
+        # authority layer's fixed target (tests/test_authority.py) and
+        # the reader's approval card, not a role.
+        write_tools = [
+            spec.name for spec in TOOL_MANIFEST.all() if spec.tier == "write"
+            if spec.name != "write_file"
+        ]
 
         missing = [name for name in write_tools if name not in factories]
         self.assertFalse(missing, "no denied case for write tool(s): " + ", ".join(missing))

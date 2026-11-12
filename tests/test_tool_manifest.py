@@ -31,6 +31,9 @@ IMPLEMENTATION_MODULES = {
     "list_docs": "albanna.tools.erpnext",
     "get_doc": "albanna.tools.erpnext",
     "get_doctype_meta": "albanna.tools.erpnext",
+    "read_file": "albanna.tools.files",
+    "write_file": "albanna.tools.files",
+    "edit_file": "albanna.tools.files",
     "run_report": "albanna.tools.erpnext",
     "create_doc": "albanna.tools.erpnext",
     "update_doc": "albanna.tools.erpnext",
@@ -48,6 +51,9 @@ IMPLEMENTATIONS = {
     "list_docs": ("albanna.tools.erpnext", "list_docs"),
     "get_doc": ("albanna.tools.erpnext", "get_doc"),
     "get_doctype_meta": ("albanna.tools.erpnext", "get_doctype_meta"),
+    "read_file": ("albanna.tools.files", "read_file"),
+    "write_file": ("albanna.tools.files", "write_file"),
+    "edit_file": ("albanna.tools.files", "edit_file"),
     "run_report": ("albanna.tools.erpnext", "run_report"),
     "create_doc": ("albanna.tools.erpnext", "create_doc"),
     "update_doc": ("albanna.tools.erpnext", "update_doc"),
@@ -162,18 +168,22 @@ def test_every_tool_is_classified():
         assert spec.parameters.get("properties") is not None
 
 
-def test_the_write_surface_is_the_seven_lifecycle_tools():
+def test_the_write_surface_is_the_nine_write_tools():
     """The writes are few, and each one is a thing a person asks for.
 
     A tool set that could make things and never change them would leave
     the person who mistyped a field with no way to fix it.  A tool set
     that could also submit, cancel, amend or delete would be a different
     kind of application — and now it is, deliberately, because a person
-    asks for those things too.  What matters is that this list stays short
-    enough to read.
+    asks for those things too.  The file writes joined for the same
+    reason: a person asks for a file to be made and for a file's text to
+    be put right.  What matters is that this list stays short enough to
+    read.
     """
     writers = [spec.name for spec in TOOL_MANIFEST.all() if spec.mutating]
     assert writers == [
+        "write_file",
+        "edit_file",
         "create_doc",
         "update_doc",
         "bulk_update_doc",
