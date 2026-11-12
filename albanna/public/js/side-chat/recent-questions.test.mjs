@@ -5,7 +5,13 @@
 // is capped so that it stays a convenience rather than a history.
 
 import assert from "node:assert";
-import { MAX_RECENT_QUESTIONS, addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
+import {
+	MAX_RECENT_QUESTIONS,
+	addQuestion,
+	removeQuestion,
+	renderRecentQuestions,
+	replaceQuestion,
+} from "./recent-questions.mjs";
 
 // A question is added to the list.
 {
@@ -52,6 +58,48 @@ import { MAX_RECENT_QUESTIONS, addQuestion, renderRecentQuestions } from "./rece
 	assert.equal(renderRecentQuestions([]), "");
 	assert.equal(renderRecentQuestions(null), "");
 	assert.equal(renderRecentQuestions(["", "  "]), "");
+}
+
+// An edited question takes the replaced one's place, and only there.
+{
+	const asked = addQuestion(addQuestion([], "first"), "second");
+	assert.deepEqual(replaceQuestion(asked, "first", "first, edited"), [
+		"first, edited",
+		"second",
+	]);
+}
+
+// A question that is not in the list leaves the list alone.
+{
+	const asked = addQuestion(addQuestion([], "first"), "second");
+	assert.deepEqual(replaceQuestion(asked, "not here", "edited"), ["first", "second"]);
+}
+
+// The swap reads the same one line the list stores: a question that was
+// carried with a newline was added collapsed, and the edit collapses too.
+{
+	const asked = addQuestion([], "first question");
+	assert.deepEqual(replaceQuestion(asked, "first\nquestion", "second\nquestion"), [
+		"second question",
+	]);
+}
+
+// A blank replacement or a blank original is no swap.
+{
+	const asked = addQuestion([], "first");
+	assert.deepEqual(replaceQuestion(asked, "first", "   "), ["first"]);
+	assert.deepEqual(replaceQuestion(asked, "", "second"), ["first"]);
+	assert.deepEqual(replaceQuestion(null, "first", "second"), []);
+}
+
+// Taking the current question out is what leaves the *rest* of the list
+// for the prompt to carry — the question itself is carried as the
+// question, not as its own history.
+{
+	const asked = addQuestion(addQuestion([], "first"), "second");
+	assert.deepEqual(removeQuestion(asked, "second"), ["first"]);
+	assert.deepEqual(removeQuestion(asked, "not here"), ["first", "second"]);
+	assert.deepEqual(removeQuestion(asked, ""), ["first", "second"]);
 }
 
 console.log("recent-questions: all assertions passed");

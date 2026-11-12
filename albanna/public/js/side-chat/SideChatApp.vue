@@ -67,7 +67,12 @@ import { conversationToMarkdown, exportFilename } from "./export.mjs";
 import { renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js";
 import { stopPlan } from "./stop.mjs";
 import { watchRoute } from "./page.mjs";
-import { addQuestion, renderRecentQuestions } from "./recent-questions.mjs";
+import {
+	addQuestion,
+	removeQuestion,
+	renderRecentQuestions,
+	replaceQuestion,
+} from "./recent-questions.mjs";
 import { takeRetryQuestion } from "./retry.mjs";
 import { describeTool, statusLabel, toolAction, toolLabel, toolSummary } from "./tool-labels.mjs";
 import { failureText } from "./errors.mjs";
@@ -128,6 +133,9 @@ const draft = ref("");
 const attachedFiles = ref([]);
 const conversationId = ref("");
 const transcriptEl = ref(null);
+/** The question in the editor, by its message id, and the editor's text. */
+const editingId = ref(null);
+const editDraft = ref("");
 /** What a screen reader is told, once a turn is over. */
 const announcement = ref("");
 /** Whether the transcript is pinned to the bottom. */
@@ -1524,6 +1532,40 @@ function decideWrite(streamId, decision) {
 }
 
 /**
+ * What the browser says the page is, as the server will read it.
+ *
+ * Both ways of asking a question send this — a fresh one and an edited
+ * one — so it is built in one place, from the page the reader is
+ * looking at *now* and the questions the thread asked before.
+ *
+ * @param {string} recent the questions asked before, as one line
+ * @returns {object} the page description
+ */
+function pageContextPayload(recent) {
+	const context = resolveContext();
+	return {
+		route: context.route,
+		view: context.view,
+		doctype: context.doctype,
+		name: context.name,
+		title: context.title,
+		// The list the reader is looking at: the filters they
+		// applied and the rows the list shows.  Without them the
+		// assistant answers about the whole table rather than
+		// about the table on the screen.
+		filters: context.filters,
+		rows: context.rows,
+		columns: context.columns,
+		sort: context.sort,
+		report: context.report,
+		selection: context.selection,
+		// What the reader has asked lately, so that a follow-up
+		// reads as a follow-up.
+		recent_questions: recent,
+	};
+}
+
+/**
  * Ask a question, starting a turn.
  *
  * @param {string} question the question
@@ -1558,7 +1600,6 @@ async function send(question) {
 	 * cached page is a cache; the context is a fact, and a fact is read
 	 * when it is needed.  So a route event that was missed costs the
 	 * panel its label and not the assistant its question. */
-	const context = resolveContext();
 	const page = pageIdentity();
 	// The page this turn is asked from, stamped on both messages: the
 	// thread keeps running while the reader moves on, and a reader
@@ -1590,26 +1631,7 @@ async function send(question) {
 			attachmentUrls: attachmentUrls,
 			conversationId: conversationId.value,
 			page: page,
-			pageContext: {
-				route: context.route,
-				view: context.view,
-				doctype: context.doctype,
-				name: context.name,
-				title: context.title,
-				// The list the reader is looking at: the filters they
-				// applied and the rows the list shows.  Without them the
-				// assistant answers about the whole table rather than
-				// about the table on the screen.
-				filters: context.filters,
-				rows: context.rows,
-				columns: context.columns,
-				sort: context.sort,
-				report: context.report,
-				selection: context.selection,
-				// What the reader has asked lately, so that a follow-up
-				// reads as a follow-up.
-				recent_questions: recent,
-			},
+			pageContext: pageContextPayload(recent),
 			signal: controller.signal,
 			onEvent: (event) => handleTurnEvent(answer, event, entry ? entry.stream_id : ""),
 			// The turn's address on the server, written down so that a
@@ -2289,6 +2311,138 @@ async function deleteTurn(message) {
 }
 
 /**
+ * Whether a question is the thread's last one, and so the editable one.
+ *
+ * Only the last question may be edited — an earlier question's answer
+ * already shaped the turns that came after it, and rewriting it would
+ * make the thread a story nobody told.  A question with no stored row
+ * does not count as "after": a turn that failed on the server wrote no
+ * rows, and the question on the screen is the panel's memory of it — it
+ * is not editable (there is nothing to address) and it does not stand
+ * in the way of the question behind it, which the server still holds.
+ *
+ * @param {object} message the question
+ * @returns {boolean} true when the server would take the edit
+ */
+function isLastQuestion(message) {
+	const index = state.messages.findIndex((entry) => entry.id === message.id);
+	if (index < 0) return false;
+	return !state.messages
+		.slice(index + 1)
+		.some((entry) => entry.role === "user" && entry.name);
+}
+
+/**
+ * Put a question into the editor.
+ *
+ * @param {object} message the question
+ */
+function startEdit(message) {
+	if (!message || !message.name || !maySend.value) return;
+	editingId.value = message.id;
+	editDraft.value = message.content || "";
+	nextTick(() => {
+		const input = transcriptEl.value
+			?.querySelector(`[data-message-id="${message.id}"] .albanna-chat__edit-input`);
+		if (input) input.focus();
+	});
+}
+
+/** Put the editor away without changing anything. */
+function cancelEdit() {
+	editingId.value = null;
+	editDraft.value = "";
+}
+
+/**
+ * Save an edited question, and have its answer made again.
+ *
+ * The old turn is replaced by the server's job, not here: what the panel
+ * does is what it can do honestly.  The server is asked first — a
+ * refusal, whatever its reason, must leave the old turn whole on the
+ * screen, because nothing has happened to it yet — and only a turn that
+ * was *taken* moves anything.  Then the old pair goes and the fresh one
+ * takes its place, streaming like any other turn, stamped with the page
+ * the old question was born on and carrying the files it carried.
+ */
+async function saveEdit() {
+	const id = editingId.value;
+	if (!id) return;
+	const message = state.messages.find((entry) => entry.id === id);
+	if (!message || !message.name) return;
+	const text = String(editDraft.value || "").trim();
+	if (!text) return;
+	if (!maySend.value) return;
+
+	// What came before the question: the edited question is the one
+	// being asked *now*, so it is taken out of the list before the
+	// context is built, and put back — in its new words — once the turn
+	// has been taken.
+	const recent = renderRecentQuestions(
+		removeQuestion(recentQuestions.value, message.content),
+	);
+
+	let queued;
+	try {
+		queued = await call("albanna.api.chat.edit_and_regenerate", {
+			conversation: conversationId.value,
+			message: message.name,
+			question: text,
+			page_context: JSON.stringify(pageContextPayload(recent)),
+		});
+	} catch (failure) {
+		// A refused edit is not a broken one: the question's turn may
+		// not be finished, or the words may be over the ceiling.  The
+		// editor stays open — the reader came here to fix their words,
+		// and the refusal usually names what to fix.
+		state.error = failureText(failure, __("Something went wrong."));
+		return;
+	}
+	if (!queued || queued.status !== "queued" || !queued.stream_id) {
+		state.error = String((queued && queued.error) || __("Something went wrong."));
+		return;
+	}
+
+	// The turn was taken.  The editor goes, the old pair goes with it,
+	// and the fresh pair takes the same place — it is the last turn of
+	// the thread, so its place is the end.
+	cancelEdit();
+	const index = state.messages.findIndex((entry) => entry.id === id);
+	const partner = index >= 0 ? state.messages[index + 1] : null;
+	state.messages.splice(index, partner && partner.role === "assistant" ? 2 : 1);
+
+	// The page and the files travel from the old row: the reader edited
+	// the words, they did not move the question to another page or
+	// re-upload the files.
+	const asked = makeMessage("user", text);
+	asked.attachments = message.attachments || [];
+	const answer = makeMessage("assistant", "");
+	answer.pending = true;
+	asked.page_identity = message.page_identity || "";
+	answer.page_identity = message.page_identity || "";
+
+	beginTurn(state, text, asked, answer);
+	setActivity(state, __("Thinking"));
+	scrollToBottom(true);
+
+	// The list the assistant is told about says what the thread now
+	// says: the edited words, where the replaced ones were.
+	recentQuestions.value = replaceQuestion(
+		recentQuestions.value,
+		message.content,
+		text,
+	);
+
+	const entry = {
+		stream_id: queued.stream_id,
+		conversation_id: conversationId.value,
+		question: text,
+	};
+	saveInflight(entry);
+	await followTurn(entry, asked, answer);
+}
+
+/**
  * Delete a conversation, after asking.
  *
  * A conversation is a thread of questions and answers that cannot be
@@ -2879,10 +3033,44 @@ onBeforeUnmount(() => {
 								</ul>
 							</details>
 
+							<!-- The question in the editor: the reader is fixing
+							     their words, and the editor stands where the
+							     words stand.  Enter saves, Escape puts it away —
+							     the same keys the composer's box answers to. -->
+							<div
+								v-if="message.role === 'user' && editingId === message.id"
+								class="albanna-chat__edit"
+							>
+								<textarea
+									v-model="editDraft"
+									class="albanna-chat__edit-input"
+									rows="3"
+									:aria-label="__('Edit this question')"
+									@keydown.enter.exact.prevent="saveEdit()"
+									@keydown.esc.prevent="cancelEdit()"
+								></textarea>
+								<div class="albanna-chat__edit-actions">
+									<button
+										type="button"
+										class="albanna-chat__edit-save"
+										:disabled="!editDraft.trim()"
+										@click="saveEdit()"
+									>
+										{{ __("Save") }}
+									</button>
+									<button
+										type="button"
+										class="albanna-chat__edit-cancel"
+										@click="cancelEdit()"
+									>
+										{{ __("Cancel") }}
+									</button>
+								</div>
+							</div>
 							<!-- The user's own words are shown literally: `{{ }}` escapes
 							     them, and a user who types `**` meant a literal `**`. -->
 							<div
-								v-if="
+								v-else-if="
 									message.role === 'user' &&
 									(message.content || (message.attachments && message.attachments.length))
 								"
@@ -3110,6 +3298,45 @@ onBeforeUnmount(() => {
 									{{ __("Undo") }}
 								</button>
 
+								<!-- The question the reader just asked is theirs to
+									     fix: the words they chose first are often not
+									     the words they meant, and an edit keeps the
+									     turn's place and its files.  Only the thread's
+									     last question may be edited, and only while
+									     nothing else is running — an earlier
+									     question's answer already shaped the turns
+									     after it, and a turn in flight has nothing to
+									     replace yet. -->
+								<button
+									v-if="
+										message.role === 'user' &&
+										message.name &&
+										isLastQuestion(message) &&
+										maySend &&
+										editingId !== message.id
+									"
+									type="button"
+									class="albanna-chat__copy"
+									:aria-label="__('Edit this question')"
+									:title="__('Edit this question')"
+									@click="startEdit(message)"
+								>
+									<svg
+										width="13"
+										height="13"
+										viewBox="0 0 24 24"
+										fill="none"
+										aria-hidden="true"
+									>
+										<path
+											d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3Z"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
+								</button>
 								<button
 									v-if="message.role === 'user' && message.name"
 									type="button"

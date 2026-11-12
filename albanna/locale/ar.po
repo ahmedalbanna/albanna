@@ -853,6 +853,12 @@ msgstr "الميزانية"
 msgid "Cancel"
 msgstr "إلغاء"
 
+msgid "Save"
+msgstr "حفظ"
+
+msgid "Edit this question"
+msgstr "تعديل هذا السؤال"
+
 
 msgid "Confirm"
 msgstr "تأكيد"

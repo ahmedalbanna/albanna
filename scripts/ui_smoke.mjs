@@ -397,7 +397,52 @@ async function run({ playwrightPath, chrome, base, fixture }) {
 				.then(() => true)
 				.catch(() => false);
 			check("the turn ends", ended, "the activity line stayed up for 180s");
+			// The edit below needs the turn to have *succeeded*: a turn
+			// the provider refused wrote no rows, so its question has
+			// nothing to edit.  Say so here rather than let the Edit
+			// button's wait time out with nothing to read.
+			const turnError = await page
+				.locator(".albanna-chat__error")
+				.textContent()
+				.catch(() => null);
+			check("the turn did not end in an error", !turnError, (turnError || "").trim());
 		}
+
+		log("The last question can be edited, and its answer made again");
+		const lastUser = () => page.locator(".albanna-chat__message--user").last();
+		const lastWords = (await lastUser().locator(".albanna-chat__bubble--plain").textContent())
+			.trim()
+			.replace(/\s+/g, " ");
+		const editButton = lastUser().locator("button[aria-label='Edit this question']");
+		await editButton.waitFor({ timeout: 10000 });
+		check("the last question offers Edit", (await editButton.count()) === 1);
+		await editButton.click();
+		const editor = lastUser().locator(".albanna-chat__edit-input");
+		await editor.waitFor({ timeout: 5000 });
+		const opened = (await editor.inputValue()).replace(/\s+/g, " ");
+		check("the editor opens with the words in it", opened === lastWords, opened);
+		await editor.fill("SMOKE: the question was edited.");
+		await lastUser().locator(".albanna-chat__edit-save").click();
+		await page
+			.locator(".albanna-chat__bubble--plain", { hasText: "SMOKE: the question was edited." })
+			.first()
+			.waitFor({ timeout: 10000 });
+		check(
+			"the edited question takes the old one's place",
+			(await page.locator(".albanna-chat__bubble--plain", { hasText: lastWords }).count()) === 0,
+			lastWords,
+		);
+		// The turn the edit queued runs like any other: the activity line
+		// comes up for it and goes when it is done.
+		const reEdit = await page
+			.waitForSelector(".albanna-chat__activity", { state: "attached", timeout: 20000 })
+			.then(() => true)
+			.catch(() => false);
+		const reEnded = await page
+			.waitForSelector(".albanna-chat__activity", { state: "detached", timeout: 180000 })
+			.then(() => true)
+			.catch(() => false);
+		check("the edited turn runs and ends", reEdit && reEnded, `ran=${reEdit} ended=${reEnded}`);
 	} finally {
 		await page.close().catch(() => {});
 		await browser.close().catch(() => {});

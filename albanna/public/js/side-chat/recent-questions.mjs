@@ -37,6 +37,44 @@ export function addQuestion(asked, question) {
 }
 
 /**
+ * Take a question out of the list.
+ *
+ * The edited question is the one being asked *now*; what the assistant
+ * is told about is what came before it, and the question itself is
+ * carried as the question.  It is put back — in its edited words — once
+ * the turn has been taken.
+ *
+ * @param {string[]} asked the questions so far
+ * @param {string} before the question to take out
+ * @returns {string[]} the new list
+ */
+export function removeQuestion(asked, before) {
+	const oldOne = oneLine(before);
+	if (!oldOne) return asked || [];
+	return (asked || []).filter((question) => question !== oldOne);
+}
+
+/**
+ * Swap one question for another.
+ *
+ * An edited question is not a new one: the reader rephrased what they
+ * asked, and the list that tells the assistant what came before should
+ * say what the thread now says — the edited words, where the replaced
+ * ones were.  A question that is not in the list leaves the list alone.
+ *
+ * @param {string[]} asked the questions so far
+ * @param {string} before the question being replaced
+ * @param {string} after the question that replaces it
+ * @returns {string[]} the new list
+ */
+export function replaceQuestion(asked, before, after) {
+	const oldOne = oneLine(before);
+	const newOne = oneLine(after);
+	if (!oldOne || !newOne) return asked || [];
+	return (asked || []).map((question) => (question === oldOne ? newOne : question));
+}
+
+/**
  * The recent questions, as the one line the prompt carries.
  *
  * @param {string[]} asked the questions

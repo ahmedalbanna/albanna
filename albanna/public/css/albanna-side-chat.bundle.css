@@ -665,6 +665,70 @@ body.albanna-side-chat-docked-inline-start {
 	white-space: pre-wrap;
 }
 
+/* The question in the editor.  It stands where the words stand — the
+ * same column the bubble occupies, reading as the question it is
+ * becoming rather than as a dialog that arrived.  The box borrows the
+ * composer's own look: a bordered field, the focus ring when the caret
+ * is in it, and text the reader can still read in dark mode. */
+.albanna-chat__edit {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	max-width: 78%;
+}
+
+.albanna-chat__edit-input {
+	box-sizing: border-box;
+	width: 100%;
+	resize: vertical;
+	border: 1px solid var(--albanna-border, #ededed);
+	border-radius: 10px;
+	background: var(--albanna-surface, #fff);
+	color: var(--text-color, #242424);
+	font: inherit;
+	line-height: 22px;
+	padding: 7px 10px;
+	outline: none;
+	transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.albanna-chat__edit-input:focus {
+	border-color: var(--albanna-accent, #171717);
+	box-shadow: 0 0 0 3px var(--albanna-focus-ring, rgba(23, 23, 23, 0.08));
+}
+
+.albanna-chat__edit-actions {
+	display: flex;
+	gap: 6px;
+	justify-content: flex-end;
+}
+
+.albanna-chat__edit-actions button {
+	padding: 4px 12px;
+	border-radius: 8px;
+	border: 1px solid var(--albanna-border, #ededed);
+	background: transparent;
+	color: var(--text-color, #242424);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.albanna-chat__edit-save {
+	background: var(--albanna-accent, #171717);
+	border-color: var(--albanna-accent, #171717);
+	color: var(--albanna-on-accent, #fff);
+}
+
+.albanna-chat__edit-save:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.albanna-chat__edit-cancel:hover {
+	background: var(--albanna-focus-ring, rgba(23, 23, 23, 0.08));
+}
+
 .albanna-chat__bubble p {
 	margin: 0 0 6px;
 }
