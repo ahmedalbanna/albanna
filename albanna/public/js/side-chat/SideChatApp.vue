@@ -62,6 +62,7 @@ import ConversationDrawer from "./ConversationDrawer.vue";
 import { pageIdentity, resolveContext } from "./context.mjs";
 import { examplesFor } from "./examples.mjs";
 import { activityText, clockTime, readablePage } from "./format.mjs";
+import { dayLabel, isDayStart } from "./day-dividers.mjs";
 import { conversationToMarkdown, exportFilename } from "./export.mjs";
 import { renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js";
 import { stopPlan } from "./stop.mjs";
@@ -2767,359 +2768,376 @@ onBeforeUnmount(() => {
 					</div>
 				</div>
 
-				<div
+				<template
 					v-for="(message, index) in state.messages"
 					:key="message.id"
-					class="albanna-chat__message"
-					:class="[
-						`albanna-chat__message--${message.role}`,
-						isTurnStart(index) ? 'albanna-chat__message--turn-start' : '',
-					]"
-					:data-message-id="message.id"
 				>
-					<!-- The avatar marks whose words these are: the assistant's
-					     mark is the same chat bubble the launcher wears, and the
-					     reader's is their own initial from the session.  Both are
-					     decoration — the row's role is already in the bubble's
-					     alignment and the words themselves — so the whole column
-					     is hidden from the screen reader. -->
+					<!-- Where one calendar day ends and the next begins: a
+					     hairline with the day's name on it, before the first
+					     message the reader's own clock puts on that day.  It
+					     takes the turn rule's place when both would fall
+					     together — a day is the bigger break. -->
 					<div
-						class="albanna-chat__avatar"
-						:class="`albanna-chat__avatar--${message.role}`"
-						aria-hidden="true"
+						v-if="isDayStart(state.messages, index)"
+						class="albanna-chat__day"
+						role="separator"
 					>
-						<svg
-							v-if="message.role === 'assistant'"
-							width="13"
-							height="13"
-							viewBox="0 0 24 24"
-							fill="none"
+						{{ dayLabel(message.at) }}
+					</div>
+					<div
+						class="albanna-chat__message"
+						:class="[
+							`albanna-chat__message--${message.role}`,
+							isTurnStart(index) && !isDayStart(state.messages, index)
+								? 'albanna-chat__message--turn-start'
+								: '',
+						]"
+						:data-message-id="message.id"
+					>
+						<!-- The avatar marks whose words these are: the assistant's
+						     mark is the same chat bubble the launcher wears, and the
+						     reader's is their own initial from the session.  Both are
+						     decoration — the row's role is already in the bubble's
+						     alignment and the words themselves — so the whole column
+						     is hidden from the screen reader. -->
+						<div
+							class="albanna-chat__avatar"
+							:class="`albanna-chat__avatar--${message.role}`"
 							aria-hidden="true"
 						>
-							<path
-								d="M20 4H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3v3l4-3h9a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Z"
-								stroke="currentColor"
-								stroke-width="1.8"
-								stroke-linejoin="round"
-							/>
-						</svg>
-						<span v-else class="albanna-chat__avatar-initial">{{ userInitial }}</span>
-					</div>
-
-					<div class="albanna-chat__message-main">
-						<!-- Where this turn was asked from, shown only when the
-						     reader is reading the thread from somewhere else:
-						     the thread is the reader's, and a question carries
-						     the page it was born on. -->
-						<span
-							v-if="
-								message.page_identity && message.page_identity !== currentPage
-							"
-							class="albanna-chat__from-page"
-						>
-							{{ __("Asked from {0}", [readablePage(message.page_identity)]) }}
-						</span>
-
-						<!-- While the turn runs: one line saying what is happening.
-						     Afterwards: one line saying what it did, which opens
-						     into the list of calls. -->
-						<div
-							v-if="message.pending"
-							class="albanna-chat__activity"
-							role="status"
-						>
-							<span class="albanna-chat__spinner" aria-hidden="true"></span>
-							<span class="albanna-chat__activity-text">{{
-								activityLine(message)
-							}}</span>
+							<svg
+								v-if="message.role === 'assistant'"
+								width="13"
+								height="13"
+								viewBox="0 0 24 24"
+								fill="none"
+								aria-hidden="true"
+							>
+								<path
+									d="M20 4H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3v3l4-3h9a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2Z"
+									stroke="currentColor"
+									stroke-width="1.8"
+									stroke-linejoin="round"
+								/>
+							</svg>
+							<span v-else class="albanna-chat__avatar-initial">{{ userInitial }}</span>
 						</div>
 
-						<details
-							v-else-if="message.tools && message.tools.length"
-							class="albanna-chat__tools"
-						>
-							<summary class="albanna-chat__tools-summary">
-								{{ message.summary }}
-							</summary>
-							<ul class="albanna-chat__tools-list">
-								<li
-									v-for="(tool, index) in message.tools"
-									:key="index"
-									class="albanna-chat__tool"
-									:class="{ 'albanna-chat__tool--failed': tool.ok === false }"
-								>
-									<span class="albanna-chat__tool-label">{{
-										toolLabel(tool.name)
-									}}</span>
-									<span class="albanna-chat__tool-name">{{ tool.name }}</span>
-									<span v-if="tool.summary" class="albanna-chat__tool-summary">{{
-										tool.summary
-									}}</span>
-									<span v-if="tool.ok === false" class="albanna-chat__tool-failed">
-										{{ __("failed") }}
-									</span>
-								</li>
-							</ul>
-						</details>
-
-						<!-- The user's own words are shown literally: `{{ }}` escapes
-						     them, and a user who types `**` meant a literal `**`. -->
-						<div
-							v-if="
-								message.role === 'user' &&
-								(message.content || (message.attachments && message.attachments.length))
-							"
-							class="albanna-chat__bubble albanna-chat__bubble--plain"
-						>
-							<!-- What the reader attached, above their words.  The list
-							     holds every attachment, so a reader who sent three
-							     pictures sees three pictures. -->
-							<div
-								v-if="message.attachments && message.attachments.length"
-								class="albanna-chat__user-attachments"
-							>
-								<template
-									v-for="(attachments, index) in message.attachments"
-									:key="index"
-								>
-									<img
-										v-if="isImageSrc(attachments)"
-										:src="attachments"
-										alt=""
-										class="albanna-chat__user-attachments"
-									/>
-									<span v-else class="albanna-chat__user-file">
-										<!-- The paperclip is decoration: the words beside it
-										     say what the attachment is, so the icon is for the
-										     eye and not for a screen reader.  An emoji here
-										     would have been an emoji of a different set of
-										     instructions, in a font the browser picks. -->
-										<svg
-											width="13"
-											height="13"
-											viewBox="0 0 24 24"
-											fill="none"
-											aria-hidden="true"
-											class="albanna-chat__user-file-icon"
-										>
-											<path
-												d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
-												stroke="currentColor"
-												stroke-width="1.8"
-												stroke-linecap="round"
-												stroke-linejoin="round"
-											/>
-										</svg>
-										{{ __("Attached file") }}
-									</span>
-								</template>
-							</div>
-							<span v-if="message.content">{{ message.content }}</span>
-						</div>
-						<!-- The assistant's answer is markdown.  `renderMarkdown`
-						     escapes before it builds any markup, so this is safe. -->
-						<div
-							v-else-if="message.content"
-							class="albanna-chat__bubble"
-							v-html="message.html"
-						></div>
-
-						<div
-							v-if="
-								message.role === 'assistant' &&
-								message.documents &&
-								message.documents.length
-							"
-							class="albanna-chat__sources"
-						>
-							<span class="albanna-chat__sources-label">{{ __("Sources") }}:</span>
-							<template v-for="(doc, index) in sourcesToShow(message)" :key="index">
-								<button
-									type="button"
-									class="albanna-chat__source"
-									@click="openSource(doc)"
-								>
-									{{ doc.doctype ? doc.doctype + " " + doc.name : doc.name }}
-								</button>
-							</template>
-							<button
-								v-if="message.documents.length > 3"
-								type="button"
-								class="albanna-chat__source-toggle"
-								@click="toggleSources(message)"
-							>
-								{{
-									isSourcesExpanded(message)
-										? __("See less")
-										: __("See more ({0})", [message.documents.length - 3])
-								}}
-							</button>
-						</div>
-
-						<div class="albanna-chat__footer">
-							<span
-								v-if="message.role === 'assistant' && message.truncated"
-								class="albanna-chat__truncated"
-							>
-								{{ __("The answer was cut off.") }}
-							</span>
+						<div class="albanna-chat__message-main">
+							<!-- Where this turn was asked from, shown only when the
+							     reader is reading the thread from somewhere else:
+							     the thread is the reader's, and a question carries
+							     the page it was born on. -->
 							<span
 								v-if="
-									message.role === 'assistant' &&
-									message.cost != null &&
-									message.cost > 0
+									message.page_identity && message.page_identity !== currentPage
 								"
-								class="albanna-chat__cost"
+								class="albanna-chat__from-page"
 							>
-								{{ __("This turn cost {0}.", [Number(message.cost).toFixed(4)]) }}
+								{{ __("Asked from {0}", [readablePage(message.page_identity)]) }}
 							</span>
-							<button
-								v-if="message.role === 'assistant' && message.content"
-								type="button"
-								class="albanna-chat__copy"
-								:aria-label="__('Copy as Markdown')"
-								:title="__('Copy as Markdown')"
-								@click="copyAnswer(message)"
+
+							<!-- While the turn runs: one line saying what is happening.
+							     Afterwards: one line saying what it did, which opens
+							     into the list of calls. -->
+							<div
+								v-if="message.pending"
+								class="albanna-chat__activity"
+								role="status"
 							>
-								<svg
-									v-if="copiedId !== message.id"
-									width="13"
-									height="13"
-									viewBox="0 0 24 24"
-									fill="none"
-									aria-hidden="true"
+								<span class="albanna-chat__spinner" aria-hidden="true"></span>
+								<span class="albanna-chat__activity-text">{{
+									activityLine(message)
+								}}</span>
+							</div>
+
+							<details
+								v-else-if="message.tools && message.tools.length"
+								class="albanna-chat__tools"
+							>
+								<summary class="albanna-chat__tools-summary">
+									{{ message.summary }}
+								</summary>
+								<ul class="albanna-chat__tools-list">
+									<li
+										v-for="(tool, index) in message.tools"
+										:key="index"
+										class="albanna-chat__tool"
+										:class="{ 'albanna-chat__tool--failed': tool.ok === false }"
+									>
+										<span class="albanna-chat__tool-label">{{
+											toolLabel(tool.name)
+										}}</span>
+										<span class="albanna-chat__tool-name">{{ tool.name }}</span>
+										<span v-if="tool.summary" class="albanna-chat__tool-summary">{{
+											tool.summary
+										}}</span>
+										<span v-if="tool.ok === false" class="albanna-chat__tool-failed">
+											{{ __("failed") }}
+										</span>
+									</li>
+								</ul>
+							</details>
+
+							<!-- The user's own words are shown literally: `{{ }}` escapes
+							     them, and a user who types `**` meant a literal `**`. -->
+							<div
+								v-if="
+									message.role === 'user' &&
+									(message.content || (message.attachments && message.attachments.length))
+								"
+								class="albanna-chat__bubble albanna-chat__bubble--plain"
+							>
+								<!-- What the reader attached, above their words.  The list
+								     holds every attachment, so a reader who sent three
+								     pictures sees three pictures. -->
+								<div
+									v-if="message.attachments && message.attachments.length"
+									class="albanna-chat__user-attachments"
 								>
-									<rect
-										x="9"
-										y="9"
-										width="12"
-										height="12"
-										rx="2"
-										stroke="currentColor"
-										stroke-width="1.8"
-									/>
-									<path
-										d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
-										stroke="currentColor"
-										stroke-width="1.8"
-										stroke-linecap="round"
-									/>
-								</svg>
-								<svg
-									v-else
-									width="13"
-									height="13"
-									viewBox="0 0 24 24"
-									fill="none"
-									aria-hidden="true"
+									<template
+										v-for="(attachments, index) in message.attachments"
+										:key="index"
+									>
+										<img
+											v-if="isImageSrc(attachments)"
+											:src="attachments"
+											alt=""
+											class="albanna-chat__user-attachments"
+										/>
+										<span v-else class="albanna-chat__user-file">
+											<!-- The paperclip is decoration: the words beside it
+											     say what the attachment is, so the icon is for the
+											     eye and not for a screen reader.  An emoji here
+											     would have been an emoji of a different set of
+											     instructions, in a font the browser picks. -->
+											<svg
+												width="13"
+												height="13"
+												viewBox="0 0 24 24"
+												fill="none"
+												aria-hidden="true"
+												class="albanna-chat__user-file-icon"
+											>
+												<path
+													d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"
+													stroke="currentColor"
+													stroke-width="1.8"
+													stroke-linecap="round"
+													stroke-linejoin="round"
+												/>
+											</svg>
+											{{ __("Attached file") }}
+										</span>
+									</template>
+								</div>
+								<span v-if="message.content">{{ message.content }}</span>
+							</div>
+							<!-- The assistant's answer is markdown.  `renderMarkdown`
+							     escapes before it builds any markup, so this is safe. -->
+							<div
+								v-else-if="message.content"
+								class="albanna-chat__bubble"
+								v-html="message.html"
+							></div>
+
+							<div
+								v-if="
+									message.role === 'assistant' &&
+									message.documents &&
+									message.documents.length
+								"
+								class="albanna-chat__sources"
+							>
+								<span class="albanna-chat__sources-label">{{ __("Sources") }}:</span>
+								<template v-for="(doc, index) in sourcesToShow(message)" :key="index">
+									<button
+										type="button"
+										class="albanna-chat__source"
+										@click="openSource(doc)"
+									>
+										{{ doc.doctype ? doc.doctype + " " + doc.name : doc.name }}
+									</button>
+								</template>
+								<button
+									v-if="message.documents.length > 3"
+									type="button"
+									class="albanna-chat__source-toggle"
+									@click="toggleSources(message)"
 								>
-									<path
-										d="m5 13 4 4L19 7"
+									{{
+										isSourcesExpanded(message)
+											? __("See less")
+											: __("See more ({0})", [message.documents.length - 3])
+									}}
+								</button>
+							</div>
+
+							<div class="albanna-chat__footer">
+								<span
+									v-if="message.role === 'assistant' && message.truncated"
+									class="albanna-chat__truncated"
+								>
+									{{ __("The answer was cut off.") }}
+								</span>
+								<span
+									v-if="
+										message.role === 'assistant' &&
+										message.cost != null &&
+										message.cost > 0
+									"
+									class="albanna-chat__cost"
+								>
+									{{ __("This turn cost {0}.", [Number(message.cost).toFixed(4)]) }}
+								</span>
+								<button
+									v-if="message.role === 'assistant' && message.content"
+									type="button"
+									class="albanna-chat__copy"
+									:aria-label="__('Copy as Markdown')"
+									:title="__('Copy as Markdown')"
+									@click="copyAnswer(message)"
+								>
+									<svg
+										v-if="copiedId !== message.id"
+										width="13"
+										height="13"
+										viewBox="0 0 24 24"
+										fill="none"
+										aria-hidden="true"
+									>
+										<rect
+											x="9"
+											y="9"
+											width="12"
+											height="12"
+											rx="2"
+											stroke="currentColor"
+											stroke-width="1.8"
+										/>
+										<path
+											d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+											stroke="currentColor"
+											stroke-width="1.8"
+											stroke-linecap="round"
+										/>
+									</svg>
+									<svg
+										v-else
+										width="13"
+										height="13"
+										viewBox="0 0 24 24"
+										fill="none"
+										aria-hidden="true"
+									>
+										<path
+											d="m5 13 4 4L19 7"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
+								</button>
+								<!-- The rating is a toggle behaviour, not two independent
+							     buttons: clicking the marked side again clears the
+							     rating.  The state is on the *button*, not only in
+							     the glyph, so a reader who cannot tell the two
+							     thumbs apart still gets the answer in the tooltip
+							     and the pressed state in their reader. -->
+								<button
+									v-if="message.role === 'assistant' && message.name"
+									type="button"
+									class="albanna-chat__copy"
+									:class="{ 'albanna-chat__rating--on': message.rating === 'up' }"
+									:aria-label="__('Helpful')"
+									:aria-pressed="message.rating === 'up' ? 'true' : 'false'"
+									:title="__('Helpful')"
+									@click="rateMessage(message, 'up')"
+								>
+									<svg
+										width="13"
+										height="13"
+										viewBox="0 0 24 24"
+										fill="none"
 										stroke="currentColor"
 										stroke-width="2"
 										stroke-linecap="round"
 										stroke-linejoin="round"
-									/>
-								</svg>
-							</button>
-							<!-- The rating is a toggle behaviour, not two independent
-						     buttons: clicking the marked side again clears the
-						     rating.  The state is on the *button*, not only in
-						     the glyph, so a reader who cannot tell the two
-						     thumbs apart still gets the answer in the tooltip
-						     and the pressed state in their reader. -->
-							<button
-								v-if="message.role === 'assistant' && message.name"
-								type="button"
-								class="albanna-chat__copy"
-								:class="{ 'albanna-chat__rating--on': message.rating === 'up' }"
-								:aria-label="__('Helpful')"
-								:aria-pressed="message.rating === 'up' ? 'true' : 'false'"
-								:title="__('Helpful')"
-								@click="rateMessage(message, 'up')"
-							>
-								<svg
-									width="13"
-									height="13"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									aria-hidden="true"
+										aria-hidden="true"
+									>
+										<path d="M7 10v12" />
+										<path
+											d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"
+										/>
+									</svg>
+								</button>
+								<button
+									v-if="message.role === 'assistant' && message.name"
+									type="button"
+									class="albanna-chat__copy"
+									:class="{ 'albanna-chat__rating--on': message.rating === 'down' }"
+									:aria-label="__('Not helpful')"
+									:aria-pressed="message.rating === 'down' ? 'true' : 'false'"
+									:title="__('Not helpful')"
+									@click="rateMessage(message, 'down')"
 								>
-									<path d="M7 10v12" />
-									<path
-										d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"
-									/>
-								</svg>
-							</button>
-							<button
-								v-if="message.role === 'assistant' && message.name"
-								type="button"
-								class="albanna-chat__copy"
-								:class="{ 'albanna-chat__rating--on': message.rating === 'down' }"
-								:aria-label="__('Not helpful')"
-								:aria-pressed="message.rating === 'down' ? 'true' : 'false'"
-								:title="__('Not helpful')"
-								@click="rateMessage(message, 'down')"
-							>
-								<svg
-									width="13"
-									height="13"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-									aria-hidden="true"
-								>
-									<path d="M17 14V2" />
-									<path
-										d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"
-									/>
-								</svg>
-							</button>
-							<button
-								v-if="message.role === 'assistant' && message.name && canUndo(message)"
-								type="button"
-								class="albanna-chat__copy"
-								:aria-label="__('Undo this turn')"
-								:title="__('Undo this turn')"
-								@click="undoTurn(message)"
-							>
-								{{ __("Undo") }}
-							</button>
-
-							<button
-								v-if="message.role === 'user' && message.name"
-								type="button"
-								class="albanna-chat__copy"
-								:aria-label="__('Remove this turn')"
-								:title="__('Remove this turn')"
-								@click="removeTurn(message)"
-							>
-								<svg
-									width="13"
-									height="13"
-									viewBox="0 0 24 24"
-									fill="none"
-									aria-hidden="true"
-								>
-									<path
-										d="M18 6 6 18M6 6l12 12"
+									<svg
+										width="13"
+										height="13"
+										viewBox="0 0 24 24"
+										fill="none"
 										stroke="currentColor"
 										stroke-width="2"
 										stroke-linecap="round"
-									/>
-								</svg>
-							</button>
-							<span class="albanna-chat__time">{{ message.time }}</span>
+										stroke-linejoin="round"
+										aria-hidden="true"
+									>
+										<path d="M17 14V2" />
+										<path
+											d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"
+										/>
+									</svg>
+								</button>
+								<button
+									v-if="message.role === 'assistant' && message.name && canUndo(message)"
+									type="button"
+									class="albanna-chat__copy"
+									:aria-label="__('Undo this turn')"
+									:title="__('Undo this turn')"
+									@click="undoTurn(message)"
+								>
+									{{ __("Undo") }}
+								</button>
+
+								<button
+									v-if="message.role === 'user' && message.name"
+									type="button"
+									class="albanna-chat__copy"
+									:aria-label="__('Remove this turn')"
+									:title="__('Remove this turn')"
+									@click="removeTurn(message)"
+								>
+									<svg
+										width="13"
+										height="13"
+										viewBox="0 0 24 24"
+										fill="none"
+										aria-hidden="true"
+									>
+										<path
+											d="M18 6 6 18M6 6l12 12"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+										/>
+									</svg>
+								</button>
+								<span class="albanna-chat__time">{{ message.time }}</span>
+							</div>
 						</div>
 					</div>
-				</div>
+				</template>
 
 				<!-- A question the assistant asked, waiting for the reader's
 			     answer.  It is a card in the thread rather than a dialog,

@@ -237,6 +237,19 @@ async function run({ playwrightPath, chrome, base, fixture }) {
 			JSON.stringify(chips),
 		);
 
+		log("The day a turn ran on is named above it");
+		const days = await page.locator(".albanna-chat__day").allTextContents();
+		check(
+			"the backdated first turn and today's turn each open a divider",
+			days.length === 2,
+			JSON.stringify(days),
+		);
+		check(
+			"exactly one divider says Today",
+			days.filter((d) => d.trim() === "Today").length === 1,
+			JSON.stringify(days),
+		);
+
 		log("The drawer describes threads without pages");
 		await drawer();
 		const metas = await page.evaluate(() =>

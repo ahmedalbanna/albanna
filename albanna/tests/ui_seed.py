@@ -173,7 +173,7 @@ def _seed_main_thread() -> tuple[str, str]:
     ]
 
     conversation = new_conversation(SMOKE_USER)
-    append_messages(
+    written = append_messages(
         conversation,
         [
             {"role": "user", "content": SEED_QUESTION},
@@ -188,7 +188,23 @@ def _seed_main_thread() -> tuple[str, str]:
             },
         ],
     )
+    _backdate_first_turn(written)
     return conversation, probe.name
+
+
+def _backdate_first_turn(written: list[tuple[str, str]]) -> None:
+    """Put the thread's first turn a calendar day behind the rest.
+
+    The day-divider rule draws a hairline where the *reader's* clock puts
+    a midnight, and a thread seeded entirely "now" gives it nothing to
+    draw.  The first turn's two rows are stamped a day back — always a
+    different calendar day from the seed moment, whatever hour the seeder
+    runs at — so the thread reads as two sittings, and the suite can
+    assert the dividers appear and exactly one of them says "Today".
+    """
+    stamp = frappe.utils.add_to_date(frappe.utils.now_datetime(), days=-1)
+    for name, _role in written[:2]:
+        frappe.db.set_value("Albanna Message", name, "creation", stamp)
 
 
 def _seed_questions(conversation: str) -> None:

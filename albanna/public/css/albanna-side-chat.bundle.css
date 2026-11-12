@@ -537,10 +537,35 @@ body.albanna-side-chat-docked-inline-start {
  * sequence of turns and not as a wall of messages.  The line spans the
  * reading column — the transcript's own side padding, not the scrollbar
  * gutter — and there is no label: the question's own bubble already says
- * where one turn ends and the next begins. */
+ * where one turn ends and the next begins.  When a day break falls on
+ * the same message, the day takes the rule's place — see
+ * `.albanna-chat__day` below. */
 .albanna-chat__message--turn-start {
 	margin-top: 10px;
 	padding-top: 12px;
+	border-top: 1px solid var(--albanna-border, #ededed);
+}
+
+/* A new day opens with a hairline and the day's name, so the reader who
+ * returns to a thread after a night away sees where one sitting ended
+ * and the next began.  The line is the turn rule's, but the label sits
+ * centred on it and the colour is the muted one the clock already
+ * wears; the spacing is a shade more generous than the turn's, because
+ * a day is the bigger break.  The label is a separator to the screen
+ * reader — the text is the name of the day being entered. */
+.albanna-chat__day {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin: 18px 0 2px;
+	color: var(--albanna-muted, #6c7680);
+	font-size: 11px;
+}
+
+.albanna-chat__day::before,
+.albanna-chat__day::after {
+	content: "";
+	flex: 1 1 0;
 	border-top: 1px solid var(--albanna-border, #ededed);
 }
 
