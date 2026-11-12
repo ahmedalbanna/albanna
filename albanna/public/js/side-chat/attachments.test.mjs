@@ -242,18 +242,18 @@ const PUBLISHED = [
 
 // -- the shape of an attachment -----------------------------------------
 
-// An attachment carries the bytes, the name, the type, the size and the
-// address it was stored under.
+// An attachment carries the name, the type, the size and the address it
+// was stored under — and not the bytes, which were read only to be
+// uploaded and would sit in the browser's memory for the panel's whole
+// life if the composer kept them.
 {
 	const file = makeAttachment({
-		dataUrl: "data:image/png;base64,AAAA",
 		name: "a.png",
 		type: "image/png",
 		size: 12,
 		fileUrl: "/private/files/a.png",
 	});
 	assert.deepEqual(file, {
-		dataUrl: "data:image/png;base64,AAAA",
 		name: "a.png",
 		type: "image/png",
 		size: 12,
@@ -266,7 +266,6 @@ const PUBLISHED = [
 {
 	const file = makeAttachment();
 	assert.deepEqual(Object.keys(file).sort(), [
-		"dataUrl",
 		"fileUrl",
 		"name",
 		"size",
@@ -326,22 +325,21 @@ const PUBLISHED = [
 
 // -- what a turn carries -------------------------------------------------
 
-// The bytes and the addresses are parallel: the address at one place is
-// the address of the bytes at the same place.
+// The turn carries the addresses, and only the addresses: the bytes were
+// uploaded before the turn was sent, and a request that sent them again
+// would carry every file twice on the wire.
 {
 	const files = [
-		makeAttachment({ dataUrl: "data:image/png;base64,AAAA", fileUrl: "/private/files/a.png" }),
-		makeAttachment({ dataUrl: "data:image/png;base64,BBBB", fileUrl: "/private/files/b.png" }),
+		makeAttachment({ fileUrl: "/private/files/a.png" }),
+		makeAttachment({ fileUrl: "/private/files/b.png" }),
 	];
-	const { attachments, attachmentUrls } = turnAttachments(files);
-	assert.deepEqual(attachments, ["data:image/png;base64,AAAA", "data:image/png;base64,BBBB"]);
+	const { attachmentUrls } = turnAttachments(files);
 	assert.deepEqual(attachmentUrls, ["/private/files/a.png", "/private/files/b.png"]);
 }
 
 // A question with no attachments carries none.
 {
-	const { attachments, attachmentUrls } = turnAttachments([]);
-	assert.deepEqual(attachments, []);
+	const { attachmentUrls } = turnAttachments([]);
 	assert.deepEqual(attachmentUrls, []);
 }
 

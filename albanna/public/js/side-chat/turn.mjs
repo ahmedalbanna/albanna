@@ -153,6 +153,9 @@ export function subscribe(streamId, handler) {
  * @param {string} options.conversationId the thread to continue
  * @param {string} options.page the page identity
  * @param {object} options.pageContext the page description
+ * @param {string[]} [options.attachmentUrls] the addresses the attached
+ *   files were stored under — the bytes stay where the upload put them,
+ *   and the job reads them back from there
  * @param {function} options.onEvent called with each progress event
  * @param {function} [options.onQueued] called with the stream id, once
  *   the turn is queued
@@ -161,7 +164,6 @@ export function subscribe(streamId, handler) {
  */
 export async function runTurn({
 	question,
-	attachments,
 	attachmentUrls,
 	conversationId,
 	page,
@@ -176,7 +178,6 @@ export async function runTurn({
 
 	const queued = await call(ASK_ENDPOINT, {
 		question,
-		attachments: JSON.stringify(attachments || []),
 		attachment_urls: JSON.stringify(attachmentUrls || []),
 		conversation_id: conversationId || "",
 		page: page || "",

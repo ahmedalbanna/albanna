@@ -146,17 +146,19 @@ export function checkAttachment(file, rules = {}) {
 /**
  * One attachment, as the composer holds it and the panel sends it.
  *
- * The six fields are the attachment: the bytes the model reads, the name
- * the reader recognises, the type the site checks, the size the reader
- * is shown, the address the file was stored under, and whether it was.
+ * The five fields are the attachment: the name the reader recognises, the
+ * type the site checks, the size the reader is shown, the address the
+ * file was stored under, and whether it was.  The bytes are *not* held
+ * here: they were read only to be uploaded, and a composer that kept
+ * them would hold a copy of every file the reader attached for as long
+ * as the panel was open.
  *
- * @param {{dataUrl?: string, name?: string, type?: string, size?: number,
+ * @param {{name?: string, type?: string, size?: number,
  *          fileUrl?: string, stored?: boolean}} parts the attachment's parts
  * @returns {object} the attachment
  */
 export function makeAttachment(parts = {}) {
 	return {
-		dataUrl: parts.dataUrl || "",
 		name: parts.name || "",
 		type: parts.type || "",
 		size: Number(parts.size || 0),
@@ -188,20 +190,21 @@ export async function storeAll(files, store, write) {
 }
 
 /**
- * What a turn carries for its attachments: the bytes, and the addresses
- * they were stored under.
+ * What a turn carries for its attachments: the addresses the files were
+ * stored under.
  *
- * The two lists are parallel: the address at one place is the address of
- * the bytes at the same place.  The server relies on that to reuse the
- * file instead of writing the same bytes twice, so the two are built
- * together and never apart.
+ * The bytes are not carried.  They were uploaded before the turn was
+ * sent, and a request that sent them again would carry every file twice
+ * — the submit endpoint answers in half a second, and a body of stored
+ * bytes is the one cost it cannot pay.  The *job* reads the files back
+ * from this site's own disk, so the model sees exactly what it would
+ * have seen, and the addresses are what the transcript shows.
  *
  * @param {object[]} files the attachments
- * @returns {{attachments: string[], attachmentUrls: string[]}} what the turn carries
+ * @returns {{attachmentUrls: string[]}} what the turn carries
  */
 export function turnAttachments(files) {
 	return {
-		attachments: files.map((file) => file.dataUrl || ""),
 		attachmentUrls: files.map((file) => file.fileUrl || ""),
 	};
 }

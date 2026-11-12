@@ -3,15 +3,24 @@
 The wire
 --------
 
-The browser sends the reader's files in two fields:
+The browser uploads every attached file *before* the turn is queued — the
+composer's upload endpoint stores each one as a private Frappe File — and
+then sends the turn with the addresses only:
 
-*   ``attachments`` — the bytes, as data URLs, so a vision-capable provider can
-    read them;
-*   ``attachment_urls`` — the addresses the bytes were already stored under, so
-    the turn reuses the file instead of writing the same bytes twice.
+*   ``attachment_urls`` — the addresses the upload created, which the turn
+    reuses instead of writing the same bytes twice, and which the *job*
+    reads the files back from, so the model sees the same picture parts a
+    turn that carried bytes would have carried.
 
-Both fields are **one string parameter** on the wire, because that is what
-the Desk's endpoint carries without a schema change.  A field therefore
+The ``attachments`` field — the bytes, as data URLs — still exists on the
+endpoint, because the wire is read by :func:`read_attachment_list` and a
+caller that carries bytes is still answered.  It is not what the widget
+sends any more: a submit endpoint that must answer in half a second pays
+for the body the browser chose to send, and a body of stored bytes is a
+cost paid twice — once on the wire, once in the queue's marker.
+
+The field is **one string parameter** on the wire, because that is what
+the Desk's endpoint carries without a schema change.  It therefore
 arrives as a JSON-encoded list, and a turn queued before the field held a
 list arrives as a single bare string.  All of those mean the same thing,
 so :func:`read_attachment_list` reads all of them — and it is the only

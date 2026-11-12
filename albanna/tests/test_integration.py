@@ -2736,6 +2736,158 @@ class TestAnAttachedPdf(AlbannaTestCase):
         )
 
 
+class TestATurnThatCarriesAddressesOnly(AlbannaTestCase):
+    """A turn whose request holds the attachments' addresses, not bytes.
+
+    The browser uploads every file before the turn is queued, so the
+    submit endpoint carries the addresses alone — a request that carried
+    the bytes again would pay for every file twice on the wire, and the
+    endpoint that must answer in half a second pays for the body the
+    browser chose to send.  The *job* reads the files back from where
+    the upload put them, and the model sees exactly what it would have
+    seen.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.reader = self._make_user("albanna.test.urls@albanna.dev", "Sales User")
+
+    def _as(self, email: str):
+        """Act as *email*, the way a request for that user would."""
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        # The role permissions are cached per request; a fresh identity needs
+        # a fresh cache or it reads the previous one's.
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _make_user(self, email: str, role: str) -> str:
+        if not frappe.db.exists("User", email):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = email
+                user.first_name = email.split("@")[0]
+                user.send_welcome_email = 0
+                user.insert(ignore_permissions=True)
+                frappe.db.commit()
+            finally:
+                frappe.set_user(former)
+            user = frappe.get_doc("User", email)
+        user = frappe.get_doc("User", email)
+        user.flags.ignore_permissions = True
+        user.add_roles(role, "Albanna User")
+        return email
+
+    def _run(self, urls, page: str = "", conversation: str = ""):
+        """Run a turn carrying *addresses*, and return what the model saw."""
+        from albanna.core.messages import Message
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.chat_service import ChatService, TurnRequest
+
+        seen = {}
+
+        def fake_complete(config, messages, tools, emit, stream):
+            seen["messages"] = messages
+            return Completion(
+                message=Message(role="assistant", content="Done."),
+                provider="openai",
+                model="a-model",
+                usage=Usage(input_tokens=10, output_tokens=5),
+            )
+
+        service = ChatService()
+        service._complete = fake_complete
+        outcome = service.run(
+            TurnRequest(
+                question="what is in it?",
+                page=page or "test|urls|",
+                conversation_id=conversation,
+                attachment_urls=urls,
+            )
+        )
+        messages = seen.get("messages") or []
+        users = [m for m in messages if m.role == "user"]
+        systems = [m for m in messages if m.role == "system"]
+        return outcome, (users[-1] if users else None), (systems[0] if systems else None)
+
+    def _store(self, data_url: str) -> str:
+        from albanna.services.attachments import store_attached_file
+
+        self._as(self.reader)
+        stored = store_attached_file(data_url, self.reader)
+        self.assertIsNotNone(stored, "the test's own file was not stored")
+        return stored["file_url"]
+
+    def test_a_stored_pdfs_text_still_reaches_the_model(self):
+        self._as(self.reader)
+        url = self._store(_pdf_url(b"Invoice 42, total 100.00"))
+
+        outcome, _current, system = self._run([url])
+
+        self.assertTrue(outcome.ok, outcome.error)
+        self.assertIsNotNone(system, "the turn sent no system message")
+        self.assertIn(
+            "Invoice 42, total 100.00",
+            str(system.content),
+            "the PDF's text never reached the model",
+        )
+
+    def test_a_stored_picture_still_reaches_the_model(self):
+        self._as(self.reader)
+        url = self._store("data:image/png;base64,aGVsbG8=")
+
+        outcome, current, _system = self._run([url])
+
+        self.assertTrue(outcome.ok, outcome.error)
+        self.assertIsNotNone(current, "the turn sent no user message")
+        self.assertIn(
+            "data:image/png;base64,aGVsbG8=",
+            current.attachments,
+            "the stored picture was not given to the provider",
+        )
+
+    def test_an_address_that_cannot_be_read_falls_back_to_the_carried_text(self):
+        """A file that has gone leaves the carried text as the record.
+
+        The old row's ``attachment_texts`` is the one record of what a
+        document said; a job that read nothing back and said nothing
+        would answer a reader asking about a document that used to be
+        there.
+        """
+        from albanna.core.messages import Message
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.chat_service import ChatService, TurnRequest
+
+        seen = {}
+
+        def fake_complete(config, messages, tools, emit, stream):
+            seen["messages"] = messages
+            return Completion(
+                message=Message(role="assistant", content="Done."),
+                provider="openai",
+                model="a-model",
+                usage=Usage(input_tokens=10, output_tokens=5),
+            )
+
+        service = ChatService()
+        service._complete = fake_complete
+        outcome = service.run(
+            TurnRequest(
+                question="what is in it?",
+                page="test|urls|gone|",
+                attachment_urls=["/private/files/gone.csv"],
+                attachment_texts=["order,customer,total\nSAL-1,Acme,100.00\n"],
+            )
+        )
+        self.assertTrue(outcome.ok, outcome.error)
+        messages = seen.get("messages") or []
+        systems = [m for m in messages if m.role == "system"]
+        self.assertTrue(systems, "the turn sent no system message")
+        self.assertIn("SAL-1,Acme,100.00", str(systems[0].content))
+
+
 class TestATruncatedAnswer(AlbannaTestCase):
     """An answer that was cut off says so.
 

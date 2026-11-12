@@ -84,7 +84,7 @@ from albanna.providers.base import (
     Usage,
     build_provider,
 )
-from albanna.services.attachments import store_attached_file
+from albanna.services.attachments import load_attached_files, store_attached_file
 from albanna.tools.backend import ErpnextBackend
 from albanna.tools.base import ToolContext, ToolResult
 
@@ -423,7 +423,12 @@ class ChatService:
         started = time.monotonic()
         settings = get_settings()
 
-        attachment_dropped = bool(request.attachments) and not (
+        # Whether the reader's attachment reached the model as a picture.
+        # The bytes and the addresses are both "the reader attached
+        # something" — a turn that carries addresses only has attached
+        # something all the same, and a site whose providers cannot read
+        # pictures drops it either way.
+        attachment_dropped = bool(request.attachments or request.attachment_urls) and not (
             getattr(settings.provider, "supports_vision", False)
             or (
                 settings.fallback is not None
@@ -450,9 +455,13 @@ class ChatService:
 
         # The files attached to the question are stored as Frappe Files so
         # that the assistant can refer to them by address — for example, to
-        # set one as a document's attachments field.  The bytes travel with the
-        # turn; what is stored is the files, not the chat.
-        attachment_urls, extra, attachment_texts = self._store_attachments(request, principal.user)
+        # set one as a document's attachments field.  The bytes were stored
+        # when the browser uploaded them; the turn reads them back from
+        # where they are stored, and what is stored is the files, not the
+        # chat.
+        attachment_urls, extra, attachment_texts, attachment_parts = self._store_attachments(
+            request, principal.user
+        )
         if extra:
             # The request is whole after this, not a half of one.  It is
             # copied by the dataclass rather than field by field, so a
@@ -523,7 +532,7 @@ class ChatService:
         # base64, which is a turn that fails or a turn that costs a
         # fortune.  Its text travels in the attachment note instead, so
         # the model has the document and not its encoding.
-        messages.append(user(question, attachments=readable_attachments(request.attachments)))
+        messages.append(user(question, attachments=readable_attachments(attachment_parts)))
 
         tool_calls_made: list[dict[str, Any]] = []
         rounds = 0
@@ -946,13 +955,14 @@ class ChatService:
 
     def _store_attachments(
         self, request: TurnRequest, user: str
-    ) -> tuple[list[str], str, list[str]]:
+    ) -> tuple[list[str], str, list[str], list[str]]:
         """Store the turn's attachments, and say where they went.
 
         Returns the stored URLs, the note that tells the model about
-        them, and the text each attachment's contents held.  The note is
-        empty when there was nothing to store, and the turn's page
-        context is left alone then.
+        them, the text each attachment's contents held, and the data URLs
+        the model is given as picture parts.  The note is empty when
+        there was nothing to store, and the turn's page context is left
+        alone then.
 
         The texts are returned as well as carried in the note, because
         they are stored on the message row: a reader who reloads the
@@ -962,20 +972,36 @@ class ChatService:
         A file the reader already uploaded is reused rather than stored a
         second time: the bytes have already been written, and writing
         them twice leaves two files for one picture.
+
+        The bytes the model is given come from where the files are
+        stored, not from the request: the browser uploaded them before
+        the turn was queued, so the turn's request carries the addresses
+        and the *job* reads the files back — a request that carried a
+        picture's bytes twice would pay for them twice on the wire, and
+        the endpoint that must answer in half a second pays for the body
+        the browser chose to send.
         """
         if not request.attachments:
-            # A turn whose bytes were never sent — the regenerate turn,
-            # which carries the old question's stored files rather than
-            # re-uploading them — still tells the model about them, in
-            # the same note a first turn writes.  Nothing is stored:
-            # the files are already on the site, and storing them again
-            # is how two files come to answer for one picture.
+            # A turn whose bytes were never sent — the live turn, which
+            # carries the addresses the browser's upload created, and the
+            # regenerate turn, which carries the old question's stored
+            # files rather than re-uploading them — is read back from
+            # those files: the bytes are on this site's own disk, and the
+            # model gets the same picture parts a first turn would have
+            # carried.  The carried texts are the fallback for an
+            # attachment that cannot be read back — the old row's record
+            # is the one record of a file that has since gone.
             urls = list(request.attachment_urls or [])
-            texts = list(request.attachment_texts or [])
             if not urls:
-                return [], "", []
-            note = attachment_note(urls, texts or None, can_read_files=self._can_read_files)
-            return urls, note, texts
+                return [], "", [], []
+            data_urls, loaded = load_attached_files(urls)
+            carried = list(request.attachment_texts or [])
+            texts = [
+                read or (carried[index] if index < len(carried) else "")
+                for index, read in enumerate(loaded)
+            ]
+            note = attachment_note(urls, texts, can_read_files=self._can_read_files)
+            return urls, note, texts, data_urls
 
         # The addresses and the bytes are parallel lists.  They are used
         # only when they can be matched: an address that belongs to
@@ -1007,7 +1033,7 @@ class ChatService:
                 )
         else:
             note = unstored_note(len(request.attachments), len(request.attachments))
-        return urls, note, texts
+        return urls, note, texts, list(request.attachments)
 
     @staticmethod
     def _attachment_text(data_url: str, stored_url: str) -> str:

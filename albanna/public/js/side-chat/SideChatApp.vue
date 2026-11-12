@@ -1582,9 +1582,11 @@ async function send(question) {
 	if (!text && !attachedFiles.value.length) return;
 	if (!maySend.value) return;
 
-	// The bytes the model reads, and the addresses they were stored
-	// under.  The two are parallel, and the server relies on that.
-	const { attachments, attachmentUrls } = turnAttachments(attachedFiles.value);
+	// The addresses the attached files were stored under.  The bytes are
+	// not carried: they were uploaded before the turn was sent, and the
+	// job reads them back from there — a request that carried them again
+	// would pay for every file twice on the wire.
+	const { attachmentUrls } = turnAttachments(attachedFiles.value);
 	attachedFiles.value = [];
 
 	draft.value = "";
@@ -1592,7 +1594,7 @@ async function send(question) {
 	showScrollButton.value = false;
 
 	const asked = makeMessage("user", text);
-	if (attachments.length) asked.attachments = attachments;
+	if (attachmentUrls.length) asked.attachments = attachmentUrls;
 	const answer = makeMessage("assistant", "");
 	answer.pending = true;
 
@@ -1634,7 +1636,6 @@ async function send(question) {
 	try {
 		result = await runTurn({
 			question: text,
-			attachments: attachments,
 			attachmentUrls: attachmentUrls,
 			conversationId: conversationId.value,
 			page: page,

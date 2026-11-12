@@ -2168,6 +2168,25 @@ turn break fall on the same message, the day takes the turn rule's
 place — a day is the bigger break, and two rules on one line is noise.
 (`albanna/public/js/side-chat/day-dividers.mjs`, pure and tested.)
 
+### 93. The turn carries the attachment's address, and never its bytes
+
+The reader's file is uploaded *before* the turn is queued, so the bytes
+are already on this site's disk when the question is asked.  The ask
+payload carries the address alone: a request that carried the bytes again
+would pay for every file twice on the wire, and the submit endpoint that
+must answer in half a second pays for the body the browser chose to send
+— a framework that reads and parses a 2.8 MB body costs ~400 ms before
+any of the app's own work runs.  The *job* reads the files back from
+where the upload put them, so the model sees the same picture parts and
+the same extracted text a bytes-carrying turn would have given it, and a
+file that cannot be read back falls to the carried text — the old row's
+record is the one record of a document that has since gone.
+
+The endpoint still accepts bytes, because the wire is read by one parser
+and a caller that carries them is still answered; the widget just never
+sends them.  (`albanna/public/js/side-chat/attachments.mjs`,
+`load_attached_files`, `_store_attachments`; NFR-P1.)
+
 ## What is deliberately not here
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.
   It is a good feature and it is a separate one; v1 has no retrieval.

@@ -465,8 +465,12 @@ async function storeFile(file) {
 		const fileUrl = message && message.file_url;
 		if (!fileUrl) throw new Error(__("The file could not be stored."));
 
+		// The bytes were read only for the upload, and are dropped here:
+		// an attachment the composer kept would hold a copy of every file
+		// the reader attached for as long as the panel was open.  What
+		// the turn carries is the address — the job reads the bytes back
+		// from where the upload put them.
 		return makeAttachment({
-			dataUrl,
 			name: file.name || __("Attached file"),
 			type: mime,
 			size: file.size || 0,

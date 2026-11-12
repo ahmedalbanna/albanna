@@ -104,17 +104,17 @@ global.window = {
 	assert.equal(result.reply, "24");
 }
 
-// A turn carries its attachments as a list, and the addresses of the
-// files that were already stored, so the worker does not write the same
-// bytes twice.
+// A turn carries the addresses of the files that were already stored —
+// and not the bytes, which the upload already wrote to the site.  The
+// job reads them back from there; a request that carried them again
+// would pay for every file twice on the wire.
 {
 	asked = null;
 	answered = null;
 
 	const pending = runTurn({
 		question: "what is this?",
-		attachments: ["data:image/png;base64,AAAA", "data:application/pdf;base64,BBBB"],
-		attachmentUrls: ["/private/files/albanna-8f2a1c.png", ""],
+		attachmentUrls: ["/private/files/albanna-8f2a1c.png"],
 		conversationId: "",
 		page: "",
 		pageContext: null,
@@ -128,15 +128,12 @@ global.window = {
 	});
 	await pending;
 
-	assert.deepEqual(JSON.parse(asked.args.attachments), [
-		"data:image/png;base64,AAAA",
-		"data:application/pdf;base64,BBBB",
-	]);
-	assert.deepEqual(JSON.parse(asked.args.attachment_urls), ["/private/files/albanna-8f2a1c.png", ""]);
+	assert.equal("attachments" in asked.args, false, "the bytes travelled with the turn");
+	assert.deepEqual(JSON.parse(asked.args.attachment_urls), ["/private/files/albanna-8f2a1c.png"]);
 }
 
-// A turn with no attachments still sends the fields, as empty lists: the
-// endpoint reads one shape, not two.
+// A turn with no attachments still sends the addresses field, as an
+// empty list: the endpoint reads one shape, not two.
 {
 	asked = null;
 	answered = null;
@@ -152,7 +149,6 @@ global.window = {
 	answered({ event: "done", stream_id: "stream-1", result: { status: "ok", reply: "24" } });
 	await pending;
 
-	assert.deepEqual(JSON.parse(asked.args.attachments), []);
 	assert.deepEqual(JSON.parse(asked.args.attachment_urls), []);
 }
 

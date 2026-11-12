@@ -415,6 +415,15 @@ that question.
   turn; the bytes are dropped from the provider payload.  It now covers
   every non-image type, and it is stored so a reloaded thread still has
   it.  See ADR-0050, ADR-0053 and ADR-0054.
+- **NFR-P1 G1 — the ask payload carries attachment addresses, not
+  bytes.**  A question with a 2 MB attachment took 360–520 ms to submit
+  because the widget re-sent bytes the upload had already stored — a
+  no-op endpoint handed the same 2.8 MB body costs ~390 ms, the
+  framework's body parse alone.  The widget now sends the stored
+  addresses only, the job reads the files back where the upload put
+  them, and a submission at any attachment size lands at ~30–100 ms.
+  The job-side read-back also means a regenerate turn now shows the
+  model the old question's stored pictures.  See ADR-0099.
 
 ## Accepted — recorded, not acted on
 
