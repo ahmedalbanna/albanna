@@ -14,7 +14,8 @@
         "tool_name",
         "round_no",
         "tool_calls",
-        "rating"
+        "rating",
+        "page_identity"
     ],
     "fields": [
         {
@@ -80,12 +81,19 @@
             "fieldtype": "Select",
             "label": "Rating",
             "options": "\nup\ndown"
+        },
+        {
+            "description": "The page the turn was asked from, as `view|doctype|name`. Context of the question, not of the thread: the transcript names it when the reader is reading the thread from somewhere else.",
+            "fieldname": "page_identity",
+            "fieldtype": "Data",
+            "label": "Page Identity",
+            "read_only": 1
         }
     ],
     "index_web_pages_for_search": 0,
     "istable": 1,
     "links": [],
-    "modified": "2026-10-21 00:00:00.000000",
+    "modified": "2026-11-12 00:00:00.000000",
     "modified_by": "Administrator",
     "module": "Albanna",
     "name": "Albanna Message",

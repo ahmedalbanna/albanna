@@ -61,7 +61,7 @@ import Composer from "./Composer.vue";
 import ConversationDrawer from "./ConversationDrawer.vue";
 import { pageIdentity, resolveContext } from "./context.mjs";
 import { examplesFor } from "./examples.mjs";
-import { activityText, clockTime } from "./format.mjs";
+import { activityText, clockTime, readablePage } from "./format.mjs";
 import { conversationToMarkdown, exportFilename } from "./export.mjs";
 import { renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js";
 import { stopPlan } from "./stop.mjs";
@@ -883,6 +883,10 @@ function messageFromServer(message) {
 	// messages behind this one.  A message that has not been stored yet
 	// has no index, and it is the newest one.
 	item.idx = Number(message.idx) || 0;
+	// The page the turn was asked from.  The chip shows it when the
+	// reader is reading the thread from somewhere else; a row written
+	// before the column existed carries nothing and shows no chip.
+	item.page_identity = message.page_identity || "";
 	item.tools = message.tools || [];
 
 	for (const tool of item.tools) {
@@ -1548,6 +1552,11 @@ async function send(question) {
 	 * panel its label and not the assistant its question. */
 	const context = resolveContext();
 	const page = pageIdentity();
+	// The page this turn is asked from, stamped on both messages: the
+	// thread keeps running while the reader moves on, and a reader
+	// reading it from somewhere else is told where these were born.
+	asked.page_identity = page;
+	answer.page_identity = page;
 
 	/* The questions asked *before* this one.
 	 *
@@ -2791,6 +2800,19 @@ onBeforeUnmount(() => {
 					</div>
 
 					<div class="albanna-chat__message-main">
+						<!-- Where this turn was asked from, shown only when the
+						     reader is reading the thread from somewhere else:
+						     the thread is the reader's, and a question carries
+						     the page it was born on. -->
+						<span
+							v-if="
+								message.page_identity && message.page_identity !== currentPage
+							"
+							class="albanna-chat__from-page"
+						>
+							{{ __("Asked from {0}", [readablePage(message.page_identity)]) }}
+						</span>
+
 						<!-- While the turn runs: one line saying what is happening.
 						     Afterwards: one line saying what it did, which opens
 						     into the list of calls. -->

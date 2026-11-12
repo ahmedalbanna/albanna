@@ -1319,6 +1319,105 @@ class TestThreadResolution(AlbannaTestCase):
 
 
 @pytest.mark.integration
+class TestAskedFrom(AlbannaTestCase):
+    """The page a turn carries, as its messages' page identity.
+
+    A thread belongs to the reader, and the page they ask from is
+    context of the question.  Stored with the message, it lets the
+    transcript say where a turn was born when the reader is reading the
+    thread from somewhere else — and say nothing about a turn that
+    predates the column, because nothing was stored.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.owner = "albanna.test.asked@albanna.dev"
+        if not frappe.db.exists("User", self.owner):
+            user = frappe.new_doc("User")
+            user.email = self.owner
+            user.first_name = "Albanna"
+            user.last_name = "Asked"
+            user.flags.ignore_permissions = True
+            user.insert()
+            user = frappe.get_doc("User", self.owner)
+            user.flags.ignore_permissions = True
+            user.add_roles("Desk User", "Albanna User")
+            frappe.db.commit()
+
+    def tearDown(self):
+        get_settings(refresh=True)
+        super().tearDown()
+
+    def _as(self, email):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _page(self, label):
+        return f"test|asked|{label}|{frappe.generate_hash(length=8)}|"
+
+    def test_a_row_keeps_the_page_it_was_given(self):
+        self._as(self.owner)
+        from albanna.services.conversation_service import new_conversation
+
+        page = self._page("one")
+        conversation = new_conversation(self.owner)
+        append_messages(
+            conversation,
+            [
+                {"role": "user", "content": "who is open?", "page_identity": page},
+                {"role": "assistant", "content": "two are.", "page_identity": page},
+            ],
+        )
+
+        transcript = load_transcript(conversation)
+        self.assertEqual([row["page_identity"] for row in transcript], [page, page])
+
+    def test_a_row_with_no_page_comes_back_with_none(self):
+        self._as(self.owner)
+        from albanna.services.conversation_service import new_conversation
+
+        conversation = new_conversation(self.owner)
+        append_messages(conversation, [{"role": "user", "content": "plain"}])
+
+        transcript = load_transcript(conversation)
+        self.assertEqual(transcript[0]["page_identity"], "")
+
+    def test_a_turn_stamps_its_rows_with_the_page_it_was_asked_from(self):
+        self._as(self.owner)
+        from albanna.core.messages import Message
+        from albanna.providers.base import Completion, Usage
+        from albanna.services.chat_service import ChatService, TurnRequest
+        from albanna.services.conversation_service import new_conversation
+
+        page = self._page("turn")
+        seen = {}
+
+        def fake_complete(config, messages, tools, emit, stream):
+            seen["messages"] = messages
+            return Completion(
+                message=Message(role="assistant", content="The answer."),
+                provider="openai",
+                model="a-model",
+                usage=Usage(input_tokens=10, output_tokens=5),
+            )
+
+        service = ChatService()
+        service._complete = fake_complete
+        conversation = new_conversation(self.owner)
+        outcome = service.run(
+            TurnRequest(question="what is open?", page=page, conversation_id=conversation)
+        )
+
+        self.assertTrue(outcome.ok, outcome.error)
+        transcript = load_transcript(conversation)
+        self.assertEqual(len(transcript), 2)
+        self.assertEqual(transcript[0]["page_identity"], page)
+        self.assertEqual(transcript[1]["page_identity"], page)
+
+
+@pytest.mark.integration
 class TestSettings(AlbannaTestCase):
     """The settings, and the way a provider with no base URL used to fail.
 
@@ -1536,7 +1635,9 @@ class TestTouchedDocuments(AlbannaTestCase):
         """
         import json
 
-        conversation = ensure_conversation("Administrator", "test|documents|")
+        conversation = ensure_conversation(
+            "Administrator", f"test|documents|{frappe.generate_hash(length=8)}"
+        )
         append_messages(
             conversation,
             [
@@ -1578,7 +1679,9 @@ class TestTouchedDocuments(AlbannaTestCase):
     def test_a_stored_document_that_is_not_one_is_dropped(self):
         import json
 
-        conversation = ensure_conversation("Administrator", "test|bad-documents|")
+        conversation = ensure_conversation(
+            "Administrator", f"test|bad-documents|{frappe.generate_hash(length=8)}"
+        )
         append_messages(
             conversation,
             [
@@ -1667,7 +1770,9 @@ class TestConversationOrder(AlbannaTestCase):
     """The messages of a conversation, in the order they were said."""
 
     def test_the_messages_are_stored_in_the_order_they_were_said(self):
-        conversation = ensure_conversation("Administrator", "test|order|")
+        conversation = ensure_conversation(
+            "Administrator", f"test|order|{frappe.generate_hash(length=8)}"
+        )
 
         append_messages(conversation, [{"role": "user", "content": "first question"}])
         append_messages(conversation, [{"role": "assistant", "content": "first answer"}])
@@ -1687,13 +1792,17 @@ class TestConversationOrder(AlbannaTestCase):
         )
 
     def test_a_conversation_belongs_to_its_owner(self):
-        conversation = ensure_conversation("Administrator", "test|owner|")
+        conversation = ensure_conversation(
+            "Administrator", f"test|owner|{frappe.generate_hash(length=8)}"
+        )
         self.assertEqual(
             frappe.db.get_value("Albanna Conversation", conversation, "user"), "Administrator"
         )
 
     def test_the_index_keeps_going_up(self):
-        conversation = ensure_conversation("Administrator", "test|index|")
+        conversation = ensure_conversation(
+            "Administrator", f"test|index|{frappe.generate_hash(length=8)}"
+        )
         append_messages(conversation, [{"role": "user", "content": "one"}])
         append_messages(conversation, [{"role": "assistant", "content": "two"}])
 

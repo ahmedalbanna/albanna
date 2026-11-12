@@ -171,8 +171,8 @@ def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]
     is a row that can be addressed later.
 
     Each row is a dict with ``role``, ``content`` and optionally
-    ``tool_name``, ``round_no``, ``tool_calls``, ``truncated`` and
-    ``attachment_texts``.
+    ``tool_name``, ``round_no``, ``tool_calls``, ``truncated``,
+    ``attachment_texts`` and ``page_identity``.
 
     The rows continue the conversation's existing order.  The index is *not*
     restarted at one: a conversation whose second turn is indexed from one
@@ -198,12 +198,12 @@ def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]
                 (name, owner, creation, modified, modified_by, docstatus, idx,
                  parent, parentfield, parenttype,
                  role, content, attachment_urls, attachment_texts, truncated,
-                 tool_name, round_no, tool_calls)
+                 tool_name, round_no, tool_calls, page_identity)
             values
                 (%s, %s, %s, %s, %s, 0, %s,
                  %s, %s, %s,
                  %s, %s, %s, %s, %s,
-                 %s, %s, %s)
+                 %s, %s, %s, %s)
             """,
             (
                 name,
@@ -234,6 +234,13 @@ def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]
                 row.get("tool_name") or "",
                 int(row.get("round_no") or 0),
                 row.get("tool_calls") or "",
+                # The page the turn was asked from.  Context of the
+                # question, not of the thread: the transcript names it
+                # when the reader is reading the thread from somewhere
+                # else.  A row written before the column existed carries
+                # nothing, and it is shown without the name — which is
+                # the truth about what is stored.
+                row.get("page_identity") or "",
             ),
         )
         index += 1
@@ -378,7 +385,8 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
     if before_idx > 0:
         rows = frappe.db.sql(
             """
-            select name, role, content, attachment_urls, truncated, tool_calls, creation, idx, rating
+            select name, role, content, attachment_urls, truncated, tool_calls, creation, idx, rating,
+                   page_identity
             from `tabAlbanna Message`
             where parent = %s and parentfield = %s and idx < %s
             order by idx desc
@@ -390,7 +398,8 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
     else:
         rows = frappe.db.sql(
             """
-            select name, role, content, attachment_urls, truncated, tool_calls, creation, idx, rating
+            select name, role, content, attachment_urls, truncated, tool_calls, creation, idx, rating,
+                   page_identity
             from `tabAlbanna Message`
             where parent = %s and parentfield = %s
             order by idx desc
@@ -452,6 +461,9 @@ def load_transcript(conversation: str, limit: int = 50, before_idx: int = 0) -> 
                 # the live view showed: an unfinished answer and a short
                 # one look identical, and only one of them is a warning.
                 "truncated": bool(row.truncated),
+                # The page the turn was asked from.  Shown when the
+                # reader is reading the thread from somewhere else.
+                "page_identity": row.page_identity or "",
                 "tools": tools,
                 # When it was said, so that the transcript can say so.
                 # The epoch is what the browser reads: the stored value is

@@ -606,7 +606,9 @@ class ChatService:
                 written = append_messages(
                     conversation,
                     [
-                        self._user_row(question, attachment_urls, attachment_texts),
+                        self._user_row(
+                            question, attachment_urls, attachment_texts, page_identity=request.page
+                        ),
                         {
                             "role": "assistant",
                             "content": reply,
@@ -622,6 +624,10 @@ class ChatService:
                             # this the reload shows a short answer that
                             # looks complete.
                             "truncated": bool(completion.truncated),
+                            # The page the turn was asked from, shared
+                            # with the question: the answer is about what
+                            # was in front of the reader when they asked.
+                            "page_identity": request.page,
                         },
                     ],
                 )
@@ -716,7 +722,9 @@ class ChatService:
         written = append_messages(
             conversation,
             [
-                self._user_row(question, attachment_urls, attachment_texts),
+                self._user_row(
+                    question, attachment_urls, attachment_texts, page_identity=request.page
+                ),
                 {
                     "role": "assistant",
                     "content": reply,
@@ -726,6 +734,9 @@ class ChatService:
                     # records which.  The message row records it too, for
                     # the same reason the ordinary answer's does.
                     "truncated": bool(truncated),
+                    # The page the turn was asked from, shared with the
+                    # question — the same rule every answer follows.
+                    "page_identity": request.page,
                 },
             ],
         )
@@ -889,7 +900,11 @@ class ChatService:
     # -- the tools --------------------------------------------------------
 
     def _user_row(
-        self, question: str, attachment_urls: list[str], attachment_texts: list[str] | None = None
+        self,
+        question: str,
+        attachment_urls: list[str],
+        attachment_texts: list[str] | None = None,
+        page_identity: str = "",
     ) -> dict[str, Any]:
         """The row that holds the reader's question.
 
@@ -902,6 +917,11 @@ class ChatService:
         attachment's contents held.  Stored so a reader who reloads the
         thread and asks a follow-up about the document is answered about
         it, rather than about a file nobody has read since.
+
+        *page_identity* is the page the question was asked from.  The
+        thread is the reader's, but the question carries where it was
+        born, and the transcript names it when the reader is reading the
+        thread from somewhere else.
         """
         return {
             "role": "user",
@@ -909,6 +929,7 @@ class ChatService:
             "round_no": 0,
             "attachment_urls": json.dumps(attachment_urls),
             "attachment_texts": json.dumps(attachment_texts or []),
+            "page_identity": page_identity,
         }
 
     def _store_attachments(

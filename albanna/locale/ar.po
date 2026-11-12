@@ -194,6 +194,22 @@ msgid "Stopped."
 msgstr "تم الإيقاف."
 
 
+msgid "Asked from {0}"
+msgstr "سُئل من {0}"
+
+
+msgid "Page Identity"
+msgstr "هوية الصفحة"
+
+
+msgid "The page the turn was asked from, as `view|doctype|name`. Context of the question, not of the thread: the transcript names it when the reader is reading the thread from somewhere else."
+msgstr "الصفحة التي سُئل الدور منها، بصيغة `view|doctype|name`. سياق للسؤال لا للمحادثة: يسمّي السجلها عندما يقرأ القارئ المحادثة من مكان آخر."
+
+
+msgid "Could not start a new conversation."
+msgstr "تعذّر بدء محادثة جديدة."
+
+
 msgid "Try again"
 msgstr "أعد المحاولة"
 
@@ -993,10 +1009,6 @@ msgstr "انتظار {0}ث"
 
 msgid "You"
 msgstr "أنت"
-
-
-msgid "You moved to another page. The turn is still running — its answer will be in that page's conversation."
-msgstr "انتقلت إلى صفحة أخرى. الدور لا يزال قيد التشغيل — ستكون إجابته في محادثة تلك الصفحة."
 
 
 msgid "This removes the document. It cannot be undone from here."

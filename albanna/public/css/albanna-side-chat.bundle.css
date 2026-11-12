@@ -2042,6 +2042,18 @@ body.albanna-side-chat-docked-inline-start {
 	color: var(--albanna-muted, #6c7680);
 }
 
+/* Where a turn was asked from, shown only when the reader is reading
+ * the thread from somewhere else.  Quieter than the cost line, because
+ * it is context and not an outcome. */
+.albanna-chat__from-page {
+	display: block;
+	margin: 0 0 2px;
+	padding: 0 10px;
+	font-size: 11px;
+	color: var(--albanna-muted, #6c7680);
+	overflow-wrap: anywhere;
+}
+
 /* First-run tour.  It is the nudge's sibling: the same card, the same
  * radius, the same border — the empty state is one family of cards, and
  * three shapes would read as three unrelated widgets. */
