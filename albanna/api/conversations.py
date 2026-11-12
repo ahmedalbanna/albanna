@@ -158,13 +158,20 @@ def conversation_for_page(page: str = "", limit: int = 0, before_idx: int = 0) -
 
 @frappe.whitelist()
 def new_conversation(page: str = "") -> dict:
-    """Start a new conversation on *page*.
+    """Start a new conversation.
 
     The panel's "New" button asks for this rather than clearing its own
-    state.  Clearing the state alone would be a lie: the server resolves a
-    page's conversation by page, so a "new" conversation with no id would
-    land back in the thread the button was meant to leave, and the
-    assistant would answer with the old thread's context.
+    state.  Clearing the state alone would be a lie: the server resolves
+    a turn with no id into the reader's most recent thread, so a "new"
+    conversation with no id would land back in the thread the button was
+    meant to leave, and the assistant would answer with the old thread's
+    context.
+
+    The new conversation carries no page.  A conversation belongs to the
+    reader; the page they were on is context of the questions they ask,
+    not of the thread that holds them.  The *page* argument is accepted
+    and ignored, so a client that still sends it is not broken — but it
+    is not stored, and nothing reads it.
 
     The new conversation has no title.  It is named after the first
     question asked in it, which is the same rule every other conversation
@@ -175,7 +182,7 @@ def new_conversation(page: str = "") -> dict:
     from albanna.services.conversation_service import new_conversation as _new
 
     user = str(frappe.session.user or "")
-    conversation = _new(user, page or "")
+    conversation = _new(user)
 
     return {"status": "ok", "conversation": conversation}
 

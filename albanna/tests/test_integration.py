@@ -59,6 +59,7 @@ from albanna.permissions import FrappePermissionChecker, current_principal
 from albanna.services.conversation_service import (
     append_messages,
     ensure_conversation,
+    ensure_thread,
     load_messages,
     load_transcript,
     name_after_question,
@@ -1051,10 +1052,13 @@ class TestTheDrawerListing(AlbannaTestCase):
 class TestNewConversation(AlbannaTestCase):
     """The panel's "New" button, and the conversation it makes.
 
-    The button used to clear the panel and nothing else.  The server
-    resolves a page's conversation *by page*, so the next question landed
-    back in the thread the reader was trying to leave: the screen was
-    empty and the assistant was not.
+    The button used to clear the panel and nothing else.  The server used
+    to resolve a page's conversation *by page*, so the next question
+    landed back in the thread the reader was trying to leave: the screen
+    was empty and the assistant was not.  A conversation now belongs to
+    the reader and not to a page — the button makes a thread that carries
+    no page, and a turn with no id continues the reader's most recent
+    thread, which is the one the button just made.
     """
 
     def setUp(self):
@@ -1091,7 +1095,12 @@ class TestNewConversation(AlbannaTestCase):
         """
         return f"test|{label}|{frappe.generate_hash(length=8)}|"
 
-    def test_new_makes_a_second_conversation_on_the_same_page(self):
+    def test_a_new_conversation_carries_no_page(self):
+        """The thread the button makes belongs to the reader, not to a page.
+
+        The page argument is accepted for an older client's sake and
+        ignored: nothing page-related is stored on a new conversation.
+        """
         self._as(self.owner)
         page = self._page("new")
         first = ensure_conversation(self.owner, page)
@@ -1101,8 +1110,8 @@ class TestNewConversation(AlbannaTestCase):
         self.assertNotEqual(first, second)
         self.assertTrue(frappe.db.exists("Albanna Conversation", second))
         self.assertEqual(
-            frappe.db.get_value("Albanna Conversation", second, "page"),
-            page,
+            frappe.db.get_value("Albanna Conversation", second, "page") or "",
+            "",
         )
 
     def test_a_new_conversation_belongs_to_the_caller(self):
@@ -1191,16 +1200,20 @@ class TestNewConversation(AlbannaTestCase):
         created = ensure_conversation(self.owner, page)
         self.assertTrue(frappe.db.exists("Albanna Conversation", created))
 
-    def test_the_newest_thread_on_a_page_is_the_one_shown(self):
+    def test_the_thread_the_button_made_is_the_one_a_turn_continues(self):
+        """A turn with no id continues the reader's most recent thread.
+
+        The button makes a thread; the next question, sent with no id —
+        the shape a thread the panel has not yet pinned arrives in —
+        continues the thread the button just made, not the one the reader
+        was leaving.
+        """
         self._as(self.owner)
-        page = self._page("newest")
-        first = ensure_conversation(self.owner, page, title="the first thread")
-        second = new_conversation(page=page)["conversation"]
+        first = ensure_conversation(self.owner, self._page("newest"))
+        second = new_conversation()["conversation"]
 
-        found = conversation_for_page(page=page)
-
-        self.assertEqual(found["conversation"], second)
-        self.assertNotEqual(found["conversation"], first)
+        self.assertEqual(ensure_thread(self.owner), second)
+        self.assertNotEqual(ensure_thread(self.owner), first)
 
     def test_a_renamed_conversation_keeps_its_name(self):
         self._as(self.owner)
@@ -1213,6 +1226,125 @@ class TestNewConversation(AlbannaTestCase):
             frappe.db.get_value("Albanna Conversation", conversation, "title"),
             "The one I want",
         )
+
+
+@pytest.mark.integration
+class TestThreadResolution(AlbannaTestCase):
+    """The thread a turn with no id continues.
+
+    A conversation used to belong to a page: the same reader asking on
+    two pages had two threads, and a question with no id was filed under
+    the page it was asked from.  The history scattered itself, and a
+    thread was a story nobody could read as one.  A conversation now
+    belongs to the reader: the page they are on travels with the question
+    as context, and the thread a turn with no id continues is their most
+    recent one, whichever page it was born on.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.owner = "albanna.test.thread@albanna.dev"
+        if not frappe.db.exists("User", self.owner):
+            user = frappe.new_doc("User")
+            user.email = self.owner
+            user.first_name = "Albanna"
+            user.last_name = "Thread"
+            user.flags.ignore_permissions = True
+            user.insert()
+            user = frappe.get_doc("User", self.owner)
+            user.flags.ignore_permissions = True
+            user.add_roles("Desk User", "Albanna User")
+            frappe.db.commit()
+
+        # A clean slate: threads outlive the run, and "the reader has
+        # none" has to mean none.
+        for name in frappe.get_all(
+            "Albanna Conversation", filters={"user": self.owner}, pluck="name"
+        ):
+            frappe.delete_doc("Albanna Conversation", name, ignore_permissions=True)
+        frappe.db.commit()
+
+    def tearDown(self):
+        get_settings(refresh=True)
+        super().tearDown()
+
+    def _as(self, email):
+        frappe.set_user(email)
+        frappe.local.session.user = email
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+    def _page(self, label):
+        """A page identity this run has not used before."""
+        return f"test|thread|{label}|{frappe.generate_hash(length=8)}|"
+
+    def _make_older(self, conversation):
+        """Put a thread's activity a moment behind *now*.
+
+        Two threads created in the same second tie on ``last_activity``,
+        and which of them is "most recent" would be the database's whim.
+        The older one is pushed back, so the answer is the test's.
+        """
+        frappe.db.set_value(
+            "Albanna Conversation",
+            conversation,
+            "last_activity",
+            frappe.utils.add_to_date(frappe.utils.now_datetime(), seconds=-100),
+        )
+
+    def test_the_most_recent_thread_is_continued_whichever_page_it_was_born_on(self):
+        self._as(self.owner)
+        older = ensure_conversation(self.owner, self._page("older"))
+        newer = ensure_conversation(self.owner, self._page("newer"))
+        self._make_older(older)
+
+        self.assertEqual(ensure_thread(self.owner), newer)
+
+    def test_a_reader_with_no_thread_gets_one_that_carries_no_page(self):
+        self._as(self.owner)
+        created = ensure_thread(self.owner)
+
+        self.assertTrue(frappe.db.exists("Albanna Conversation", created))
+        self.assertEqual(
+            frappe.db.get_value("Albanna Conversation", created, "page") or "",
+            "",
+        )
+
+    def test_a_turn_with_no_id_lands_in_the_reader_s_recent_thread(self):
+        """The resolution the old code pointed at the page's thread."""
+        self._as(self.owner)
+        from albanna.services.chat_service import ChatService, TurnRequest
+
+        page_thread = ensure_conversation(self.owner, self._page("page"))
+        recent = ensure_conversation(self.owner, self._page("recent"))
+        self._make_older(page_thread)
+
+        service = ChatService()
+        resolved = service._resolve_conversation(
+            TurnRequest(question="hello"), self.owner, "hello"
+        )
+
+        self.assertEqual(resolved, recent)
+
+    def test_a_turn_with_an_id_lands_in_that_thread(self):
+        self._as(self.owner)
+        from albanna.services.chat_service import ChatService, TurnRequest
+
+        page_thread = ensure_conversation(self.owner, self._page("page"))
+        recent = ensure_conversation(self.owner, self._page("recent"))
+        self._make_older(page_thread)
+
+        service = ChatService()
+        resolved = service._resolve_conversation(
+            TurnRequest(question="hello", conversation_id=page_thread),
+            self.owner,
+            "hello",
+        )
+
+        self.assertEqual(resolved, page_thread)
+        # ...and not the more recent one the page-less path would have
+        # picked: the id is the whole of the decision.
+        self.assertNotEqual(resolved, recent)
 
 
 @pytest.mark.integration
@@ -2120,7 +2252,7 @@ class TestAnAttachedPdf(AlbannaTestCase):
         frappe.local.role_permissions = {}
         frappe.local.perms = {}
 
-    def _run(self, attachments, page: str = ""):
+    def _run(self, attachments, page: str = "", conversation: str = ""):
         """Run a turn carrying *attachments*, and return what the model saw."""
         from albanna.core.messages import Message
         from albanna.providers.base import Completion, Usage
@@ -2143,6 +2275,7 @@ class TestAnAttachedPdf(AlbannaTestCase):
             TurnRequest(
                 question="what is the total?",
                 page=page or "test|pdf|",
+                conversation_id=conversation,
                 attachments=attachments,
             )
         )
@@ -2266,19 +2399,19 @@ class TestAnAttachedPdf(AlbannaTestCase):
             _pdf_bytes(b"Invoice 42, total 100.00")
         ).decode("ascii")
 
-        # A page of this run's own: the class shares one, and a thread
-        # another test started holds rows written before the column
-        # existed — which is exactly the case this test is not about.
-        page = f"test|pdf|reload|{frappe.generate_hash(6)}|"
-        outcome, _current, _system = self._run([pdf], page=page)
+        # A thread of this run's own, addressed by id: the class shares
+        # one reader, and a thread another test started holds rows written
+        # before the column existed — which is exactly the case this test
+        # is not about.  A turn with no id continues the reader's most
+        # recent thread, and which one that is, is nobody's to predict.
+        from albanna.services.conversation_service import load_messages, new_conversation
+
+        thread = new_conversation(self.reader)
+        outcome, _current, _system = self._run([pdf], conversation=thread)
         self.assertTrue(outcome.ok, outcome.error)
+        self.assertEqual(outcome.conversation_id, thread, "the turn stored no conversation")
 
-        from albanna.services.conversation_service import load_messages
-
-        conversation = frappe.db.get_value("Albanna Conversation", {"page": page}, "name")
-        self.assertTrue(conversation, "the turn stored no conversation")
-
-        history = load_messages(conversation)
+        history = load_messages(outcome.conversation_id)
         text = "\n".join(str(m.content) for m in history)
 
         self.assertIn("Invoice 42, total 100.00", text, "the reloaded thread lost the document")
@@ -2298,14 +2431,15 @@ class TestAnAttachedPdf(AlbannaTestCase):
         it did not, and they say nothing.
         """
         self._as(self.reader)
-        self._run([_pdf_url(b"Invoice 42, total 100.00")])
+        from albanna.services.conversation_service import load_messages, new_conversation
 
-        from albanna.services.conversation_service import load_messages
+        # A thread of this run's own, addressed by id — the reader's
+        # most recent thread is nobody's to predict, and an old run's
+        # page threads are not this test's business.
+        thread = new_conversation(self.reader)
+        self._run([_pdf_url(b"Invoice 42, total 100.00")], conversation=thread)
 
-        conversation = frappe.db.get_value("Albanna Conversation", {"page": "test|pdf|"}, "name")
-        self.assertTrue(conversation, "the turn stored no conversation")
-
-        history = load_messages(conversation)
+        history = load_messages(thread)
         text = "\n".join(str(m.content) for m in history)
 
         self.assertNotIn(

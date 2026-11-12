@@ -75,6 +75,10 @@ def ensure_conversation(user: str, page: str = "", title: str = "") -> str:
     Order list and on the Customer form are two different threads, because
     the context behind them is different.  The page identity is
     ``view|doctype|name``.
+
+    Kept for the threads that were born under the page-bound model, and
+    for the tests that hold that model to account.  The turn path no
+    longer resolves a thread by page — see :func:`ensure_thread`.
     """
     existing = frappe.db.get_value(
         "Albanna Conversation",
@@ -86,6 +90,32 @@ def ensure_conversation(user: str, page: str = "", title: str = "") -> str:
         return existing
 
     return new_conversation(user, page=page, title=title)
+
+
+def ensure_thread(user: str, title: str = "") -> str:
+    """Return the user's current thread, creating it if they have none.
+
+    A conversation belongs to the reader, not to a page.  The page they
+    are looking at is context that travels with each question — the model
+    reads it with the turn — and not the thread's identity: a question is
+    a question wherever it was asked from, and a thread that scattered
+    itself across pages was a history nobody could read as one story.
+
+    So the thread a turn with no id continues is the reader's most recent
+    one, whichever page it was born on.  A reader with no thread at all
+    gets a fresh one, carrying no page — the page is nobody's business
+    but the question's.
+    """
+    existing = frappe.db.get_value(
+        "Albanna Conversation",
+        {"user": user},
+        "name",
+        order_by="last_activity desc",
+    )
+    if existing:
+        return existing
+
+    return new_conversation(user, title=title)
 
 
 def new_conversation(user: str, page: str = "", title: str = "") -> str:

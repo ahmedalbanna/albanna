@@ -392,7 +392,6 @@ class ChatService:
         from albanna.services.conversation_service import (
             append_messages,
             assert_owns,
-            ensure_conversation,
             load_messages,
             trim_conversation,
         )
@@ -995,12 +994,15 @@ class ChatService:
         """
         from albanna.services.conversation_service import (
             assert_owns,
-            ensure_conversation,
+            ensure_thread,
             name_after_question,
         )
 
         if not request.conversation_id:
-            return ensure_conversation(user, request.page, title=question[:120])
+            # A turn with no thread continues the reader's most recent one,
+            # whichever page it was born on.  The page they are on travels
+            # with the question as context; it does not pick the thread.
+            return ensure_thread(user, title=question[:120])
 
         assert_owns(request.conversation_id, user)
 
