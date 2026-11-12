@@ -4,7 +4,15 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
-import { checkAttachment, makeAttachment, REFUSED_SIZE, storeAll } from "./attachments.mjs";
+import {
+	acceptFor,
+	canonicalType,
+	checkAttachment,
+	makeAttachment,
+	REFUSED_SIZE,
+	storeAll,
+	withType,
+} from "./attachments.mjs";
 import { serverMessage } from "./errors.mjs";
 import { middleTruncate } from "./format.mjs";
 import { MAX_SESSION_MS, mergeTranscript, readResults, voiceErrorText } from "./voice.mjs";
@@ -42,6 +50,13 @@ const fileInput = ref(null);
 
 //: The types the site takes, as the browser sends them.
 const attachableMimes = computed(() => props.attachableTypes.map((type) => type.mime));
+
+//: What the file picker's accept filter carries: the types, the other
+//: names the same files arrive claiming, and the extensions they mean.
+//: A filter of the canonical types alone never shows a CSV on a Windows
+//: install — the system files that document under another name — so a
+//: reader who was told they may attach a CSV could not pick one.
+const attachableAccept = computed(() => acceptFor(props.attachableTypes));
 
 //: The names the site calls those types by, for the refusal that names
 //: them.  They are the site's names and not the browser's: a sentence
@@ -417,7 +432,16 @@ async function storeFile(file) {
 		return null;
 	}
 	const maxBytes = props.maxAttachmentSizeKb > 0 ? props.maxAttachmentSizeKb * 1024 : 0;
-	const refusal = checkAttachment(file, { types: attachableMimes.value, maxBytes });
+	// The type is resolved before the check: the browser reports the type
+	// the operating system files the document under, and on a Windows
+	// install a CSV arrives claiming an alias.  A check of the raw claim
+	// would refuse a file the site attaches, and a reader told to attach
+	// one is a reader refused for attaching one.
+	const mime = canonicalType(file, props.attachableTypes);
+	const refusal = checkAttachment({ type: mime, size: file.size }, {
+		types: attachableMimes.value,
+		maxBytes,
+	});
 	if (!refusal.ok) {
 		noticeText.value =
 			refusal.reason === REFUSED_SIZE
@@ -431,7 +455,7 @@ async function storeFile(file) {
 	uploading.value = true;
 
 	try {
-		const dataUrl = await readAsDataUrl(file);
+		const dataUrl = withType(await readAsDataUrl(file), mime);
 		const result = await window.frappe.call({
 			method: "albanna.api.widget.upload_file",
 			args: { file_data_url: dataUrl },
@@ -444,7 +468,7 @@ async function storeFile(file) {
 		return makeAttachment({
 			dataUrl,
 			name: file.name || __("Attached file"),
-			type: file.type || "",
+			type: mime,
 			size: file.size || 0,
 			fileUrl,
 			stored: true,
@@ -690,7 +714,7 @@ async function onChooseFile() {
 			<input
 				ref="fileInput"
 				type="file"
-				:accept="attachableMimes.join(',')"
+				:accept="attachableAccept"
 				class="albanna-chat__file-input"
 				@change="onChooseFile"
 			/>

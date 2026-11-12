@@ -75,6 +75,16 @@ class AttachableType:
     #: The name the type is called by when a sentence names it.
     name: str
 
+    #: The other types the same file may arrive claiming.  They are not
+    #: types of their own — nothing new is attached under them — they are
+    #: the names an operating system files the same document under: a CSV
+    #: on a Windows install is registered as ``application/vnd.ms-excel``,
+    #: and a browser there reports the file as one.  A rule that matched
+    #: only the canonical name would refuse a file the reader was told
+    #: they may attach, and the file picker, which filters on the names
+    #: published here, would not even show it.
+    aliases: tuple[str, ...] = ()
+
 
 #: The file types an attachment may carry.  Anything else is rejected
 #: rather than stored under a guessed extension: a broad accept would
@@ -93,7 +103,12 @@ ATTACHABLE_TYPES: tuple[AttachableType, ...] = (
     AttachableType("image/gif", ".gif", "GIF"),
     AttachableType("application/pdf", ".pdf", "PDF"),
     AttachableType("text/plain", ".txt", "plain text"),
-    AttachableType("text/csv", ".csv", "CSV"),
+    AttachableType(
+        "text/csv",
+        ".csv",
+        "CSV",
+        aliases=("application/vnd.ms-excel", "application/msexcel"),
+    ),
     AttachableType("text/markdown", ".md", "Markdown"),
     AttachableType("application/json", ".json", "JSON"),
 )
@@ -130,21 +145,57 @@ REQUIRED = "required"
 NOT_STORED = "not_stored"
 
 
+#: The names files arrive claiming that mean a type this site attaches.
+#:
+#: Built once, from the types' own aliases: a rule that kept a second
+#: list beside the first is a rule whose halves drift apart.
+_MIME_ALIASES: dict[str, str] = {
+    alias: candidate.mime
+    for candidate in ATTACHABLE_TYPES
+    for alias in candidate.aliases
+}
+
+#: The types indexed by the name they answer to.  Built once, for the
+#: same reason the aliases are: a lookup written as a loop is a lookup
+#: re-decided on every file.
+_BY_MIME: dict[str, AttachableType] = {candidate.mime: candidate for candidate in ATTACHABLE_TYPES}
+
+
+def canonical_mime(mime: str) -> str:
+    """The type a file is, whatever name it arrived claiming.
+
+    A CSV is a CSV whether the browser called it ``text/csv`` — the
+    canonical name — or ``application/vnd.ms-excel``, which is what a
+    Windows install registers the extension as.  A name that is no type
+    and no alias passes through unchanged: the caller's own rule decides
+    what to do with it, and this function invents nothing.
+    """
+    return _MIME_ALIASES.get(mime, mime)
+
+
 def attachable_type(mime: str) -> AttachableType | None:
     """The type the file is, if it is one this site attaches.
 
     :param mime the type the file claims to be
     :returns the type, or ``None`` when it is not one that may be attached
     """
-    for candidate in ATTACHABLE_TYPES:
-        if candidate.mime == mime:
-            return candidate
-    return None
+    return _BY_MIME.get(canonical_mime(mime))
 
 
 def attachable_mimes() -> tuple[str, ...]:
     """The types an attachment may carry, in the order they are named."""
     return tuple(candidate.mime for candidate in ATTACHABLE_TYPES)
+
+
+def attachable_aliases() -> tuple[str, ...]:
+    """The other names the attachable types arrive claiming.
+
+    They are published beside the types themselves, for the same reason
+    the types are: the browser is told the whole rule rather than
+    keeping a copy of it, and a file picker that filters on the types
+    alone filters out the very files the rule accepts.
+    """
+    return tuple(alias for candidate in ATTACHABLE_TYPES for alias in candidate.aliases)
 
 
 def attachable_names() -> tuple[str, ...]:
@@ -239,6 +290,8 @@ def attachment_text(data: bytes, mime: str, ceiling: int | None = TEXT_CEILING) 
     """
     if not data:
         return ""
+
+    mime = canonical_mime(mime)
 
     if mime == "application/pdf":
         text = _pdf_text(data)

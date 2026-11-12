@@ -27,10 +27,12 @@ from albanna.core.attachments import (
     TOO_LARGE,
     UNREADABLE,
     UNSUPPORTED_TYPE,
+    attachable_aliases,
     attachable_mimes,
     attachable_names,
     attachable_type,
     attachment_text,
+    canonical_mime,
     check_attachment,
     check_attachments,
     decode_data_url,
@@ -400,6 +402,51 @@ def test_the_names_are_the_names_a_sentence_uses():
         "Markdown",
         "JSON",
     )
+
+
+# -- the names a file arrives claiming -----------------------------------
+
+
+def test_a_csv_by_any_name_is_a_csv():
+    """A Windows install registers ``.csv`` as ``application/vnd.ms-excel``,
+    so the browser reports the file under a name that is not the
+    canonical one.  The rule answers to the alias rather than refusing a
+    file it publishes as attachable."""
+    assert attachable_type("application/vnd.ms-excel") is attachable_type("text/csv")
+    assert attachable_type("application/msexcel") is attachable_type("text/csv")
+
+
+def test_a_type_the_site_does_not_take_is_not_saved_by_an_alias():
+    """The aliases name the files that mean a type; they do not widen the
+    list.  An html file that arrived under any name is still refused."""
+    assert attachable_type("image/svg+xml") is None
+    assert attachable_type("text/html") is None
+
+
+def test_an_unknown_name_passes_through_the_resolver_unchanged():
+    assert canonical_mime("text/csv") == "text/csv"
+    assert canonical_mime("application/vnd.ms-excel") == "text/csv"
+    assert canonical_mime("image/svg+xml") == "image/svg+xml"
+    assert canonical_mime("") == ""
+
+
+def test_the_rule_accepts_a_csv_that_arrived_under_an_alias():
+    assert check_attachment("application/vnd.ms-excel", 10, 0) == ""
+
+
+def test_an_aliased_csv_is_still_read_as_text():
+    """The turn reads an attachment by the type its URL claims: a CSV
+    that arrived under the alias must be decoded as text, or the model is
+    told nothing about a file the reader was told was attached."""
+    body = "order,customer,total\nSAL-1,Acme,100.00\n"
+    assert attachment_text(body.encode("utf-8"), "application/vnd.ms-excel") == body
+
+
+def test_the_aliases_are_published_beside_the_types():
+    """The browser is told the whole rule rather than keeping a copy: a
+    file picker that filtered on the canonical types alone never showed
+    a CSV on a Windows install."""
+    assert attachable_aliases() == ("application/vnd.ms-excel", "application/msexcel")
 
 
 # -- the one rule --------------------------------------------------------

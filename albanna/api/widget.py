@@ -150,8 +150,18 @@ def options() -> dict[str, Any]:
         # The types the site attaches, published so the browser does not
         # keep a copy of them.  A browser that keeps a copy is a browser
         # whose copy goes stale, and a stale copy is a browser that
-        # accepts a file the server refuses.
+        # accepts a file the server refuses.  Each type travels with the
+        # other names the same file may arrive claiming and with its own
+        # extension, because a file picker that filters on the canonical
+        # type alone never shows a CSV on a Windows install, and a
+        # browser that cannot name a file's type can still read its name.
         "attachable_types": [
-            {"mime": candidate.mime, "name": candidate.name} for candidate in ATTACHABLE_TYPES
+            {
+                "mime": candidate.mime,
+                "name": candidate.name,
+                "extension": candidate.extension,
+                "aliases": list(candidate.aliases),
+            }
+            for candidate in ATTACHABLE_TYPES
         ],
     }

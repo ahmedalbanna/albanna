@@ -121,6 +121,125 @@ const RULES = { types: TYPES };
 	assert.equal(result.reason, REFUSED_TYPE);
 }
 
+// -- the type a file arrives claiming -------------------------------------
+
+import {
+	acceptFor,
+	canonicalType,
+	withType,
+} from "./attachments.mjs";
+
+// The site's published types, as the widget's options carry them: each
+// with the other names the same file may arrive claiming and the
+// extension it means.
+const PUBLISHED = [
+	{ mime: "image/png", name: "PNG", extension: ".png", aliases: [] },
+	{
+		mime: "text/csv",
+		name: "CSV",
+		extension: ".csv",
+		aliases: ["application/vnd.ms-excel", "application/msexcel"],
+	},
+	{ mime: "text/plain", name: "plain text", extension: ".txt", aliases: [] },
+];
+
+// A file the browser named canonically keeps its name.
+{
+	const type = canonicalType({ type: "text/csv", name: "orders.csv" }, PUBLISHED);
+	assert.equal(type, "text/csv");
+}
+
+// A CSV on a Windows install arrives claiming the name the system files
+// the document under — and it resolves to the type the site attaches.
+{
+	const type = canonicalType(
+		{ type: "application/vnd.ms-excel", name: "orders.csv" },
+		PUBLISHED,
+	);
+	assert.equal(type, "text/csv");
+}
+
+// The legacy alias resolves the same way.
+{
+	const type = canonicalType({ type: "application/msexcel", name: "a.csv" }, PUBLISHED);
+	assert.equal(type, "text/csv");
+}
+
+// A file the browser could not name is named by its own extension.
+{
+	const type = canonicalType({ type: "", name: "orders.CSV" }, PUBLISHED);
+	assert.equal(type, "text/csv");
+}
+
+// A claim nothing published answers to passes through unchanged: the
+// caller's own check refuses it, and the resolver invents nothing.
+{
+	const type = canonicalType({ type: "text/html", name: "page.html" }, PUBLISHED);
+	assert.equal(type, "text/html");
+}
+
+// A file that says nothing at all resolves to nothing.
+{
+	assert.equal(canonicalType({}, PUBLISHED), "");
+	assert.equal(canonicalType(undefined, PUBLISHED), "");
+}
+
+// A published list that is not a list resolves to the claim unchanged.
+{
+	assert.equal(canonicalType({ type: "text/csv", name: "a.csv" }), "text/csv");
+}
+
+// -- what a file picker filters on ------------------------------------------
+
+// The accept value carries the types, the aliases and the extensions: a
+// filter of the canonical types alone never shows a CSV on a Windows
+// install, because the system files that document under another name.
+{
+	const accept = acceptFor(PUBLISHED);
+	assert.equal(
+		accept,
+		"image/png,.png,text/csv,application/vnd.ms-excel,application/msexcel,.csv,text/plain,.txt",
+	);
+}
+
+// Nothing published is an empty filter, and nothing throws.
+{
+	assert.equal(acceptFor([]), "");
+	assert.equal(acceptFor(), "");
+}
+
+// -- the data URL claims the resolved type ----------------------------------
+
+// A URL built by the reader claims the type the browser reported, which
+// is the very claim the resolution corrected.  The header is rewritten;
+// the payload is untouched.
+{
+	const url = withType("data:application/vnd.ms-excel;base64,aGVsbG8=", "text/csv");
+	assert.equal(url, "data:text/csv;base64,aGVsbG8=");
+}
+
+// A URL that already claims the canonical type is untouched in meaning.
+{
+	const url = withType("data:text/csv;base64,aGVsbG8=", "text/csv");
+	assert.equal(url, "data:text/csv;base64,aGVsbG8=");
+}
+
+// A URL with no parameters after the type is rewritten whole.
+{
+	assert.equal(withType("data:text/csv,a,b", "text/plain"), "data:text/plain,a,b");
+}
+
+// A URL that is not a data URL is returned as it is.
+{
+	assert.equal(withType("", "text/csv"), "");
+	assert.equal(withType("not-a-data-url", "text/csv"), "not-a-data-url");
+}
+
+// Nothing to claim means the URL is returned as it is.
+{
+	assert.equal(withType("data:text/csv;base64,aGVsbG8=", ""), "data:text/csv;base64,aGVsbG8=");
+}
+
 // -- the shape of an attachment -----------------------------------------
 
 // An attachment carries the bytes, the name, the type, the size and the
