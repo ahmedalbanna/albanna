@@ -107,7 +107,7 @@ function loadBundle(el, config, options) {
 
 	if (window[MOUNT_FLAG]) {
 		mount(el, config, options);
-		flushPendingAsk();
+		if (typeof options.onReady === "function") options.onReady();
 		return;
 	}
 
@@ -122,7 +122,10 @@ function loadBundle(el, config, options) {
 	script.src = url;
 	script.onload = () => {
 		mount(el, config, options);
-		flushPendingAsk();
+		// The flush of a question asked before mount belongs to the
+		// launcher that holds it, so it arrives here as a callback
+		// rather than as a name this scope does not have.
+		if (typeof options.onReady === "function") options.onReady();
 	};
 	script.onerror = () => paintBootError(el, config, options);
 	document.head.appendChild(script);
@@ -389,6 +392,10 @@ async function boot() {
 				onContext: (context) => {
 					lastContext = context;
 				},
+				// loadBundle calls this once the app is listening; it is
+				// how a question asked before mount reaches the panel
+				// without this scope leaking a name to the loader.
+				onReady: flushPendingAsk,
 			};
 			loadBundle(mountPoint, config, options);
 		}

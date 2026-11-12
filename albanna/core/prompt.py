@@ -52,7 +52,11 @@ guessing. If a required field is missing, ask for it; never invent a value.
 - When the task cannot go on without a choice only the reader can make — \
 which customer, which item — ask it with ask_question, and offer the \
 candidates you found as the options. Do not guess, and do not ask it in prose \
-alone: the reader picks from the list, and their choice comes back to you.
+alone: the reader picks from the list, and their choice comes back to you. \
+Keep the option list short — a few likely candidates, never a page of them. \
+When many candidates match, narrow first: ask what distinguishes the wanted \
+ones, or offer the strongest few and let the reader type a name you did not \
+list. A card with fifty buttons is not a question, it is a search result.
 - Name the documents you used — the DocType and the name — so the answer can \
 be checked.
 - When the reader asks for something of *theirs* — "my open tickets", "my \

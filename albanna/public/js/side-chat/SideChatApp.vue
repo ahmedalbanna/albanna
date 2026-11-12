@@ -347,8 +347,16 @@ const freeDrafts = shallowReactive(new Map());
 
 /* The state of a question set being answered: which question is on
    screen, what has been chosen for each, and whether it is being sent.
-   Keyed by the set's key (its turn, or its first question's name). */
-const setStates = shallowReactive(new Map());
+   Keyed by the set's key (its turn, or its first question's name).
+   
+   This map is *deeply* reactive, on purpose.  A shallow map returns the
+   values it stored un-proxied, and Vue unwraps a reactive value to its
+   raw target the moment it is stored in a map — so a shallow map here
+   would hand back a plain object, and every choice the reader made
+   would be written where no render could see it: the button would never
+   light up, and Submit would never wake.  The values are read field by
+   field in the template, so the depth is what the depth is for. */
+const setStates = reactive(new Map());
 
 /**
  * The questions the reader has asked, oldest first.
