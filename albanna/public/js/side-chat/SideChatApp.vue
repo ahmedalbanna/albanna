@@ -448,7 +448,14 @@ const visibleQuestionSets = computed(() => {
 	}
 	const sets = [];
 	for (const [key, questions] of groups) {
-		questions.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+		// The order the questions were asked, not the order their row
+		// names happen to sort — a name is a hash, and sorting by it
+		// shuffles the wizard from one load to the next.
+		questions.sort((a, b) => {
+			const byAsked = String(a.askedAt || "").localeCompare(String(b.askedAt || ""));
+			if (byAsked) return byAsked;
+			return String(a.name).localeCompare(String(b.name));
+		});
 		sets.push({ key, questions });
 	}
 	return sets;
@@ -1641,6 +1648,10 @@ async function send(question) {
 				entry = {
 					stream_id: streamId,
 					conversation_id: conversationId.value,
+					// The page the turn was asked from, so that a reader
+					// who reloads mid-turn still sees where these were
+					// born — the same fact the live messages carry.
+					page: page,
 					question: text,
 				};
 				saveInflight(entry);
@@ -2436,6 +2447,9 @@ async function saveEdit() {
 	const entry = {
 		stream_id: queued.stream_id,
 		conversation_id: conversationId.value,
+		// The old question's page: the edit did not move the question,
+		// and a reader who reloads mid-turn still sees where it was born.
+		page: message.page_identity || "",
 		question: text,
 	};
 	saveInflight(entry);

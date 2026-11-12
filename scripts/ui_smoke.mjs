@@ -327,6 +327,12 @@ async function run({ playwrightPath, chrome, base, fixture }) {
 		check("the probe file is gone", (await probeStatus()) === 404);
 
 		log("The pending questions arrive as one card set");
+		// The wizard shows one question at a time, so there is one card
+		// element whose content follows the reader through the set.  It
+		// is found by position and held; the check below pins its
+		// *starting* content to the fixture's first question, so a
+		// regression in the set's order names itself instead of
+		// misaligning every later step.
 		const card = page.locator(".albanna-chat__question").first();
 		await card.waitFor({ timeout: 15000 });
 		const submit = card.locator(".albanna-chat__question-submit");
@@ -334,12 +340,34 @@ async function run({ playwrightPath, chrome, base, fixture }) {
 			.trim()
 			.replace(/\s+/g, " ");
 		check("the wizard starts at the first of two questions", progress === "1 / 2", progress);
+		const openingText = (await card.textContent().catch(() => "")).replace(/\s+/g, " ");
+		check(
+			"the wizard opens on the question that was asked first",
+			openingText.includes("SMOKE: pick a priority"),
+			openingText.trim().slice(0, 100),
+		);
 		check("Submit waits until every question is answered", await submit.isDisabled());
 
 		const option = (text) => card.locator(".albanna-chat__question-option", { hasText: text });
 		const selected = (text) =>
 			option(text).evaluate((el) => el.classList.contains("is-selected"));
-		await option("High").click();
+		try {
+			await option("High").click({ timeout: 15000 });
+		} catch (failure) {
+			// The card that failed is the card worth reading: dump every
+			// card's text and options, so a future flake names itself.
+			const cards = await page
+				.evaluate(() =>
+					Array.from(document.querySelectorAll(".albanna-chat__question")).map((el) => ({
+						text: (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 100),
+						options: Array.from(el.querySelectorAll(".albanna-chat__question-option")).map(
+							(o) => (o.textContent || "").trim(),
+						),
+					})),
+				)
+				.catch(() => []);
+			check("the wizard's first question is still on screen", false, JSON.stringify(cards));
+		}
 		check("the single choice takes one option", await selected("High"));
 		await option("Low").click();
 		check(

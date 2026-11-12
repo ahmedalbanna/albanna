@@ -44,6 +44,11 @@ export function questionCard(raw) {
 		answer: String(card.answer || ""),
 		answerValue: String(card.answer_value || ""),
 		multiple: Boolean(card.multiple),
+		// The moment the question was asked.  The wizard sorts its
+		// questions by it — a turn's questions are read in the order
+		// they were asked, not in the order their row names happen to
+		// sort, which is nothing but a hash.
+		askedAt: String(card.asked_at || ""),
 	};
 }
 

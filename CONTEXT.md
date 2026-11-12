@@ -2129,6 +2129,45 @@ pin had not taken or the panel had not noticed yet.  The panel says it now,
 in the server's words when the server said something and in the panel's
 own sentence when it did not.
 
+### 91. The question being edited is asked first, and replaced — never deleted first
+
+The reader who chose their words wrong does not lose the turn's place:
+the thread's last question is editable, and its answer is made again as
+a *new* turn.  The old pair is removed by the new turn's own **job**,
+inside the job, and not by the endpoint — an endpoint that deleted
+first and queued second would leave the reader with neither answer if
+the queue refused the job.  The removal is its own transaction,
+committed before the turn runs, because the turn loads its history
+from the database: a history that still held the replaced question
+would have the model read its own replaced words as still true.  A row
+that is already gone is not an error — the reader may have removed the
+turn between the endpoint's check and the job's pickup.
+
+Only the *last* question is editable, and only a question: an answer is
+not a thing to edit, and a question whose turn has not finished has no
+answer to replace yet.  What the new turn carries is read off the old
+row — the page the question was born on, its stored files and their
+texts — so an edit is not an invitation to re-derive or re-store
+anything.  The edit spends a rate-limit slot like any other turn, and
+it is queued through the same marker-and-enqueue path a plain question
+takes; the difference between the two is what the marker carries, not
+how the queue is spoken to.  (`albanna/api/chat.py`,
+`validate_regenerate`, `_replace_old_pair`; FR-6.11.)
+
+### 92. A day is the bigger break, and it is computed, not remembered
+
+A hairline with the day's name stands above the first message of each
+calendar day, judged by the *reader's* clock — `isDayStart` looks at
+neighbouring moments, counts midnights, and opens index 0 of the
+transcript always, because the day a window begins in may have started
+behind it.  Nothing is stored: the divider moves when an older page
+arrives, because it is a fact about what is on screen now, not a memory
+of what was on screen once.  A message whose time cannot be read opens
+nothing rather than opening something wrong.  When a day break and a
+turn break fall on the same message, the day takes the turn rule's
+place — a day is the bigger break, and two rules on one line is noise.
+(`albanna/public/js/side-chat/day-dividers.mjs`, pure and tested.)
+
 ## What is deliberately not here
 * **Document Q&A / retrieval.**  The connector indexes files and embeds them.
   It is a good feature and it is a separate one; v1 has no retrieval.

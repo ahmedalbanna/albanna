@@ -50,6 +50,13 @@ const half = questionCard({
 assert.equal(half.options.length, 1);
 assert.equal(half.options[0].value, "y");
 
+/* The moment the question was asked is carried on the card, because the
+   wizard reads its questions in the order they were asked.  A card that
+   arrives without it is still a card. */
+assert.equal(card.askedAt, "");
+const stamped = questionCard({ ...card, asked_at: "2026-11-12 19:31:01.075710" });
+assert.equal(stamped.askedAt, "2026-11-12 19:31:01.075710");
+
 /* -- answering --------------------------------------------------------- */
 
 assert.equal(canAnswer(card), true);
