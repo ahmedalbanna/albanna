@@ -301,6 +301,42 @@ def test_the_ollama_tool_arguments_are_an_object():
     assert tool["function"]["parameters"]["type"] == "object"
 
 
+PNG = "data:image/png;base64,aGVsbG8="
+PDF = "data:application/pdf;base64,cGRm"
+
+
+def test_the_ollama_images_travel_as_bare_base64():
+    """Ollama reads a picture from ``images``, not from a content part.
+
+    The canonical format wraps the bytes in a data URL; Ollama wants the
+    bytes alone.  A PDF never becomes an image, here or anywhere.
+    """
+    provider = OllamaProvider()
+    message = user("what is this", attachments=[PNG, PDF])
+    payload = provider._to_ollama(message, vision=True)
+    assert payload["images"] == ["aGVsbG8="]
+
+
+def test_the_ollama_drops_images_when_the_model_cannot_see():
+    provider = OllamaProvider()
+    config = ProviderConfig(kind="ollama", base_url="http://127.0.0.1:11434", model="m")
+    message = user("what is this", attachments=[PNG])
+    payload = provider._to_ollama(message, vision=config.supports_vision)
+    assert "images" not in payload
+
+
+def test_the_ollama_payload_passes_vision_from_the_config():
+    """The gate is the site's setting, carried on the provider config."""
+    provider = OllamaProvider()
+    seen = ProviderConfig(
+        kind="ollama", base_url="http://x", model="m", supports_vision=True
+    )
+    blind = ProviderConfig(kind="ollama", base_url="http://x", model="m")
+    message = user("what is this", attachments=[PNG])
+    assert "images" in provider._payload(seen, [message], [], stream=False)["messages"][0]
+    assert "images" not in provider._payload(blind, [message], [], stream=False)["messages"][0]
+
+
 # -- the registry ---------------------------------------------------------
 
 

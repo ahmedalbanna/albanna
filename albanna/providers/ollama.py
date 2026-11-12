@@ -14,6 +14,11 @@ else:
 The second one is why the canonical format carries ids: this adapter has to
 drop them on the way out, and the pairings are reconstructed from the order
 of the messages, which Ollama does preserve.
+
+A third difference is a picture: the canonical format wraps an image in
+a ``data:`` URL inside an ``image_url`` content part, while Ollama wants
+bare base64 in the message's ``images`` list.  The mapping happens in
+``_to_ollama``, and only when the site's settings say the model can see.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ from typing import Any
 
 import requests
 
+from albanna.core.attachments import base64_payload, is_image_data_url
 from albanna.core.errors import (
     ProviderError,
     ProviderRejected,
@@ -184,7 +190,9 @@ class OllamaProvider:
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": config.model,
-            "messages": [self._to_ollama(message) for message in messages],
+            "messages": [
+                self._to_ollama(message, vision=config.supports_vision) for message in messages
+            ],
             "stream": stream,
             "options": {"temperature": config.temperature},
         }
@@ -208,8 +216,23 @@ class OllamaProvider:
         # own keys win, so they cannot be overwritten from here.
         return merge_options(payload, config.extra_options)
 
-    def _to_ollama(self, message: Message) -> dict[str, Any]:
+    def _to_ollama(self, message: Message, vision: bool = False) -> dict[str, Any]:
         payload: dict[str, Any] = {"role": message.role, "content": message.content}
+        if vision and message.attachments:
+            # Ollama reads a picture from the message's ``images`` list,
+            # not from a content part.  The attachments a message carries
+            # are already pictures only — ``readable_attachments`` did
+            # that filtering before the message was built — but the claim
+            # is re-checked here rather than trusted, because a payload
+            # that is not a data URL has no base64 to strip.
+            images = [
+                base64_payload(url)
+                for url in message.attachments
+                if is_image_data_url(url)
+            ]
+            images = [image for image in images if image]
+            if images:
+                payload["images"] = images
         if message.tool_calls:
             payload["tool_calls"] = [
                 {

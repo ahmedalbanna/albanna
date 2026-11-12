@@ -213,7 +213,7 @@ def read_attachment_list(value: Any) -> tuple[list[str], bool]:
 TEXT_CEILING = 12000
 
 
-def attachment_text(data: bytes, mime: str) -> str:
+def attachment_text(data: bytes, mime: str, ceiling: int | None = TEXT_CEILING) -> str:
     """The text of an attachment, or ``""`` when there is none to get.
 
     A PDF is read with ``pypdf``, which is a dependency of Frappe itself
@@ -230,6 +230,12 @@ def attachment_text(data: bytes, mime: str) -> str:
     model answer as though it had read the document, which is the same
     "say what it could not read" property the app ships for refused
     reads.
+
+    *ceiling* is the most text the answer may hold.  The note's ceiling
+    is the note's: the text travels inside a prompt, once, and a longer
+    extract costs every turn that follows.  A read on demand has no such
+    arithmetic — its chunks are bounded by the read itself — so
+    ``read_file`` passes ``None`` and reads the whole document, in parts.
     """
     if not data:
         return ""
@@ -243,8 +249,8 @@ def attachment_text(data: bytes, mime: str) -> str:
         # by the provider, not here.
         return ""
 
-    if len(text) > TEXT_CEILING:
-        text = text[:TEXT_CEILING].rstrip()
+    if ceiling is not None and len(text) > ceiling:
+        text = text[:ceiling].rstrip()
     return text
 
 
@@ -288,6 +294,33 @@ def readable_attachments(data_urls: list[str]) -> list[str] | None:
     """
     kept = [url for url in (data_urls or []) if _mime_of(url) in IMAGE_MIME_TYPES]
     return kept or None
+
+
+def is_image_data_url(data_url: str) -> bool:
+    """Whether a data URL claims a picture type.
+
+    The claim is the browser's, not the bytes': a renamed ``.png`` that
+    is really a PDF claims ``image/png`` and reads as one here.  The
+    claim is still the right test for the wire, because the wire question
+    is "what part do I send" and the part is chosen by type, not by
+    content.
+    """
+    return _mime_of(data_url) in IMAGE_MIME_TYPES
+
+
+def base64_payload(data_url: str) -> str:
+    """The base64 a data URL carries, without its ``data:`` header.
+
+    Ollama's chat API takes a picture as bare base64 in the message's
+    ``images`` list — the same bytes the canonical format wraps in a
+    data URL, minus the wrapper.  ``""`` when there is no payload: a
+    URL without a header is not a data URL, and there is nothing to
+    send.
+    """
+    if not isinstance(data_url, str) or not data_url:
+        return ""
+    _, _, payload = data_url.partition(",")
+    return payload
 
 
 def _mime_of(data_url: str) -> str:
