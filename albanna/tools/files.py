@@ -48,6 +48,33 @@ from albanna.tools.erpnext import _file_for_url, _may_read_file, error, ok
 #: truncation of the whole result.
 READ_CHUNK_CHARS = MAX_RESULT_CHARS
 
+#: The most old content one edit keeps for its undo, in characters.
+#:
+#: The old content travels inside the turn's stored tool calls — the
+#: transcript row the undo later reads — and a file edited wholesale
+#: could be a book.  A ceiling on the *undo*, not on the edit: an edit of
+#: a file larger than this simply carries no undo entry, and the reader
+#: is never offered a button that cannot honestly restore what it names.
+UNDO_CONTENT_CHARS = 100_000
+
+
+def _old_content_for_undo(source) -> str | None:
+    """The content a file holds, for the turn's undo.
+
+    Returns ``None`` when there is nothing honest to keep: content that
+    cannot be read at all, or content that runs past the undo's ceiling.
+    ``None`` means "this edit cannot be undone" — never "the file was
+    empty", which is a real state and is kept as ``""``.
+    """
+    try:
+        raw = source.get_content()
+    except Exception:
+        return None
+    text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else str(raw or "")
+    if len(text) > UNDO_CONTENT_CHARS:
+        return None
+    return text
+
 
 def read_file(file: str, offset: Any = None) -> str:
     """Read the text of a stored file.
@@ -117,8 +144,7 @@ def read_file(file: str, offset: Any = None) -> str:
     text = attachment_text(content or b"", mime, ceiling=None)
     if not text:
         return error(
-            f"The file '{source.file_url or source.name}' holds no text that "
-            "could be extracted.",
+            f"The file '{source.file_url or source.name}' holds no text that could be extracted.",
             actionable=(
                 "It may be a scan — pictures of words, which read as no "
                 "words at all — or a binary kind this site cannot read. "
@@ -141,8 +167,7 @@ def read_file(file: str, offset: Any = None) -> str:
             start = 0
         if start >= total:
             return error(
-                f"The offset {start} is past the end of the file: it holds "
-                f"{total} characters.",
+                f"The offset {start} is past the end of the file: it holds {total} characters.",
                 actionable="Read again with a smaller offset, or without one.",
             )
 
@@ -285,6 +310,14 @@ def edit_file(file: str, content: str) -> str:
         )
 
     try:
+        # The content the file held, for the turn's undo.  Read *before*
+        # the replacement: after it the old bytes are gone.  An empty
+        # string is a real state — an empty file — and is kept; content
+        # that cannot be read, or that runs past the undo's own ceiling,
+        # leaves the edit without an undo entry rather than with a wrong
+        # one.
+        old_content = _old_content_for_undo(source)
+
         # Frappe's own replacement path: the same file name, the same
         # URL, new bytes, and the old content kept for the transaction's
         # rollback.  The save that follows persists the new hash and size.
@@ -293,13 +326,17 @@ def edit_file(file: str, content: str) -> str:
     except Exception as exc:
         return error(f"The file could not be changed: {exc}")
 
+    data = {
+        "name": source.name,
+        "file_url": source.file_url,
+        "file_name": source.file_name,
+        "is_private": bool(source.is_private),
+        "size": int(source.file_size or 0),
+    }
+    if old_content is not None:
+        data["before"] = {"content": old_content}
+
     return ok(
         f"Changed file '{source.file_url}'",
-        data={
-            "name": source.name,
-            "file_url": source.file_url,
-            "file_name": source.file_name,
-            "is_private": bool(source.is_private),
-            "size": int(source.file_size or 0),
-        },
+        data=data,
     )

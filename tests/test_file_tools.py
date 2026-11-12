@@ -339,3 +339,66 @@ def test_an_edit_of_a_missing_file_is_refused():
     result = _payload(files.edit_file("/files/nope.txt", "new text"))
     assert result["status"] == "error"
     assert "No file" in result["message"]
+
+
+# -- edit_file's undo ---------------------------------------------------------
+
+
+def _editable(monkeypatch, source):
+    """A source the account may change, going through Frappe's path."""
+    _found(monkeypatch, source)
+    monkeypatch.setattr(files.frappe, "has_permission", lambda *a, **k: True)
+
+
+def test_an_edit_keeps_the_old_content_for_the_undo(monkeypatch):
+    source = FakeFile(content=b"old text", file_url="/files/notes.txt")
+    source.save_file = lambda content, overwrite=False: None
+    source.save = lambda: None
+    _editable(monkeypatch, source)
+
+    result = _payload(files.edit_file("/files/notes.txt", "new text"))
+
+    assert result["status"] == "ok"
+    assert result["data"]["before"]["content"] == "old text"
+
+
+def test_an_empty_file_edit_keeps_an_empty_old_content(monkeypatch):
+    """An empty file is a real state; the undo may restore it."""
+    source = FakeFile(content=b"", file_url="/files/notes.txt")
+    source.save_file = lambda content, overwrite=False: None
+    source.save = lambda: None
+    _editable(monkeypatch, source)
+
+    result = _payload(files.edit_file("/files/notes.txt", "new text"))
+
+    assert result["status"] == "ok"
+    assert result["data"]["before"]["content"] == ""
+
+
+def test_an_edit_whose_old_content_cannot_be_read_carries_no_undo(monkeypatch):
+    source = FakeFile(content=b"old text", file_url="/files/notes.txt")
+
+    def broken(*args, **kwargs):
+        raise OSError("the bytes are not there")
+
+    source.get_content = broken
+    source.save_file = lambda content, overwrite=False: None
+    source.save = lambda: None
+    _editable(monkeypatch, source)
+
+    result = _payload(files.edit_file("/files/notes.txt", "new text"))
+
+    assert result["status"] == "ok"
+    assert "before" not in result["data"]
+
+
+def test_an_edit_of_a_file_past_the_undo_ceiling_carries_no_undo(monkeypatch):
+    source = FakeFile(content=("x" * (files.UNDO_CONTENT_CHARS + 1)).encode(), file_url="/files/notes.txt")
+    source.save_file = lambda content, overwrite=False: None
+    source.save = lambda: None
+    _editable(monkeypatch, source)
+
+    result = _payload(files.edit_file("/files/notes.txt", "new text"))
+
+    assert result["status"] == "ok"
+    assert "before" not in result["data"]

@@ -152,3 +152,103 @@ def test_spending_nothing_changes_nothing():
     calls = [{"name": "create_doc", "undo": {"action": "delete", "doctype": "Issue", "name": "I"}}]
 
     assert spend(calls, []) == calls
+
+
+# -- the file writes -----------------------------------------------------
+
+
+def test_a_file_a_turn_made_may_be_undone_by_deleting_it():
+    call = {
+        "name": "write_file",
+        "undo": {"action": "delete", "doctype": "File", "name": "2xbkdq"},
+    }
+
+    assert is_undoable(call) is True
+
+
+def test_a_file_another_tool_named_may_not_be_deleted_by_the_undo():
+    """The read recorded as a creation, in the file's own dialect."""
+    call = {
+        "name": "read_file",
+        "undo": {"action": "delete", "doctype": "File", "name": "2xbkdq"},
+    }
+
+    assert is_undoable(call) is False
+
+
+def test_a_file_a_turn_changed_may_be_undone_by_restoring_the_old_content():
+    call = {
+        "name": "edit_file",
+        "undo": {
+            "action": "restore_file",
+            "doctype": "File",
+            "name": "2xbkdq",
+            "data": {"content": "the old text"},
+        },
+    }
+
+    assert is_undoable(call) is True
+
+
+def test_an_empty_old_content_is_a_real_state_and_may_be_restored():
+    """An empty file is a file; restoring it is an honest undo."""
+    call = {
+        "name": "edit_file",
+        "undo": {
+            "action": "restore_file",
+            "doctype": "File",
+            "name": "2xbkdq",
+            "data": {"content": ""},
+        },
+    }
+
+    assert is_undoable(call) is True
+
+
+def test_a_restore_without_content_is_not_undoable():
+    call = {
+        "name": "edit_file",
+        "undo": {"action": "restore_file", "doctype": "File", "name": "2xbkdq", "data": {}},
+    }
+
+    assert is_undoable(call) is False
+
+    call = {
+        "name": "edit_file",
+        "undo": {"action": "restore_file", "doctype": "File", "name": "2xbkdq"},
+    }
+
+    assert is_undoable(call) is False
+
+
+def test_a_restore_claimed_by_another_tool_is_not_undoable():
+    call = {
+        "name": "update_doc",
+        "undo": {
+            "action": "restore_file",
+            "doctype": "File",
+            "name": "2xbkdq",
+            "data": {"content": "the old text"},
+        },
+    }
+
+    assert is_undoable(call) is False
+
+
+def test_spending_a_file_entry_takes_it_out_of_the_stored_calls():
+    calls = [
+        {
+            "name": "edit_file",
+            "undo": {
+                "action": "restore_file",
+                "doctype": "File",
+                "name": "2xbkdq",
+                "data": {"content": "the old text"},
+            },
+        }
+    ]
+
+    remaining = spend(calls, [{"action": "reverted", "doctype": "File", "name": "2xbkdq"}])
+
+    assert "undo" not in remaining[0]
+    assert remaining[0]["name"] == "edit_file"

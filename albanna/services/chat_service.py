@@ -1639,6 +1639,43 @@ def emit_tool_done(
     )
 
 
+def _file_undo_entry(call: ToolCall, result: ToolResult) -> dict[str, Any] | None:
+    """The undo of a file write, in the file's own dialect.
+
+    A file the turn *made* is taken back by deleting the record — the
+    same action a created document gets, but the doctype is named here
+    and not read from the arguments, because the file tools take no
+    doctype argument: the record is a File, and the tool's own name is
+    the authority.
+
+    A file the turn *changed* is taken back by writing the content it
+    held before the change.  That old content is the tool's own fact —
+    it read the file before it replaced it — and an edit without it
+    carries no entry at all.
+    """
+    if call.name == "write_file" and result.ok:
+        data = result.data
+        name = str((data or {}).get("name") or "").strip() if isinstance(data, dict) else ""
+        if name:
+            return {"action": "delete", "doctype": "File", "name": name}
+        return None
+
+    if call.name == "edit_file" and result.ok:
+        data = result.data
+        if isinstance(data, dict):
+            name = str(data.get("name") or "").strip()
+            before = data.get("before")
+            content = before.get("content") if isinstance(before, dict) else None
+            if name and isinstance(content, str):
+                return {
+                    "action": "restore_file",
+                    "doctype": "File",
+                    "name": name,
+                    "data": {"content": content},
+                }
+    return None
+
+
 def undo_entry(call: ToolCall, result: ToolResult) -> dict[str, Any] | None:
     """The undo this call carries, if it carries one.
 
@@ -1651,6 +1688,16 @@ def undo_entry(call: ToolCall, result: ToolResult) -> dict[str, Any] | None:
     The entry says what it wants; :func:`albanna.core.undo.is_undoable`
     says whether the tool that made the call may have it.
     """
+    if getattr(result, "dry_run", False):
+        # A dry run wrote nothing: the transaction the write ran in was
+        # rolled back, so an entry built here would name a record that
+        # does not exist — an undo whose first act is an error in the log.
+        return None
+
+    file_entry = _file_undo_entry(call, result)
+    if file_entry:
+        return file_entry
+
     created = _created_name(call, result)
     if created:
         return {

@@ -4587,6 +4587,113 @@ class TestUndo(AlbannaTestCase):
             "the undo was spent and must not be offered again",
         )
 
+    def test_a_file_the_turn_made_may_be_undone(self):
+        """A file the turn created is taken back by deleting the file record.
+
+        ``write_file`` is a creation in the file's own dialect: the record
+        is a File, the tool's own name is the authority, and the undo that
+        obeys the entry removes the record and the bytes behind it.  The
+        test runs the real tool through the real backend and follows the
+        same road the bulk test does — entry, transcript, undo, spent.
+        """
+        from albanna.api.conversations import undo_turn
+        from albanna.services.chat_service import tool_entry
+        from albanna.services.conversation_service import transcript_window
+
+        context = self._context(self.owner)
+        file_name = f"albanna-undo-{frappe.generate_hash(8)}.txt"
+        arguments = {"file_name": file_name, "content": "a file the turn made"}
+
+        result = self.backend.call(TOOL_MANIFEST.get("write_file"), arguments, context)
+        self.assertTrue(result.ok, result.content)
+        record = str((result.data or {}).get("name") or "")
+        self.assertTrue(record, result.content)
+
+        entry = tool_entry(self._call("write_file", arguments), result)
+        undo = entry.get("undo") or {}
+        self.assertEqual(undo.get("action"), "delete", f"no undo was built: {entry}")
+        self.assertEqual(undo.get("doctype"), "File", undo)
+
+        conversation, message = self._turn([entry])
+        window = transcript_window(conversation, 50)
+        self.assertTrue(
+            window["messages"][0]["tools"][0]["undoable"],
+            "the transcript did not offer the undo of a file the turn made",
+        )
+
+        taken = undo_turn(conversation=conversation, message=message)
+        self.assertTrue(taken["undone"], f"the undo took nothing back: {taken}")
+        self.assertFalse(
+            frappe.db.exists("File", record),
+            "the undo did not take the file away",
+        )
+
+        after = transcript_window(conversation, 50)
+        self.assertFalse(
+            after["messages"][0]["tools"][0]["undoable"],
+            "the undo was spent and must not be offered again",
+        )
+
+    def test_a_file_the_turn_changed_may_be_restored(self):
+        """A file the turn changed is taken back by writing the old content.
+
+        The old content lives on disk, not in a column, so the restore
+        goes through the same replacement path the edit went in by.  The
+        content the undo writes back is the content the tool read before
+        it replaced it — the tool's own fact, not the entry's guess.
+        """
+        from albanna.api.conversations import undo_turn
+        from albanna.services.chat_service import tool_entry
+        from albanna.services.conversation_service import transcript_window
+
+        self._as(self.owner)
+        old = "the content before the edit"
+        record = frappe.get_doc(
+            {
+                "doctype": "File",
+                "file_name": f"albanna-undo-{frappe.generate_hash(8)}.txt",
+                "content": old,
+                "is_private": 1,
+                "folder": "Home",
+            }
+        )
+        record.insert()
+        record_name = record.name
+        try:
+            context = self._context(self.owner)
+            arguments = {"file": record.file_url, "content": "the content after the edit"}
+            result = self.backend.call(TOOL_MANIFEST.get("edit_file"), arguments, context)
+            self.assertTrue(result.ok, result.content)
+
+            entry = tool_entry(self._call("edit_file", arguments), result)
+            undo = entry.get("undo") or {}
+            self.assertEqual(undo.get("action"), "restore_file", f"no undo was built: {entry}")
+            self.assertEqual((undo.get("data") or {}).get("content"), old, undo)
+
+            conversation, message = self._turn([entry])
+            window = transcript_window(conversation, 50)
+            self.assertTrue(
+                window["messages"][0]["tools"][0]["undoable"],
+                "the transcript did not offer the undo of an edit the turn made",
+            )
+
+            taken = undo_turn(conversation=conversation, message=message)
+            self.assertTrue(taken["undone"], f"the undo took nothing back: {taken}")
+
+            content = frappe.get_doc("File", record_name).get_content()
+            if isinstance(content, bytes):
+                content = content.decode("utf-8", "replace")
+            self.assertEqual(content, old, "the undo did not put the old content back")
+
+            after = transcript_window(conversation, 50)
+            self.assertFalse(
+                after["messages"][0]["tools"][0]["undoable"],
+                "the undo was spent and must not be offered again",
+            )
+        finally:
+            if frappe.db.exists("File", record_name):
+                frappe.delete_doc("File", record_name, force=True)
+
     def test_the_transcript_offers_the_undo_only_while_there_is_something_to_take_back(self):
         """The button disappears once the undo has been carried out.
 

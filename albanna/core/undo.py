@@ -18,6 +18,8 @@ So the rule is narrow, and it is the same rule everywhere:
 *   ``create_doc`` may be undone by deleting the document;
 *   ``update_doc`` and ``bulk_update_doc`` by writing the old values back;
 *   ``submit_doc`` by cancelling;
+*   ``write_file`` by deleting the file it created;
+*   ``edit_file`` by writing the file's old content back;
 *   nothing else may be undone at all.
 
 A cancel is not an undo, an amend is not an undo, and a delete cannot be
@@ -45,10 +47,11 @@ from typing import Any
 #: The mapping is the rule; a stored entry that asks for an action its own
 #: tool does not allow is refused.
 UNDO_BY_ACTION: dict[str, tuple[str, ...]] = {
-    "delete": ("create_doc",),
+    "delete": ("create_doc", "write_file"),
     "update": ("update_doc",),
     "update_many": ("bulk_update_doc",),
     "cancel": ("submit_doc",),
+    "restore_file": ("edit_file",),
 }
 
 
@@ -102,6 +105,20 @@ def is_undoable(call: Any) -> bool:
             if not name or not isinstance(data, dict) or not data:
                 return False
         return True
+
+    if action == "restore_file":
+        name = str(undo.get("name") or "").strip()
+        if not name:
+            return False
+        data = undo.get("data")
+        if not isinstance(data, dict):
+            return False
+        content = data.get("content")
+        # The old content is the only thing the restore has to write
+        # back, so an entry without it is an entry that cannot honestly
+        # restore anything.  An empty string is a real value — an empty
+        # file is a file — and it is accepted.
+        return isinstance(content, str)
 
     # ``delete`` and ``cancel`` act on one named document, so the name is
     # the last thing checked before the entry is accepted.

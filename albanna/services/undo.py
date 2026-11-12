@@ -7,7 +7,9 @@ one is a single document action:
 
 *   a creation is undone by deleting the document;
 *   a change is undone by writing the old values back;
-*   a submission is undone by cancelling the document.
+*   a submission is undone by cancelling the document;
+*   a file the turn made is undone by deleting the file;
+*   a file the turn changed is undone by writing the old content back.
 
 Only calls that carried an undo entry *and* came from a tool that may be
 undone are reverted.  Reads, refused writes, cancels, amends and deletes
@@ -193,6 +195,20 @@ def _take_back(undo: dict[str, Any]) -> dict[str, Any] | None:
         if doc.docstatus == 1:
             doc.cancel()
             return {"action": "cancelled", "doctype": doctype, "name": name}
+
+    if action == "restore_file":
+        # A file's content lives on disk, not in a column, so writing a
+        # field back would restore nothing: the replacement goes through
+        # the same path the edit went in by — the same file name, the
+        # same URL, the old bytes.  An empty string restores an *empty*
+        # file, which is a real state the edit may have replaced.
+        content = (undo.get("data") or {}).get("content")
+        if not isinstance(content, str):
+            return None
+        doc = frappe.get_doc("File", name)
+        doc.save_file(content=content, overwrite=True)
+        doc.save()
+        return {"action": "reverted", "doctype": doctype, "name": name}
 
     return None
 
