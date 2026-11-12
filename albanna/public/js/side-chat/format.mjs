@@ -29,7 +29,7 @@ export function currentLocale() {
  *   Date
  * @returns {Date|null} the moment, or null when it could not be read
  */
-function toDate(value) {
+export function toDate(value) {
 	if (!value) return null;
 
 	if (typeof value === "number") {
