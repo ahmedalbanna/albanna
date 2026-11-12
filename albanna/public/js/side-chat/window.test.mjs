@@ -7,6 +7,7 @@
 import assert from "node:assert";
 import {
 	TRANSCRIPT_WINDOW,
+	behindCount,
 	mergeOlder,
 	oldestIdx,
 	olderRequest,
@@ -77,6 +78,24 @@ function stored(idx, role = "user") {
 	assert.equal(oldestIdx([{ role: "user" }]), 0);
 	assert.equal(oldestIdx([]), 0);
 	assert.equal(oldestIdx(null), 0);
+}
+
+// The count behind the window is the conversation's total minus what is
+// on screen, stored rows only.
+{
+	assert.equal(behindCount([stored(120), stored(121)], 122), 120);
+	// The turn being answered is not stored yet and is the *newest* row;
+	// it must not be counted as behind.
+	assert.equal(behindCount([stored(120), { idx: 0, role: "assistant" }], 121), 120);
+	// Nothing behind: the window holds the whole thread.
+	assert.equal(behindCount([stored(1), stored(2)], 2), 0);
+	// A total the response did not carry, or a stale one smaller than the
+	// window, is no count at all — the button falls back to its generic
+	// label rather than promising a negative number of messages.
+	assert.equal(behindCount([stored(1)], 0), 0);
+	assert.equal(behindCount([stored(1), stored(2)], 1), 0);
+	assert.equal(behindCount(null, 30), 30);
+	assert.equal(behindCount([stored(1)], null), 0);
 }
 
 console.log("window: all assertions passed");

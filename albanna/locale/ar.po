@@ -405,6 +405,15 @@ msgstr "تعذّر تحميل الرسائل السابقة."
 msgid "Show the earlier messages"
 msgstr "اعرض الرسائل السابقة"
 
+msgid "Show {0} earlier messages"
+msgstr "اعرض {0} رسالة سابقة"
+
+msgid "{0}s"
+msgstr "{0} ث"
+
+msgid "Type a question to send"
+msgstr "اكتب سؤالاً للإرسال"
+
 msgid "Loading…"
 msgstr "جارٍ التحميل…"
 

@@ -61,7 +61,7 @@ import Composer from "./Composer.vue";
 import ConversationDrawer from "./ConversationDrawer.vue";
 import { pageIdentity, resolveContext } from "./context.mjs";
 import { examplesFor } from "./examples.mjs";
-import { clockTime } from "./format.mjs";
+import { activityText, clockTime } from "./format.mjs";
 import { conversationToMarkdown, exportFilename } from "./export.mjs";
 import { renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js";
 import { stopPlan } from "./stop.mjs";
@@ -89,7 +89,7 @@ import { canDecide, remainingSeconds } from "./approval.mjs";
 import { turnAttachments } from "./attachments.mjs";
 import { documentRoute, moreText, namedDocuments, unnamedCount } from "./nudge.mjs";
 import { answerMessage, canAnswer, questionCard } from "./question.mjs";
-import { mergeOlder, oldestIdx, olderRequest, windowRequest } from "./window.mjs";
+import { mergeOlder, oldestIdx, olderRequest, windowRequest, behindCount } from "./window.mjs";
 import {
 	beginTurn,
 	clearTranscript,
@@ -274,6 +274,23 @@ watch(currentPage, async () => {
  * not hidden; it is simply not drawn until it is asked for.
  */
 const hasOlder = ref(false);
+
+/**
+ * How many messages are behind the window, when the server said.
+ *
+ * The server counts them with every window it hands over; the button at
+ * the top of the transcript names the number, so "show the earlier
+ * messages" is a fact and not a hope.  Zero reads as unknown, and the
+ * button keeps its generic sentence.
+ */
+const olderCount = ref(0);
+
+/** What the button at the top of the transcript says. */
+const earlierLabel = computed(() =>
+	olderCount.value > 0
+		? __("Show {0} earlier messages", [olderCount.value])
+		: __("Show the earlier messages"),
+);
 
 /** Whether the older page is being fetched. */
 const loadingOlder = ref(false);
@@ -581,6 +598,44 @@ function isImageSrc(src) {
 	return /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(src);
 }
 
+/**
+ * Whether the message at `index` opens a new exchange.
+ *
+ * A turn is a question and its answer; the thread is a sequence of them.
+ * A question that follows an answer opens a new exchange, and the
+ * divider between them is what keeps a long thread readable — the reader
+ * can see where one "asked / answered" ends and the next begins.  The
+ * first message opens nothing and carries no divider.
+ *
+ * @param {number} index the message's position in the transcript
+ * @returns {boolean} true when a divider belongs above the message
+ */
+function isTurnStart(index) {
+	if (index <= 0) return false;
+	const previous = state.messages[index - 1];
+	const message = state.messages[index];
+	return message.role === "user" && previous.role === "assistant";
+}
+
+/**
+ * The activity line's text, with the turn's age.
+ *
+ * What the turn is doing, and — once it has been doing it for a few
+ * seconds — for how long.  The panel's one clock (`now`, ticking every
+ * second) is what makes the count move; without it the tail would be a
+ * frozen number, which is worse than no number.
+ *
+ * @param {object} message the turn's answer, still pending
+ * @returns {string} the line's text
+ */
+function activityLine(message) {
+	return activityText(
+		state.activity || __("Thinking"),
+		message && message.at,
+		now.value,
+	);
+}
+
 function openSource(doc) {
 	if (!doc || !doc.name) return;
 	try {
@@ -648,6 +703,7 @@ async function undoTurn(message) {
 		if (rows.length) {
 			state.messages = rows.map(messageFromServer);
 			hasOlder.value = !!(result && result.has_more);
+			olderCount.value = behindCount(state.messages, result && result.total);
 		}
 	} catch (failure) {
 		state.error = failureText(failure, __("Could not undo this turn."));
@@ -731,6 +787,10 @@ function makeMessage(role, content, at) {
 		cost: null,
 	});
 	message.time = clockTime(at || Date.now() / 1000);
+	// The same moment, as the activity line reads it: a turn that is
+	// running shows how long it has been running, and the count needs the
+	// epoch, not the formatted clock.
+	message.at = at || Date.now() / 1000;
 	setContent(message, content || "");
 	return message;
 }
@@ -1627,6 +1687,7 @@ async function loadEarlier() {
 		const older = (result.messages || []).map((message) => messageFromServer(message));
 		state.messages = mergeOlder(state.messages, older);
 		hasOlder.value = !!(result && result.has_more);
+		olderCount.value = behindCount(state.messages, result && result.total);
 
 		// The messages that were on screen have moved down; the scroll
 		// moves with them, so the reader is looking at the same thing.
@@ -2069,6 +2130,7 @@ async function openConversation(conversation) {
 		});
 		rememberQuestions(state.messages);
 		hasOlder.value = !!(result && result.has_more);
+		olderCount.value = behindCount(state.messages, result && result.total);
 		view.value = "chat";
 		followBottom.value = true;
 		scrollToBottom(true);
@@ -2232,6 +2294,7 @@ async function deleteTurn(message) {
 		const rows = (result && result.messages) || [];
 		state.messages = rows.map(messageFromServer);
 		hasOlder.value = !!(result && result.has_more);
+		olderCount.value = behindCount(state.messages, result && result.total);
 		state.notice = "removed";
 	} catch (failure) {
 		state.error = failureText(failure, __("Something went wrong."));
@@ -2351,6 +2414,7 @@ async function loadPageConversation() {
 		});
 		rememberQuestions(state.messages);
 		hasOlder.value = !!(result && result.has_more);
+		olderCount.value = behindCount(state.messages, result && result.total);
 		followBottom.value = true;
 		scrollToBottom(true);
 		// The questions of this thread that are still waiting: a question
@@ -2684,7 +2748,7 @@ onBeforeUnmount(() => {
 				:disabled="loadingOlder"
 				@click="loadEarlier"
 			>
-				{{ loadingOlder ? __("Loading…") : __("Show the earlier messages") }}
+				{{ loadingOlder ? __("Loading…") : earlierLabel }}
 			</button>
 			<div
 				ref="transcriptEl"
@@ -2758,10 +2822,13 @@ onBeforeUnmount(() => {
 				</div>
 
 				<div
-					v-for="message in state.messages"
+					v-for="(message, index) in state.messages"
 					:key="message.id"
 					class="albanna-chat__message"
-					:class="`albanna-chat__message--${message.role}`"
+					:class="[
+						`albanna-chat__message--${message.role}`,
+						isTurnStart(index) ? 'albanna-chat__message--turn-start' : '',
+					]"
 					:data-message-id="message.id"
 				>
 					<!-- The avatar marks whose words these are: the assistant's
@@ -2804,7 +2871,7 @@ onBeforeUnmount(() => {
 						>
 							<span class="albanna-chat__spinner" aria-hidden="true"></span>
 							<span class="albanna-chat__activity-text">{{
-								state.activity
+								activityLine(message)
 							}}</span>
 						</div>
 

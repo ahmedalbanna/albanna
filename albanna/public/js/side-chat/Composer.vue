@@ -6,6 +6,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 
 import { checkAttachment, makeAttachment, REFUSED_SIZE, storeAll } from "./attachments.mjs";
 import { serverMessage } from "./errors.mjs";
+import { middleTruncate } from "./format.mjs";
 import { MAX_SESSION_MS, mergeTranscript, readResults, voiceErrorText } from "./voice.mjs";
 import { DEFAULT_QUESTION_LENGTH, submitDecision } from "./submit.mjs";
 
@@ -266,6 +267,20 @@ const ceiling = computed(() =>
 const questionLength = computed(() => String(props.modelValue || "").trim().length);
 const nearLimit = computed(() => questionLength.value > ceiling.value * 0.8);
 const overLimit = computed(() => questionLength.value > ceiling.value);
+
+/**
+ * What the send button says when it is pointed at.
+ *
+ * A disabled button with no title reads as broken; one that says why it
+ * is disabled reads as waiting.  While a turn runs the button is the
+ * stop, and the title says so; with an empty field it says what is
+ * missing rather than staying silent.
+ */
+const sendTitle = computed(() => {
+	if (props.busy) return __("Stop");
+	if (!props.modelValue.trim() && !props.files.length) return __("Type a question to send");
+	return __("Send");
+});
 const uploading = ref(false);
 // Whether a file is being dragged over the composer's field.  The field
 // is the drop target, and without a visible affordance the reader cannot
@@ -539,8 +554,8 @@ async function onChooseFile() {
 						/>
 					</svg>
 				</span>
-				<span class="albanna-chat__attach-chip-name">{{
-					file.name.length > 24 ? file.name.slice(0, 24) + "…" : file.name
+				<span class="albanna-chat__attach-chip-name" :title="file.name">{{
+					middleTruncate(file.name)
 				}}</span>
 				<span class="albanna-chat__attach-chip-size"
 					>{{ (file.size / 1024).toFixed(1) }} KB</span
@@ -685,7 +700,7 @@ async function onChooseFile() {
 				:class="{ 'albanna-chat__send--stop': busy }"
 				:disabled="!busy && (!canChat || (!modelValue.trim() && !props.files.length))"
 				:aria-label="busy ? __('Stop') : __('Send')"
-				:title="busy ? __('Stop') : __('Send')"
+				:title="sendTitle"
 				@click="onAction"
 			>
 				<svg

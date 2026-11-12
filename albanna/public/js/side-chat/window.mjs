@@ -82,3 +82,26 @@ export function oldestIdx(messages) {
 		.filter((index) => index > 0);
 	return indexes.length ? Math.min(...indexes) : 0;
 }
+
+/**
+ * How many messages are behind the window.
+ *
+ * The server says how many the conversation holds (``total``) and whether
+ * any are older than the window (``has_more``); the count behind is the
+ * total minus the window.  A message that has not been stored yet — the
+ * question being answered now — has no index, and it is the *newest* one,
+ * so it is not behind anything.
+ *
+ * A count the button can name turns "show the earlier messages" from a
+ * hope into a fact: the reader sees how much of their thread is behind
+ * the window before they click.
+ *
+ * @param {object[]} messages the messages on screen
+ * @param {number} total how many messages the conversation holds
+ * @returns {number} the count behind the window, 0 when nothing is behind
+ */
+export function behindCount(messages, total) {
+	const shown = (messages || []).filter((message) => Number(message.idx) > 0).length;
+	const all = Number(total) || 0;
+	return all > shown ? all - shown : 0;
+}

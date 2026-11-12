@@ -422,9 +422,13 @@ body.albanna-side-chat-docked-inline-start {
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow-y: auto;
-	padding: 14px 12px;
+	padding: 6px 12px 14px;
 	display: flex;
 	flex-direction: column;
+	/* The turn is the unit: a question and its answer are one exchange,
+	 * and a thread of them has to read as a sequence and not as a wall.
+	 * The gap between the messages of one turn is small; the gap between
+	 * turns is a quiet divider (``.albanna-chat__message--turn-start``). */
 	gap: 14px;
 	/* A scrollbar the width of a hair: the thread is the thing to look
 	 * at, and the browser's default gutter is a slab of chrome down the
@@ -529,6 +533,17 @@ body.albanna-side-chat-docked-inline-start {
 	gap: 8px;
 }
 
+/* A new exchange opens with a quiet rule, so a long thread reads as a
+ * sequence of turns and not as a wall of messages.  The line spans the
+ * reading column — the transcript's own side padding, not the scrollbar
+ * gutter — and there is no label: the question's own bubble already says
+ * where one turn ends and the next begins. */
+.albanna-chat__message--turn-start {
+	margin-top: 10px;
+	padding-top: 12px;
+	border-top: 1px solid var(--albanna-border, #ededed);
+}
+
 .albanna-chat__message--user {
 	flex-direction: row-reverse;
 }
@@ -627,6 +642,15 @@ body.albanna-side-chat-docked-inline-start {
 
 .albanna-chat__bubble p {
 	margin: 0 0 6px;
+}
+
+/* The answer is prose on the page: its lines run at a reading length and
+ * a reading rhythm, not at the panel's full width.  A 400px panel with
+ * 13px type puts ~70 characters on a line, which is the top of the
+ * comfortable range; the leading keeps a paragraph of it from reading as
+ * a block. */
+.albanna-chat__message--assistant .albanna-chat__bubble {
+	line-height: 1.55;
 }
 
 .albanna-chat__bubble p:last-child {
@@ -790,6 +814,35 @@ body.albanna-side-chat-docked-inline-start {
 	font-weight: 600;
 }
 
+/* A wide table keeps its first column while it scrolls.
+ *
+ * The first column is usually the *name* — the document, the customer —
+ * and the columns worth scrolling to are to the side of it.  A reader who
+ * scrolls right to see a total should not lose the row they are reading
+ * the total *for*: the name travels with them, the way a spreadsheet
+ * freezes its panes.
+ *
+ * The cell needs its own background, or the columns sliding under it
+ * show through; the surface follows the theme, so dark mode is covered.
+ * The inline-end edge is drawn on the cell rather than left to the
+ * collapse, so the line the columns slide under travels with the frozen
+ * column.  (`inset-inline-start` is logical, so the RTL sheet has
+ * nothing to mirror: the column freezes on the reading side in both
+ * directions.) */
+.albanna-chat__bubble th:first-child,
+.albanna-chat__bubble td:first-child {
+	position: sticky;
+	inset-inline-start: 0;
+	z-index: 1;
+	background: var(--albanna-surface, #fff);
+	border-inline-end: 1px solid var(--albanna-border, #ededed);
+}
+
+/* The frozen header cell keeps the header's own fill. */
+.albanna-chat__bubble th:first-child {
+	background: var(--albanna-hover, #f3f3f3);
+}
+
 /* The reader's own words keep the bubble — it is what marks them as
  * theirs, now that the answer has none.  The tail points at the
  * speaker's mark. */
@@ -878,6 +931,25 @@ body.albanna-side-chat-docked-inline-start {
 	display: flex;
 	align-items: baseline;
 	gap: 6px;
+}
+
+/* How the call ended, at a glance: a dot before the row.  Quiet grey for
+ * a call that answered, the error ink for one that did not — so the
+ * disclosure reads as a list of outcomes and not as a wall of words. */
+.albanna-chat__tool::before {
+	content: "";
+	flex: 0 0 auto;
+	align-self: center;
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: var(--albanna-muted, #6c7680);
+	opacity: 0.55;
+}
+
+.albanna-chat__tool--failed::before {
+	background: var(--albanna-error-text, #a1231f);
+	opacity: 1;
 }
 
 .albanna-chat__tool-label {
@@ -1970,7 +2042,9 @@ body.albanna-side-chat-docked-inline-start {
 	color: var(--albanna-muted, #6c7680);
 }
 
-/* First-run tour. */
+/* First-run tour.  It is the nudge's sibling: the same card, the same
+ * radius, the same border — the empty state is one family of cards, and
+ * three shapes would read as three unrelated widgets. */
 .albanna-chat__tour {
 	margin: 0 0 8px;
 	padding: 8px 10px;
@@ -1978,7 +2052,8 @@ body.albanna-side-chat-docked-inline-start {
 	line-height: 1.4;
 	color: var(--albanna-text, #1f2328);
 	background: var(--albanna-hover, #f2f4f5);
-	border-radius: 6px;
+	border: 1px solid var(--albanna-border, #ededed);
+	border-radius: 10px;
 	display: flex;
 	align-items: center;
 	gap: 8px;
@@ -2058,6 +2133,14 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__source:hover {
 	background: var(--albanna-hover, #f3f3f3);
 	border-color: var(--albanna-muted, #6c7680);
+}
+
+/* A pill reached by keyboard reads as reached, the way a hovered one
+ * reads as pointed at. */
+.albanna-chat__source:focus-visible {
+	outline: none;
+	border-color: var(--albanna-accent, #171717);
+	box-shadow: 0 0 0 2px var(--albanna-focus-ring, rgba(23, 23, 23, 0.08));
 }
 
 /* A question the assistant asked, waiting for the reader's answer.
@@ -2252,7 +2335,8 @@ body.albanna-side-chat-docked-inline-start {
 	cursor: not-allowed;
 }
 
-/* Proactive nudge. */
+/* Proactive nudge.  The tour's sibling: one family of cards for the
+ * empty state. */
 .albanna-chat__nudge {
 	margin: 0 0 8px;
 	padding: 8px 10px;
@@ -2260,7 +2344,8 @@ body.albanna-side-chat-docked-inline-start {
 	line-height: 1.4;
 	color: var(--albanna-text, #1f2328);
 	background: var(--albanna-accent-soft, #f3f3f3);
-	border-radius: 6px;
+	border: 1px solid var(--albanna-border, #ededed);
+	border-radius: 10px;
 	display: flex;
 	flex-direction: column;
 	align-items: flex-start;
