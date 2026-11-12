@@ -9,7 +9,7 @@ bench --site <your-site> migrate
 bench build --app albanna
 ```
 
-## The two suites
+## The three suites
 
 ```bash
 cd apps/albanna
@@ -19,12 +19,34 @@ cd apps/albanna
 
 # The site suite: needs a site with ERPNext installed.
 bench --site <your-site> run-tests --app albanna
+
+# The smoke suite: needs a site, a browser, and (once) the configured
+# model.  Boots its own dev server on a scratch port.
+node scripts/ui_smoke.mjs
 ```
 
 The split is deliberate.  `core/` may not import Frappe, and everything
 that can be tested without a site is tested without one — so the suite that
 runs on every save stays fast, and the suite that needs a database holds
 only the things that genuinely do.
+
+The smoke suite holds the properties that only exist once a real Desk, a
+real login and a real bundle are involved: the panel opening on the
+reader's most recent thread, the "Asked from" chip, the transcript
+window and its turn dividers, the file-write undo, the question wizard,
+and the ticking activity clock.  It seeds its own fixture
+(`albanna/tests/ui_seed.py`, idempotent), drives the widget with a
+headless Chromium, and **skips — loudly, with exit 0 — when no browser is
+resolvable**: a missing capability is not a failing property.  Set
+`ALBANNA_SMOKE_NODE_MODULES` to a directory containing `playwright-core`
+and `ALBANNA_SMOKE_CHROME` to a Chrome binary when the defaults do not
+resolve; `ALBANNA_SMOKE_SITE` picks the site (default `test.localhost`).
+
+Run it after any change to the side chat's client code or its
+conversation, question and undo services.  The one check that reaches
+beyond the site is the last one: submitting the seeded question answers
+sends a real turn to the configured model, because a ticking clock can
+only be watched on a turn that runs.
 
 ## The rules that matter
 

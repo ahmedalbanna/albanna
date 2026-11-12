@@ -420,7 +420,7 @@ vhost has had both for a while; this one did not.
 
 ## Development
 
-Two suites, two commands, two purposes.
+Three suites, three depths.
 
 ```bash
 cd apps/albanna
@@ -441,6 +441,16 @@ python3 scripts/check_translations.py              # the Arabic catalogue agains
 ```bash
 bench --site test.localhost run-tests --app albanna  # the site suite
 ```
+
+```bash
+node scripts/ui_smoke.mjs  # the smoke suite: the real widget, headless, end to end
+```
+
+The smoke suite boots its own dev server on a scratch port, seeds its own
+fixture, and drives the panel the way a reader does — opening threads,
+walking back through the window, undoing a write, answering the wizard.
+It skips loudly when no browser is resolvable; see `CONTRIBUTING.md`
+for the knobs.
 
 The **domain suite** lives in `apps/albanna/tests/` and is plain pytest: no
 Frappe, no database, no network.  It covers the parts that are easy to get
@@ -464,6 +474,25 @@ involved:
 
 Three of those broke while the app was being built, and none of them
 announced itself.  That is the argument for the file.
+
+The **smoke suite** is `scripts/ui_smoke.mjs`, with its fixture in
+`albanna/tests/ui_seed.py`.  It covers the properties that only exist once
+a real Desk, a real login and a real bundle are involved:
+
+*   the panel opens the reader's most recent thread on mount,
+*   a message asked from another page carries its "Asked from" chip,
+*   a thread longer than the window offers "Show N earlier messages" with
+    the true count, and the page behind it carries its turn dividers,
+*   moving through the Desk leaves the transcript exactly as it was,
+*   a turn that wrote a file offers Undo, and taking it back deletes the
+    file and spends the button,
+*   the pending questions arrive as one wizard — single choice replaces,
+    multiple toggles, Submit waits for every answer — and submitting
+    sends one real turn whose activity clock ticks.
+
+It found the first of those bugs on its first committed run: questions
+asked in one turn arrived as separate cards after a reload, because
+`pending()` never returned the turn they were asked in.
 
 ### Translations
 
