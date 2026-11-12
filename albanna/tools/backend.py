@@ -169,8 +169,11 @@ class ErpnextBackend:
         current = str(getattr(frappe.session, "user", "") or "").strip()
         if current != user:
             # The request's own session is the right one; set it rather than
-            # run the tool as somebody else.
-            frappe.set_user(user)
+            # run the tool as somebody else.  ``user`` comes from the
+            # authenticated principal of the caller (see above), never from
+            # model output, so setting the session to it can only narrow to
+            # or match the person who asked.
+            frappe.set_user(user)  # nosemgrep: frappe-setuser
 
     def _invoke(
         self,

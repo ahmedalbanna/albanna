@@ -92,7 +92,11 @@ def _copy_across(doctype: str, old: str, new: str, numeric: bool) -> None:
     else:
         where = f"ifnull(`{new}`, '') = '' and ifnull(`{old}`, '') != ''"
 
-    frappe.db.sql(  # nosemgrep: identifiers are module constants
+    # The interpolated names are column and doctype identifiers taken from
+    # module constants, never from anything a caller supplied; SQL parameters
+    # cannot carry identifiers, so an f-string is the only way to build this
+    # statement.  The values written are copied between two fixed columns.
+    frappe.db.sql(  # nosemgrep
         f"update `tab{doctype}` set `{new}` = `{old}` where {where}"
     )
 

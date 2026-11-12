@@ -175,7 +175,10 @@ def _replace_old_pair(conversation_id: str, replace_message: str) -> None:
             replace_message,
         )
         return
-    frappe.db.commit()
+    # The removal must be durable before the turn runs: the turn reads its
+    # history from the database, and an uncommitted removal would have the
+    # model read the very words it was asked to replace (see above).
+    frappe.db.commit()  # nosemgrep
 
 
 def _realtime_emit(stream_id: str, user: str):
