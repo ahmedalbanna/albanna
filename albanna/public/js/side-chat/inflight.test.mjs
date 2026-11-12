@@ -2,7 +2,7 @@
 //
 // The rule under test: a reader who reloads during a turn finds the
 // turn again — every turn they asked, not only the last one, and only
-// the turns of the page they are on.
+// the turns of the thread they are reading.
 
 import assert from "node:assert";
 import {
@@ -14,7 +14,6 @@ import {
 	removeInflight,
 	saveInflight,
 	turnsForConversation,
-	turnsForPage,
 } from "./inflight.mjs";
 
 /** A storage that keeps what it is given, like a browser's. */
@@ -156,8 +155,9 @@ const turn = {
 	assert.deepEqual(loadInflightTurns(storage), []);
 }
 
-// The turns of one conversation — including the page's own thread, whose
-// id is empty until the first question creates it.
+// The turns of one conversation — including a reader's first question,
+// whose turn is remembered with no id until the answer creates the
+// conversation.
 {
 	const storage = memoryStorage();
 	saveInflight(turn, storage);
@@ -173,24 +173,6 @@ const turn = {
 		["def456"],
 	);
 	assert.deepEqual(turnsForConversation("nobody", storage), []);
-}
-
-// The turns of one page: a turn belongs to the thread of the page it was
-// asked on.
-{
-	const storage = memoryStorage();
-	saveInflight(turn, storage);
-	saveInflight({ ...turn, stream_id: "def456", page: "Form/Item/ITEM-1" }, storage);
-
-	assert.deepEqual(
-		turnsForPage("List/Sales Order/List", storage).map((entry) => entry.stream_id),
-		["abc123"],
-	);
-	assert.deepEqual(
-		turnsForPage("Form/Item/ITEM-1", storage).map((entry) => entry.stream_id),
-		["def456"],
-	);
-	assert.deepEqual(turnsForPage("", storage), []);
 }
 
 // A storage that refuses is a storage that cannot be asked to remember.

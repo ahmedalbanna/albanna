@@ -14,9 +14,9 @@
 // second turn overwrite the first, and the first turn's completion
 // erase the second's address on its way out.
 //
-// The entry is also per *page*: a turn belongs to the thread of the page
-// it was asked on, and re-attaching it on another page would put the
-// answer in the wrong thread.
+// The entry is keyed by *conversation*: a turn belongs to its thread,
+// and re-attaching it into another would put the answer in the wrong
+// thread.
 //
 // Pure: no `frappe`, no DOM, so it is tested under plain node.
 
@@ -158,25 +158,18 @@ export function findInflight(streamId, storage) {
 /**
  * The remembered turns of one conversation.
  *
- * @param {string} conversationId the conversation, empty for the page's
- *   own thread — the thread a first question creates
+ * A turn belongs to its thread and to nothing else — not to the page it
+ * was asked from, which is context of the question and not of the turn.
+ *
+ * @param {string} conversationId the conversation, empty for a reader
+ *   with no thread yet — a first question's turn is remembered with no
+ *   id, because the conversation is created by the answer
  * @param {object} [storage] the storage, for the test
  * @returns {Array<object>} its turns, newest first
  */
 export function turnsForConversation(conversationId, storage) {
 	const wanted = conversationId || "";
 	return loadInflightTurns(storage).filter((turn) => (turn.conversation_id || "") === wanted);
-}
-
-/**
- * The remembered turns of one page.
- *
- * @param {string} page the page identity
- * @param {object} [storage] the storage, for the test
- * @returns {Array<object>} its turns, newest first
- */
-export function turnsForPage(page, storage) {
-	return loadInflightTurns(storage).filter((turn) => (turn.page || "") === (page || ""));
 }
 
 /**

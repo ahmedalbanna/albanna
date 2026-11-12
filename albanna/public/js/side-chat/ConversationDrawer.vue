@@ -8,7 +8,7 @@
  * the header's back button returns to the transcript.
  */
 import { computed, nextTick, ref, watch } from "vue";
-import { readablePage, relativeTime } from "./format.mjs";
+import { relativeTime } from "./format.mjs";
 import { groupByDate, PINNED_GROUP } from "./groups.mjs";
 
 const props = defineProps({
@@ -193,9 +193,6 @@ function commitRename(conversation, event) {
 							</button>
 
 							<p class="albanna-drawer__meta">
-								<span v-if="readablePage(conversation.page)">{{
-									readablePage(conversation.page)
-								}}</span>
 								<span v-if="conversation.last_activity_ts">{{
 									relativeTime(conversation.last_activity_ts)
 								}}</span>

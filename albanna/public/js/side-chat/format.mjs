@@ -130,41 +130,6 @@ export function clockTime(value) {
 }
 
 /**
- * The page a conversation belongs to, as a readable phrase.
- *
- * The page identity is `view|doctype|name`; the drawer shows the middle of
- * it, which is the thing a person recognises ("Sales Order").
- *
- * @param {string} page the page identity
- * @returns {string} the readable page
- */
-export function readablePage(page) {
-	if (!page) return "";
-
-	const parts = String(page).split("|");
-	if (parts.length > 1) return parts[1] || "";
-
-	// A list or a workspace: the identity is the route, and the route's
-	// last segment is a slug — "erpnext/sales-order" is not a name a
-	// person would recognise.  So it is turned into one.
-	return titleise(parts[0].split("/").pop() || "");
-}
-
-/**
- * A slug, as a name: "sales-order" becomes "Sales Order".
- *
- * @param {string} slug the slug
- * @returns {string} the name
- */
-function titleise(slug) {
-	return String(slug || "")
-		.split(/[-_\s]+/)
-		.filter(Boolean)
-		.map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-		.join(" ");
-}
-
-/**
  * The seconds something has been running.
  *
  * The turn's answer carries the moment it started (the same epoch the

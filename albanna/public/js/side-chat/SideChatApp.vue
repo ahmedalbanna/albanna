@@ -76,14 +76,13 @@ import {
 	diffValue,
 	isDestructiveTool,
 } from "./write-safety.mjs";
-import { waitsOfConversation, waitsOfPage } from "./turn-waits.mjs";
+import { waitsOfConversation } from "./turn-waits.mjs";
 import { createRenderThrottle, scheduleRender } from "./render-throttle.mjs";
 import {
 	findInflight,
 	removeInflight,
 	saveInflight,
 	turnsForConversation,
-	turnsForPage,
 } from "./inflight.mjs";
 import { canDecide, remainingSeconds } from "./approval.mjs";
 import { turnAttachments } from "./attachments.mjs";
@@ -1055,7 +1054,6 @@ function followTurn(entry, asked, answer, approval = null) {
 	turnWaits.set(entry.stream_id, {
 		controller,
 		conversation: entry.conversation_id || "",
-		page: entry.page || "",
 	});
 	// A turn picked up again with an approval still waiting keeps its
 	// card: the reader left it mid-decision and is now back.
@@ -1135,8 +1133,9 @@ function followTurn(entry, asked, answer, approval = null) {
  * question is the reader's own words, and the answer starts empty and
  * fills from the stream — exactly as it did the first time.
  *
- * @param {string} conversationName the thread, empty for the page's own
- *   thread before its first question created it
+ * @param {string} conversationName the thread, empty for a reader with
+ *   no thread yet — a first question's turn is remembered with no id,
+ *   because the conversation is created by the answer
  */
 function attachRunningTurns(conversationName) {
 	for (const entry of turnsForConversation(conversationName)) {
@@ -1163,16 +1162,6 @@ function attachRunningTurns(conversationName) {
 
 		followTurn(entry, asked, answer, entry.approval);
 	}
-}
-
-/**
- * The waits of one page.
- *
- * @param {string} page the page identity
- * @returns {Array<{streamId: string, controller: AbortController}>}
- */
-function waitsForPage(page) {
-	return waitsOfPage([...turnWaits.entries()], page);
 }
 
 /**
@@ -1221,45 +1210,22 @@ function refreshPhase() {
 }
 
 /**
- * Put the page's own turns back on screen — the ones asked as the page's
- * *first* question, before the server had a conversation to name.
- *
- * Such a turn is remembered with no conversation id, because the
- * conversation is created by the answer that is still on its way.  It
- * belongs to this page's thread, and to no other: another page's
- * unanswered first question is another page's business.
- */
-function attachPageThreadTurns() {
-	const own = turnsForPage(currentPage.value).some((entry) => !entry.conversation_id);
-	if (own) attachRunningTurns("");
-}
-
-/**
- * Pick up the turns that were running when the page was reloaded.
+ * Pick up the turns that were running when the panel was reloaded.
  *
  * The worker is still working and each answer is parked in the cache;
  * all that was lost is the browser's memory of the streams.  So the
- * streams are read back and waited for again — every one of them, each
- * in the thread it belongs to.
+ * streams are read back and waited for again — the ones of the thread
+ * being shown.
  *
- * A turn belongs to the thread of the page it was asked on, so a turn
- * of another page is not picked up here: it belongs to a thread this
- * panel is not showing, and it is picked up when that thread is opened.
+ * A turn belongs to its thread and to nothing else, so the remembering
+ * is by conversation: a turn of another thread is picked up when that
+ * thread is opened, and a turn whose thread does not exist yet — a
+ * first question's turn, remembered with no id — is picked up only
+ * when the reader has no thread at all, because then the thread the
+ * answer creates is the one being shown.
  */
 function resumeInflight() {
-	const wanted = new Set();
-	for (const entry of turnsForPage(currentPage.value)) {
-		wanted.add(entry.conversation_id || "");
-	}
-
-	// The thread being shown, and the page's own thread — a first
-	// question's turn is remembered with no conversation id yet, because
-	// the conversation is created by the answer.
-	for (const conversation of wanted) {
-		if (conversation && conversation !== conversationId.value) continue;
-		attachRunningTurns(conversation);
-	}
-	attachPageThreadTurns();
+	attachRunningTurns(conversationId.value);
 }
 
 /**
@@ -1469,8 +1435,6 @@ function applyTurnResult(result, asked, answer) {
 		// finishes on its own, so the answer is in the conversation
 		// when they come back to it.
 		stopTurn(state, answer);
-		// A notice that is already there is more specific than this one
-		// — "you moved to another page" says more than "stopped".
 		if (!state.notice) state.notice = "stopped";
 	} else if (result && result.status === "error") {
 		failTurn(state, answer, result.error || __("Something went wrong."));
@@ -1638,14 +1602,12 @@ async function send(question) {
 				entry = {
 					stream_id: streamId,
 					conversation_id: conversationId.value,
-					page,
 					question: text,
 				};
 				saveInflight(entry);
 				turnWaits.set(streamId, {
 					controller,
 					conversation: conversationId.value || "",
-					page,
 				});
 			},
 		});
@@ -2358,21 +2320,27 @@ async function deleteConversation(conversation) {
 }
 
 /**
- * Start a new conversation on this page.
+ * Start a new conversation.
  *
- * The server is asked for it, because a "new" conversation that only
- * existed in the browser would be the old one: the server resolves a
- * page's conversation by page, so a turn with no conversation id lands
- * back in the thread the reader was trying to leave.
+ * The server is asked for it, and its id is pinned.  Clearing the panel
+ * alone would be a lie: a turn with no id continues the reader's most
+ * recent thread, which is the thread the button was meant to leave —
+ * so the button makes the thread on the server and carries its id, and
+ * the next question lands in the thread the reader just opened.
+ *
+ * The thread is created here rather than by the first question, because
+ * the first question can no longer be trusted to make one: with no id
+ * it continues the most recent thread, which is not the new one.
  */
 async function newConversation() {
 	state.error = "";
-	// A conversation is created lazily: the "New" button only clears the
-	// thread the panel is showing.  The first question asked in it is what
-	// creates the conversation on the server, named after that question.
-	// Creating it here would leave an empty, orphaned conversation every
-	// time the button is pressed without a question following.
-	conversationId.value = "";
+	try {
+		const result = await call("albanna.api.conversations.new_conversation", {});
+		conversationId.value = result.conversation || "";
+	} catch (failure) {
+		state.error = failureText(failure, __("Could not start a new conversation."));
+		return;
+	}
 	state.messages = [];
 	recentQuestions.value = [];
 	view.value = "chat";
@@ -2384,97 +2352,51 @@ async function newConversation() {
 }
 
 /**
- * Load the page's thread into the panel.
+ * Open the reader's most recent thread.
  *
- * The server resolves a page's conversation *by page*, so the thread the
- * assistant will answer in is the page's thread.  A panel that showed an
- * empty transcript on a page with a thread on it would be telling the
- * reader one thing and the assistant another — and the reader would not
- * know which of them was right.
- *
- * A page with no thread is a page with nothing to show, which is an
- * answer and not a failure.
+ * The panel belongs to the reader, and so does the conversation: the
+ * thread it shows when it opens is their most recent one, whichever
+ * page it was born on.  A reader with no thread at all sees an empty
+ * panel — the first question they ask is what creates the thread.
  */
-async function loadPageConversation() {
-	const page = currentPage.value;
+async function loadRecentConversation() {
 	try {
-		const result = await call("albanna.api.conversations.conversation_for_page", {
-			page,
-			...windowRequest(),
+		const result = await call("albanna.api.conversations.list_conversations", {
+			limit: 1,
 		});
-		// The page may have changed while the answer was in flight.
-		if (!result || page !== currentPage.value) return;
-
-		if (!result.conversation) {
-			state.messages = [];
-			conversationId.value = "";
-			hasOlder.value = false;
-			// The page's own thread, before its first question created
-			// it: a turn asked a moment ago is remembered with no
-			// conversation id, and it is still running.
-			attachPageThreadTurns();
-			return;
-		}
-
-		conversationId.value = result.conversation;
-		state.messages = (result.messages || []).map((message) => {
-			return messageFromServer(message);
-		});
-		rememberQuestions(state.messages);
-		hasOlder.value = !!(result && result.has_more);
-		olderCount.value = behindCount(state.messages, result && result.total);
-		followBottom.value = true;
-		scrollToBottom(true);
-		// The questions of this thread that are still waiting: a question
-		// outlives the turn that asked it.
-		await loadPendingQuestions(result.conversation);
-		// A turn of this page's thread that is still running is picked
-		// up again: the reader moved to another page and came back, and
-		// the answer is still arriving.
-		attachRunningTurns(result.conversation);
-		attachPageThreadTurns();
+		const row = (result.conversations || [])[0];
+		if (row) await openConversation(row);
 	} catch (failure) {
 		// The panel still works without it: the reader can ask, and the
 		// answer will join whatever thread the server picks.
 	}
+	// A reader with no thread shows an empty panel — and a turn they
+	// asked before reloading, remembered with no id because its thread
+	// is created by the answer, is picked up here, where it will land.
+	// Opening a thread already picks its own turns up.
+	resumeInflight();
 }
 
 /**
  * The reader has moved to another page.
  *
- * A different page is a different thread.  The transcript is cleared
- * rather than kept, because an answer about the previous page would be
- * read as an answer about this one.
+ * The thread stays open.  A conversation belongs to the reader, and the
+ * page they are on is context of the question they ask *now* — the next
+ * question travels with this page's context into the thread that is
+ * already open.  Clearing the transcript here would hide a history that
+ * is still theirs, and answering into a different thread would make the
+ * panel and the server disagree about where the reader is.
  *
- * The turns of the page being left stop being waited for.  The answers
- * would be about the page the reader has just left, and they belong to
- * that page's threads — so the work goes on where it belongs, and the
- * panel says what it did.  Their addresses stay remembered: coming back
- * to that page picks each turn up again.
+ * What changes is the context: the label, the examples, and the page
+ * the next question is asked from — read fresh, not from a cache.
  */
 function onRouteChange() {
 	const context = resolveContext();
 	const identity = pageIdentity();
 	if (identity === currentPage.value) return;
 
-	// Every wait of the page being left — the thread on screen and any
-	// other thread of this page that is still running — stops being
-	// waited for.  The answers belong to those threads, the work goes
-	// on, and the addresses are remembered.
-	const leaving = waitsForPage(currentPage.value);
-	const stopped = clearTranscript(state);
-	for (const wait of leaving) {
-		wait.controller.abort();
-	}
-	if (stopped || leaving.length) state.notice = "moved";
-	// The waits are aborting, not gone: the phase catches up with them
-	// as they settle, and says "running" until they have.
-	refreshPhase();
-
-	conversationId.value = "";
 	currentPage.value = identity;
 	props.onContext(context);
-	loadPageConversation();
 }
 
 onMounted(() => {
@@ -2491,11 +2413,11 @@ onMounted(() => {
 	 * goes to the Desk, not to the assistant they opened. */
 	focusComposer();
 
-	// The page's thread first, and then any turn that was running when
-	// this page was last loaded: the question of a turn that is still in
-	// flight is not stored yet, so it has to be put back on top of the
-	// thread it belongs to.
-	loadPageConversation().then(() => resumeInflight());
+	// The reader's most recent thread first, and then any turn that was
+	// running when the panel was last loaded: the question of a turn
+	// that is still in flight is not stored yet, so it has to be put
+	// back on top of the thread it belongs to.
+	loadRecentConversation();
 
 	// The Desk says the page changed with "change".  It does not say it
 	// with "route-change" — that event does not exist — and a listener

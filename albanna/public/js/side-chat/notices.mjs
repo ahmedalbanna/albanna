@@ -22,10 +22,6 @@ export function noticeText(notice) {
 	switch (notice) {
 		case "stopped":
 			return __("Stopped.");
-		case "moved":
-			return __(
-				"You moved to another page. The turn is still running — its answer will be in that page's conversation.",
-			);
 		case "no-table":
 			return __("There is no table to copy.");
 		case "table-copied":

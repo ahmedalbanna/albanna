@@ -151,10 +151,11 @@ export function stopTurn(state, answer) {
 }
 
 /**
- * Clear the transcript, because the reader has moved to another page.
+ * Clear the transcript.
  *
- * A turn in flight is stopped first: the answer would be about the page
- * the reader has left, and it belongs to that page's thread.
+ * A turn in flight is stopped first: its answer still arrives and is
+ * written to its thread on the server, but the transcript it was
+ * streaming into is going away.
  *
  * @param {object} state the state
  * @returns {object|null} the answer message of a turn that was stopped

@@ -114,49 +114,6 @@ def open_conversation(conversation: str = "", limit: int = 0, before_idx: int = 
 
 
 @frappe.whitelist()
-def conversation_for_page(page: str = "", limit: int = 0, before_idx: int = 0) -> dict:
-    """The caller's conversation on *page*, and its transcript.
-
-    The panel asks this when it opens on a page.  The server resolves a
-    page's conversation by page, so the thread the assistant will answer
-    in is the page's thread — and the reader should be shown the same one
-    rather than an empty panel that pretends the thread does not exist.
-
-    Nothing is created: a page with no thread is a page with nothing to
-    show, and that is an answer, not an error.
-    """
-    require_chat_access()
-
-    from albanna.services.conversation_service import conversation_for_page as _for
-    from albanna.services.conversation_service import display_title, transcript_window
-
-    user = str(frappe.session.user or "")
-    limit = _as_int(limit)
-    before_idx = _as_int(before_idx)
-    conversation = _for(user, page or "")
-    if not conversation:
-        return {
-            "status": "ok",
-            "conversation": "",
-            "title": "",
-            "messages": [],
-            "total": 0,
-            "has_more": False,
-        }
-
-    title = frappe.db.get_value("Albanna Conversation", conversation, "title") or ""
-    window = transcript_window(conversation, limit or TRANSCRIPT_WINDOW, before_idx)
-    return {
-        "status": "ok",
-        "conversation": conversation,
-        "title": display_title(title),
-        "messages": window["messages"],
-        "total": window["total"],
-        "has_more": window["has_more"],
-    }
-
-
-@frappe.whitelist()
 def new_conversation(page: str = "") -> dict:
     """Start a new conversation.
 

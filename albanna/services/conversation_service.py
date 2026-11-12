@@ -141,24 +141,6 @@ def new_conversation(user: str, page: str = "", title: str = "") -> str:
     return doc.name
 
 
-def conversation_for_page(user: str, page: str = "") -> str:
-    """The user's conversation for *page*, or an empty string.
-
-    Unlike :func:`ensure_conversation` this does not create one: the
-    panel asks what is there, and a page with no thread is a page with
-    nothing to show.
-    """
-    return (
-        frappe.db.get_value(
-            "Albanna Conversation",
-            {"user": user, "page": page or ""},
-            "name",
-            order_by="last_activity desc",
-        )
-        or ""
-    )
-
-
 def name_after_question(conversation: str, question: str) -> None:
     """Name a conversation after the question that started it.
 

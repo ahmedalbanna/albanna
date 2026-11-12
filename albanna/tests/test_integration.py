@@ -45,7 +45,6 @@ import frappe
 import pytest
 
 from albanna.api.conversations import (
-    conversation_for_page,
     delete_conversation,
     delete_turn,
     list_conversations,
@@ -1171,34 +1170,6 @@ class TestNewConversation(AlbannaTestCase):
             frappe.db.get_value("Albanna Conversation", conversation, "title"),
             "How many open orders are there?",
         )
-
-    def test_the_page_s_thread_is_the_one_the_panel_shows(self):
-        self._as(self.owner)
-        page = self._page("follow")
-        conversation = ensure_conversation(self.owner, page, title="the first question")
-        append_messages(conversation, [{"role": "user", "content": "the first question"}])
-
-        found = conversation_for_page(page=page)
-
-        self.assertEqual(found["conversation"], conversation)
-        self.assertEqual(len(found["messages"]), 1)
-        self.assertEqual(found["messages"][0]["content"], "the first question")
-
-    def test_a_page_with_no_thread_has_nothing_to_show(self):
-        self._as(self.owner)
-        found = conversation_for_page(page=self._page("empty"))
-
-        self.assertEqual(found["conversation"], "")
-        self.assertEqual(found["messages"], [])
-
-    def test_asking_what_is_there_does_not_create_a_thread(self):
-        self._as(self.owner)
-        page = self._page("untouched")
-        conversation_for_page(page=page)
-
-        # Nothing was created, so a question on this page starts one.
-        created = ensure_conversation(self.owner, page)
-        self.assertTrue(frappe.db.exists("Albanna Conversation", created))
 
     def test_the_thread_the_button_made_is_the_one_a_turn_continues(self):
         """A turn with no id continues the reader's most recent thread.

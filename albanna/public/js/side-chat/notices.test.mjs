@@ -17,7 +17,6 @@ global.__ = (text) => text;
 // added to the state machine and not here is a notice that shows nothing.
 const KEYS = [
 	"stopped",
-	"moved",
 	"no-table",
 	"copy-failed",
 	"copy-answer-failed",
