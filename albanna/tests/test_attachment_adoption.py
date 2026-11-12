@@ -26,8 +26,10 @@ import frappe
 from albanna.services.chat_service import ChatService
 from albanna.services.conversation_service import (
     append_messages,
-    ensure_conversation,
     load_messages,
+)
+from albanna.services.conversation_service import (
+    new_conversation as new_thread,
 )
 from albanna.services.settings_service import get_settings
 from albanna.tests.base import AlbannaTestCase
@@ -173,9 +175,7 @@ class TestTheAttachmentInTheNextTurn(AlbannaTestCase):
     def setUp(self):
         self.url = ChatService()._store_attachment(PNG, frappe.session.user or "Administrator")
         self.assertTrue(self.url.startswith("/private/files/"))
-        self.conversation = ensure_conversation(
-            frappe.session.user or "Administrator", "", "A thread"
-        )
+        self.conversation = new_thread(frappe.session.user or "Administrator", "", "A thread")
         append_messages(
             self.conversation,
             [

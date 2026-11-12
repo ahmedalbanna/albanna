@@ -1150,6 +1150,13 @@ function attachRunningTurns(conversationName) {
 		const answer = makeMessage("assistant", "");
 		answer.pending = true;
 
+		// The page the turn was asked from, remembered with the turn.
+		// The resumed messages carry it for the same reason the live ones
+		// do: a reader watching the turn from another page is told where
+		// these were born, and one reading it on that page sees nothing.
+		asked.page_identity = String(entry.page || "");
+		answer.page_identity = String(entry.page || "");
+
 		beginTurn(state, question, asked, answer);
 		setActivity(state, __("Thinking"));
 		scrollToBottom(true);

@@ -63,33 +63,9 @@ LIKE_ESCAPE = "\\"
 #: The preview is a *preview*: enough for a reader to recognise the
 #: thread, and no more.  The title is the whole of the first question
 #: once it has been named after it.  The drawer does not draw the
-#: preview today — it shows the title, the page, the time and the turn
-#: count — so the field is carried for a caller that may come.
+#: preview today — it shows the title, the time and the turn count —
+#: so the field is carried for a caller that may come.
 PREVIEW_LENGTH = 140
-
-
-def ensure_conversation(user: str, page: str = "", title: str = "") -> str:
-    """Return the name of the user's conversation for *page*, creating it if needed.
-
-    A conversation belongs to a page: the same question asked on the Sales
-    Order list and on the Customer form are two different threads, because
-    the context behind them is different.  The page identity is
-    ``view|doctype|name``.
-
-    Kept for the threads that were born under the page-bound model, and
-    for the tests that hold that model to account.  The turn path no
-    longer resolves a thread by page — see :func:`ensure_thread`.
-    """
-    existing = frappe.db.get_value(
-        "Albanna Conversation",
-        {"user": user, "page": page or ""},
-        "name",
-        order_by="last_activity desc",
-    )
-    if existing:
-        return existing
-
-    return new_conversation(user, page=page, title=title)
 
 
 def ensure_thread(user: str, title: str = "") -> str:
@@ -121,11 +97,11 @@ def ensure_thread(user: str, title: str = "") -> str:
 def new_conversation(user: str, page: str = "", title: str = "") -> str:
     """Create a conversation for *page*, whether one exists there or not.
 
-    ``ensure_conversation`` returns the page's conversation, because a
-    page's context is the context behind every question asked on it.  This
-    creates a *second* one on the same page, which is what the panel's
-    "New" button means: a fresh thread on the same page, with the same
-    context behind it and none of the previous thread's questions in it.
+    The panel's "New" button means a fresh thread: a thread with none of
+    the previous one's questions in it, which is exactly what resolving
+    by most-recent cannot give.  The *page* argument is kept as the
+    context the thread was opened on — stored, searchable, and nothing
+    more: the thread itself is resolved by :func:`ensure_thread`.
 
     The title is the placeholder, which the doctype puts there for any
     conversation with no title of its own.  A conversation is named after
@@ -146,8 +122,7 @@ def name_after_question(conversation: str, question: str) -> None:
 
     A conversation created by the "New" button has no title yet, because
     the button is pressed before there is a question to name it after.
-    The first question that arrives in it is what the drawer should show,
-    and that is the same rule ``ensure_conversation`` already follows.
+    The first question that arrives in it is what the drawer should show.
 
     Only the placeholder is replaced: a conversation the user has renamed
     keeps the name they gave it.
@@ -579,6 +554,12 @@ def list_conversations(user: str, limit: int = 20, offset: int = 0, search: str 
     into the panel yet — a client-side filter over one page of results is
     not a search, it is a guess.
 
+    The listing itself does not carry a conversation's page.  A thread
+    belongs to the reader, not to a page — the pages its questions were
+    asked from are per-message facts, and the transcript carries them —
+    but a search still reaches into the stored page, because a reader who
+    remembers asking something *on* something should find it that way.
+
     The term is matched as the term and not as a pattern: ``%`` and ``_``
     are ordinary characters in a title, and a reader who typed one meant
     the character.  See :func:`_like_pattern`.
@@ -614,7 +595,7 @@ def list_conversations(user: str, limit: int = 20, offset: int = 0, search: str 
     # itself built from constants (see above); no user value is interpolated
     # into it.  The values travel as bound parameters.
     sql = (
-        "select name, title, page, model, last_activity, pinned\n"
+        "select name, title, model, last_activity, pinned\n"
         "from `tabAlbanna Conversation`\n" + where + "\norder by pinned desc, last_activity desc\n"
         "limit %s offset %s"
     )

@@ -37,7 +37,8 @@ import frappe
 import pytest
 
 from albanna.api.conversations import escalate_conversation
-from albanna.services.conversation_service import append_messages, ensure_conversation
+from albanna.services.conversation_service import append_messages
+from albanna.services.conversation_service import new_conversation as new_thread
 from albanna.tests.base import AlbannaTestCase
 
 OWNER = "albanna.test.escalate.owner@albanna.dev"
@@ -99,7 +100,7 @@ class TestEscalation(AlbannaTestCase):
         page: a shared page would mean every test appends to the one
         before it.
         """
-        conversation = ensure_conversation(self.owner, f"test|escalate|{self.id()}|")
+        conversation = new_thread(self.owner, f"test|escalate|{self.id()}|")
         frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
         if title:
             frappe.db.set_value("Albanna Conversation", conversation, "title", title)
@@ -269,7 +270,7 @@ class TestEscalation(AlbannaTestCase):
         is the thing that would say so.
         """
         self._as(self.owner)
-        conversation = ensure_conversation(self.owner, f"test|escalate|empty|{self.id()}|")
+        conversation = new_thread(self.owner, f"test|escalate|empty|{self.id()}|")
 
         result = escalate_conversation(conversation=conversation)
 

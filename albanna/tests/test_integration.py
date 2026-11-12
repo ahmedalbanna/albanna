@@ -57,12 +57,18 @@ from albanna.core.tools import TOOL_MANIFEST
 from albanna.permissions import FrappePermissionChecker, current_principal
 from albanna.services.conversation_service import (
     append_messages,
-    ensure_conversation,
     ensure_thread,
     load_messages,
     load_transcript,
     name_after_question,
     transcript_window,
+)
+from albanna.services.conversation_service import (
+    # A thread a test stands up itself, distinct from the one
+    # ``ensure_thread`` resolves: the tests that used to stand on the
+    # page-bound model keep their per-run pages, which are now stored
+    # context rather than identity.
+    new_conversation as new_thread,
 )
 from albanna.services.settings_service import get_settings
 from albanna.tests.base import READ_ONLY_PROBE, AlbannaTestCase
@@ -447,7 +453,7 @@ class TestRemovingATurn(AlbannaTestCase):
         has run before left its turns behind, and a test must not depend
         on what the last run left.
         """
-        conversation = ensure_conversation(user or self.owner, page)
+        conversation = new_thread(user or self.owner, page)
         frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
         return conversation
 
@@ -591,7 +597,7 @@ class TestConversationOwnership(AlbannaTestCase):
 
     def test_the_owner_may_open_their_own_conversation(self):
         self._as(self.owner)
-        conversation = ensure_conversation(self.owner, "test|own|")
+        conversation = new_thread(self.owner, "test|own|")
 
         result = open_conversation(conversation=conversation)
 
@@ -600,7 +606,7 @@ class TestConversationOwnership(AlbannaTestCase):
 
     def test_another_user_may_not_open_it(self):
         self._as(self.owner)
-        conversation = ensure_conversation(self.owner, "test|private|")
+        conversation = new_thread(self.owner, "test|private|")
 
         self._as(self.other)
         with self.assertRaises(frappe.PermissionError):
@@ -608,7 +614,7 @@ class TestConversationOwnership(AlbannaTestCase):
 
     def test_another_user_may_not_rename_it(self):
         self._as(self.owner)
-        conversation = ensure_conversation(self.owner, "test|rename|")
+        conversation = new_thread(self.owner, "test|rename|")
 
         self._as(self.other)
         with self.assertRaises(frappe.PermissionError):
@@ -616,7 +622,7 @@ class TestConversationOwnership(AlbannaTestCase):
 
     def test_another_user_may_not_delete_it(self):
         self._as(self.owner)
-        conversation = ensure_conversation(self.owner, "test|delete|")
+        conversation = new_thread(self.owner, "test|delete|")
 
         self._as(self.other)
         with self.assertRaises(frappe.PermissionError):
@@ -636,7 +642,7 @@ class TestConversationOwnership(AlbannaTestCase):
         drawer failed on every click.
         """
         self._as(self.owner)
-        conversation = ensure_conversation(self.owner, "test|ledger|")
+        conversation = new_thread(self.owner, "test|ledger|")
         append_messages(conversation, [{"role": "user", "content": "a question"}])
 
         # The row a turn leaves behind, written the way the turn writes it.
@@ -666,7 +672,7 @@ class TestConversationOwnership(AlbannaTestCase):
         from albanna.services import conversation_service
 
         self._as(self.owner)
-        conversation = ensure_conversation(self.owner, "test|service|")
+        conversation = new_thread(self.owner, "test|service|")
         append_messages(conversation, [{"role": "user", "content": "a question"}])
         transcript = load_transcript(conversation)
 
@@ -686,9 +692,9 @@ class TestConversationOwnership(AlbannaTestCase):
 
     def test_the_list_shows_only_the_callers_conversations(self):
         self._as(self.owner)
-        mine = ensure_conversation(self.owner, "test|mine|")
+        mine = new_thread(self.owner, "test|mine|")
         self._as(self.other)
-        theirs = ensure_conversation(self.other, "test|theirs|")
+        theirs = new_thread(self.other, "test|theirs|")
 
         self._as(self.owner)
         names = [c["name"] for c in list_conversations(limit=50)["conversations"]]
@@ -787,7 +793,7 @@ class TestTheConversationSearch(AlbannaTestCase):
         match something that is not there.
         """
         page = page or f"test|search|{frappe.generate_hash(length=8)}|"
-        conversation = ensure_conversation(self.reader, page)
+        conversation = new_thread(self.reader, page)
         frappe.db.set_value("Albanna Conversation", conversation, "title", title)
         return conversation
 
@@ -822,7 +828,7 @@ class TestTheConversationSearch(AlbannaTestCase):
         # the API cannot produce — ``rename_conversation`` refuses an
         # empty one — and would test a case that does not exist.
         page = f"test|search|{frappe.generate_hash(length=8)}|"
-        untitled = ensure_conversation(self.reader, page)
+        untitled = new_thread(self.reader, page)
         titled = self._conversation("Open orders for Acme")
 
         # The reader's language, not the site's default: the drawer shows
@@ -1000,7 +1006,7 @@ class TestTheDrawerListing(AlbannaTestCase):
         frappe.local.perms = {}
 
     def _thread(self, index: int) -> str:
-        conversation = ensure_conversation(self.reader, f"test|drawer|{index}|")
+        conversation = new_thread(self.reader, f"test|drawer|{index}|")
         frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
         append_messages(conversation, [{"role": "user", "content": f"question {index}"}])
         return conversation
@@ -1038,7 +1044,7 @@ class TestTheDrawerListing(AlbannaTestCase):
     def test_a_conversation_with_no_question_has_no_preview(self):
         """A thread nobody has asked anything in has nothing to preview."""
         self._as(self.reader)
-        empty = ensure_conversation(self.reader, "test|drawer|empty|")
+        empty = new_thread(self.reader, "test|drawer|empty|")
         self._thread(1)
 
         found = list_conversations(limit=30)["conversations"]
@@ -1102,7 +1108,7 @@ class TestNewConversation(AlbannaTestCase):
         """
         self._as(self.owner)
         page = self._page("new")
-        first = ensure_conversation(self.owner, page)
+        first = new_thread(self.owner, page)
 
         second = new_conversation(page=page)["conversation"]
 
@@ -1125,7 +1131,7 @@ class TestNewConversation(AlbannaTestCase):
     def test_the_thread_the_button_leaves_is_untouched(self):
         self._as(self.owner)
         page = self._page("join")
-        first = ensure_conversation(self.owner, page)
+        first = new_thread(self.owner, page)
         append_messages(first, [{"role": "user", "content": "the first question"}])
 
         second = new_conversation(page=page)["conversation"]
@@ -1139,7 +1145,7 @@ class TestNewConversation(AlbannaTestCase):
     def test_a_question_carrying_the_new_id_joins_the_new_thread(self):
         self._as(self.owner)
         page = self._page("carry")
-        first = ensure_conversation(self.owner, page)
+        first = new_thread(self.owner, page)
         append_messages(first, [{"role": "user", "content": "the first question"}])
 
         second = new_conversation(page=page)["conversation"]
@@ -1180,7 +1186,7 @@ class TestNewConversation(AlbannaTestCase):
         was leaving.
         """
         self._as(self.owner)
-        first = ensure_conversation(self.owner, self._page("newest"))
+        first = new_thread(self.owner, self._page("newest"))
         second = new_conversation()["conversation"]
 
         self.assertEqual(ensure_thread(self.owner), second)
@@ -1265,8 +1271,8 @@ class TestThreadResolution(AlbannaTestCase):
 
     def test_the_most_recent_thread_is_continued_whichever_page_it_was_born_on(self):
         self._as(self.owner)
-        older = ensure_conversation(self.owner, self._page("older"))
-        newer = ensure_conversation(self.owner, self._page("newer"))
+        older = new_thread(self.owner, self._page("older"))
+        newer = new_thread(self.owner, self._page("newer"))
         self._make_older(older)
 
         self.assertEqual(ensure_thread(self.owner), newer)
@@ -1286,14 +1292,12 @@ class TestThreadResolution(AlbannaTestCase):
         self._as(self.owner)
         from albanna.services.chat_service import ChatService, TurnRequest
 
-        page_thread = ensure_conversation(self.owner, self._page("page"))
-        recent = ensure_conversation(self.owner, self._page("recent"))
+        page_thread = new_thread(self.owner, self._page("page"))
+        recent = new_thread(self.owner, self._page("recent"))
         self._make_older(page_thread)
 
         service = ChatService()
-        resolved = service._resolve_conversation(
-            TurnRequest(question="hello"), self.owner, "hello"
-        )
+        resolved = service._resolve_conversation(TurnRequest(question="hello"), self.owner, "hello")
 
         self.assertEqual(resolved, recent)
 
@@ -1301,8 +1305,8 @@ class TestThreadResolution(AlbannaTestCase):
         self._as(self.owner)
         from albanna.services.chat_service import ChatService, TurnRequest
 
-        page_thread = ensure_conversation(self.owner, self._page("page"))
-        recent = ensure_conversation(self.owner, self._page("recent"))
+        page_thread = new_thread(self.owner, self._page("page"))
+        recent = new_thread(self.owner, self._page("recent"))
         self._make_older(page_thread)
 
         service = ChatService()
@@ -1635,7 +1639,7 @@ class TestTouchedDocuments(AlbannaTestCase):
         """
         import json
 
-        conversation = ensure_conversation(
+        conversation = new_thread(
             "Administrator", f"test|documents|{frappe.generate_hash(length=8)}"
         )
         append_messages(
@@ -1679,7 +1683,7 @@ class TestTouchedDocuments(AlbannaTestCase):
     def test_a_stored_document_that_is_not_one_is_dropped(self):
         import json
 
-        conversation = ensure_conversation(
+        conversation = new_thread(
             "Administrator", f"test|bad-documents|{frappe.generate_hash(length=8)}"
         )
         append_messages(
@@ -1770,9 +1774,7 @@ class TestConversationOrder(AlbannaTestCase):
     """The messages of a conversation, in the order they were said."""
 
     def test_the_messages_are_stored_in_the_order_they_were_said(self):
-        conversation = ensure_conversation(
-            "Administrator", f"test|order|{frappe.generate_hash(length=8)}"
-        )
+        conversation = new_thread("Administrator", f"test|order|{frappe.generate_hash(length=8)}")
 
         append_messages(conversation, [{"role": "user", "content": "first question"}])
         append_messages(conversation, [{"role": "assistant", "content": "first answer"}])
@@ -1792,17 +1794,13 @@ class TestConversationOrder(AlbannaTestCase):
         )
 
     def test_a_conversation_belongs_to_its_owner(self):
-        conversation = ensure_conversation(
-            "Administrator", f"test|owner|{frappe.generate_hash(length=8)}"
-        )
+        conversation = new_thread("Administrator", f"test|owner|{frappe.generate_hash(length=8)}")
         self.assertEqual(
             frappe.db.get_value("Albanna Conversation", conversation, "user"), "Administrator"
         )
 
     def test_the_index_keeps_going_up(self):
-        conversation = ensure_conversation(
-            "Administrator", f"test|index|{frappe.generate_hash(length=8)}"
-        )
+        conversation = new_thread("Administrator", f"test|index|{frappe.generate_hash(length=8)}")
         append_messages(conversation, [{"role": "user", "content": "one"}])
         append_messages(conversation, [{"role": "assistant", "content": "two"}])
 
@@ -1829,7 +1827,7 @@ class TestTranscriptWindow(AlbannaTestCase):
 
     def _conversation(self, turns: int = 6):
         """A conversation with *turns* questions and answers."""
-        conversation = ensure_conversation("Administrator", f"test|window|{self.id()}|")
+        conversation = new_thread("Administrator", f"test|window|{self.id()}|")
         frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
         for turn in range(turns):
             append_messages(
@@ -1905,7 +1903,7 @@ class TestTranscriptWindow(AlbannaTestCase):
         self.assertFalse(window["has_more"])
 
     def test_an_empty_conversation_has_nothing_behind_it(self):
-        conversation = ensure_conversation("Administrator", f"test|window|empty|{self.id()}|")
+        conversation = new_thread("Administrator", f"test|window|empty|{self.id()}|")
 
         window = transcript_window(conversation, limit=10)
 
@@ -2163,7 +2161,7 @@ class TestTheCostOfATurn(AlbannaTestCase):
 
     def setUp(self):
         super().setUp()
-        self.conversation = ensure_conversation("Administrator", "test|cost|turn|")
+        self.conversation = new_thread("Administrator", "test|cost|turn|")
         frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (self.conversation,))
         frappe.db.sql("delete from `tabAlbanna Chat Log`")
 
@@ -4337,7 +4335,7 @@ class TestUndo(AlbannaTestCase):
     def _turn(self, entries: list[dict]) -> tuple[str, str]:
         """A conversation with one assistant message carrying *entries*."""
         self._as(self.owner)
-        conversation = ensure_conversation(self.owner, f"test|undo|{self.id()}|")
+        conversation = new_thread(self.owner, f"test|undo|{self.id()}|")
         frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
         written = append_messages(
             conversation,
@@ -5000,7 +4998,7 @@ class TestALongThread(AlbannaTestCase):
         another thread, and the count would be of nothing.
         """
         page = page or f"test|long|{frappe.generate_hash(6)}|"
-        conversation = ensure_conversation(self.reader, page)
+        conversation = new_thread(self.reader, page)
         rows = []
         for index in range(turns):
             rows.append({"role": "user", "content": f"question {index}"})

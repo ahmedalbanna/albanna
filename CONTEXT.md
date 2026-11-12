@@ -461,21 +461,26 @@ handle is on the other.  A handle on a physical edge would land on the
 wrong side of the panel in a right-to-left interface, which is the same
 trap as the position itself.
 
-### 24. The panel shows the page's thread, and the model reads the same one
+### 24. The panel opens the reader's most recent thread, and the model reads the same one
 
-The server resolves a page's conversation *by page*, so the thread the
-assistant will answer in is the page's thread.  The panel shows that
-thread: a panel that opened empty on a page with a conversation on it
-would be telling the reader one thing and the assistant another, and the
-reader would not know which of them to believe.
+The server resolves a turn with no id into the reader's **most recent
+thread**, whichever page it was born on, so the thread the assistant will
+answer in is the thread the panel shows.  The panel opens on that thread:
+a panel that opened empty while the reader has threads would be telling
+the reader one thing and the assistant another, and the reader would not
+know which of them to believe.
 
-So the panel asks the server what is there when it opens on a page and
-when it moves to one.  Asking does not create: a page with no thread is
-a page with nothing to show, which is an answer and not a failure.
+So the panel asks the server for the most recent thread when it opens.
+Asking does not create: a reader with no thread gets one only when they
+ask, and it carries no page — the page is context of the question, not
+the thread's identity.
 
-The reader can still start a new thread on the same page, and the new
-one is the page's thread from then on — which is what the server's own
-lookup says, and what the assistant reads.
+The reader can still start a new thread, and the server — not the
+browser — makes it: a "new conversation" that only cleared the panel
+would land back in the most recent thread the button was meant to leave,
+because that is what the resolution answers with.  The id the server
+returns is carried with every question until the reader asks for another
+new one.
 
 And the panel says which page it is on.  The widget's whole claim is
 that it knows what you are looking at, and an empty panel that says
@@ -487,6 +492,11 @@ the Sales Order in front of them, not about sales orders in general.
 A list is not named, because a list's route is a slug and not a name:
 "erpnext/sales-order" is not "Sales Order".  Better to say nothing than
 to say a slug.
+
+Where a thread's messages were asked *from* still travels with each
+message — the "Asked from" chip names the page a turn was born on when
+it is read from somewhere else — but that is context stamped on the
+message, not the thread's address.
 
 ### 25. The question box and the send button are one thing
 
@@ -676,9 +686,16 @@ So the stream is written down — in the session's storage, which a reload
 keeps and a closed tab does not — and the panel picks the turn up again
 when the page comes back.
 
-The entry is per **page**: a turn belongs to the thread of the page it
-was asked on, and re-attaching it on another page would put the answer
-in the wrong thread.
+The entry is per **thread**: a turn belongs to the thread it runs in —
+the one its answer was created to land in — and to nothing else.  A turn
+remembered with no thread id is picked up only when the reader has no
+thread at all, because the thread it belongs to is created by the answer.
+Re-attaching it in front of another thread would put the answer in the
+wrong one.
+
+The page the turn was asked from travels with it — stamped on its
+messages, chip and all — but it is context of the question, not the
+turn's address.
 
 ### 37. The user's own words stay in the conversation
 

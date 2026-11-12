@@ -48,7 +48,7 @@ import pytest
 
 from albanna.core.tools import TOOL_MANIFEST
 from albanna.permissions import current_principal
-from albanna.services.conversation_service import ensure_conversation
+from albanna.services.conversation_service import new_conversation as new_thread
 from albanna.tests.base import AlbannaTestCase
 from albanna.tools.backend import ErpnextBackend
 from albanna.tools.base import ToolContext
@@ -223,9 +223,9 @@ class TestPermissionParity(AlbannaTestCase):
         # somebody else is exactly the row the permission engine hides,
         # and a test that hid it by accident would prove nothing.
         self._as(self.sales_user)
-        mine = ensure_conversation(self.sales_user, "parity|bulk|mine|")
+        mine = new_thread(self.sales_user, "parity|bulk|mine|")
         self._as(self.other_user)
-        theirs = ensure_conversation(self.other_user, "parity|bulk|theirs|")
+        theirs = new_thread(self.other_user, "parity|bulk|theirs|")
 
         result = self._call(
             "bulk_update_doc",
@@ -491,7 +491,7 @@ class TestPermissionParity(AlbannaTestCase):
         # A conversation belonging to somebody else must not change the
         # caller's count.
         self._as(self.other_user)
-        ensure_conversation(self.other_user, "parity|count|theirs|")
+        new_thread(self.other_user, "parity|count|theirs|")
 
         self._as(self.sales_user)
         self.assertEqual(
@@ -588,9 +588,9 @@ class TestPermissionParity(AlbannaTestCase):
         from albanna.services.approval import write_preview
 
         self._as(self.sales_user)
-        mine = ensure_conversation(self.sales_user, "parity|card|mine|")
+        mine = new_thread(self.sales_user, "parity|card|mine|")
         self._as(self.other_user)
-        theirs = ensure_conversation(self.other_user, "parity|card|theirs|")
+        theirs = new_thread(self.other_user, "parity|card|theirs|")
 
         self._as(self.sales_user)
         readable = len(frappe.get_list("Albanna Conversation", pluck="name"))

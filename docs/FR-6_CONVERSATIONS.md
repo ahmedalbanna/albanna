@@ -240,20 +240,29 @@ threads, because the context behind them is different.  Opening the
 panel on a page the reader has used before shows the thread that page
 already has.
 
-**Status.** Shipped.
+**Status.** Superseded.  The page-bound model scattered one reader's
+story across as many threads as they had pages, and a history nobody
+could read as one story is not a history.  A thread now belongs to the
+reader: a turn with no id continues their most recent thread (see
+`ensure_thread` in `albanna/services/conversation_service.py`), the
+panel opens on it, and the page a question was asked from is stamped on
+the message as context — the "Asked from" chip — rather than being the
+thread's address.  The page a thread was *opened* on is still stored,
+still searchable, and no longer returned by the listing, which carries
+per-message facts instead.
 
 **Evidence.**
-- `albanna/services/conversation_service.py:112` — `conversation_for_page`,
-  which finds the page's thread and creates nothing.
-- `albanna/services/conversation_service.py:69` — `ensure_conversation`,
-  which finds it or makes it.
-- `albanna/api/conversations.py:117` — the endpoint, which answers with
-  an empty thread rather than an error when the page has none.
-- Tested: the page's thread is the one the panel shows, a page with no
-  thread has nothing to show, asking what is there does not create a
-  thread, and the newest thread on a page is the one shown.
+- `albanna/services/conversation_service.py` — `ensure_thread`, the
+  resolution the turn path uses; `new_conversation`, which the panel's
+  "New" button calls and which stores the page as context only.
+- Tested: the most recent thread is continued whichever page it was
+  born on, a reader with no thread gets one that carries no page, a
+  turn with an id lands in that thread, and the page-less listing no
+  longer names pages.
 
-**Gaps found.** None.
+**Gaps found.** The original page-keyed helper (`ensure_conversation`)
+outlived its model as a test-only path; it is retired, and its tests
+stand threads up with `new_conversation` instead.
 
 **Blocked.** Nothing.
 
