@@ -1,16 +1,33 @@
 // The side-chat smoke suite.
 //
-// A headless browser drives the real widget end to end: the panel opens
-// the reader's most recent thread, a message asked from another page
-// carries its chip, the drawer describes threads without pages, and
-// moving through the Desk leaves the thread open.  These are the
-// properties the conversation model now rests on, and they only exist
-// once a real Desk, a real login and a real bundle are involved — which
-// is why they are not in the unit or domain suites.
+// A headless browser drives the real widget end to end.  These are the
+// properties the conversation model and the live panel rest on, and
+// they only exist once a real Desk, a real login and a real bundle are
+// involved — which is why they are not in the unit or domain suites:
+//
+// *   the panel opens the reader's most recent thread on mount, with
+//     the seeded messages on screen;
+// *   a message asked from another page carries exactly one "Asked
+//     from" chip, naming that page;
+// *   the drawer describes threads without pages;
+// *   a thread longer than the window offers "Show N earlier messages"
+//     with the true count, and the page behind the window carries its
+//     turn dividers too;
+// *   moving through the Desk leaves the transcript exactly as it was;
+// *   a turn that wrote a file offers Undo, and taking it back deletes
+//     the file and spends the button;
+// *   the pending questions of a thread arrive as one wizard card set —
+//     one choice per question when it is single, many when it is not,
+//     Submit until every question is answered — and submitting sends
+//     the answers as one turn whose activity line ticks;
+// *   the page throws no uncaught errors.
 //
 // It boots its own dev server on a scratch port (FRAPPE_SITE pins the
 // site), seeds its own fixture, and tears both down again, so it
 // depends on no production ingress and touches no production data.
+// The one thing it does beyond the site is talk to the configured
+// model, once, at the end: submitting the seeded answers sends a real
+// turn, and the ticking clock can only be watched on a turn that runs.
 //
 // Run from anywhere:
 //
@@ -23,8 +40,8 @@
 // — exit 0, loudly — because a missing browser is a missing capability,
 // not a failing property.
 //
-// Site and site admin are not needed; the fixture user it logs in as is
-// created by `albanna.tests.ui_seed.seed` (password it owns).
+// Site and site admin are not needed; the fixture user it logs in as
+// is created by `albanna.tests.ui_seed.seed` (password it owns).
 
 import { spawn, execSync } from "node:child_process";
 import fs from "node:fs";
@@ -37,6 +54,11 @@ import { fileURLToPath } from "node:url";
 const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BENCH_ROOT = path.resolve(APP_ROOT, "..", "..");
 const SITE = process.env.ALBANNA_SMOKE_SITE || "test.localhost";
+
+// How many turns the fixture's long thread holds.  Must match
+// LONG_TURNS in albanna/tests/ui_seed.py: the window maths below is
+// written against it.
+const LONG_TURNS = 29;
 
 const failures = [];
 const pageErrors = [];
@@ -116,10 +138,11 @@ async function main() {
 	if (!chrome) skip("no Chrome binary (set ALBANNA_SMOKE_CHROME)");
 
 	log(`Seeding the fixture on ${SITE}…`);
-	execSync(`bench --site ${SITE} execute albanna.tests.ui_seed.seed`, {
+	const seedOut = execSync(`bench --site ${SITE} execute albanna.tests.ui_seed.seed`, {
 		cwd: BENCH_ROOT,
-		stdio: "inherit",
+		encoding: "utf8",
 	});
+	const fixture = JSON.parse(seedOut.trim().split("\n").pop());
 
 	const port = await freePort();
 	const base = `http://127.0.0.1:${port}`;
@@ -135,7 +158,7 @@ async function main() {
 	}
 
 	try {
-		await run({ playwrightPath, chrome, base });
+		await run({ playwrightPath, chrome, base, fixture });
 	} finally {
 		server.kill("SIGTERM");
 	}
@@ -154,7 +177,7 @@ async function main() {
 	log("SMOKE: all checks passed");
 }
 
-async function run({ playwrightPath, chrome, base }) {
+async function run({ playwrightPath, chrome, base, fixture }) {
 	const mod = await import(playwrightPath);
 	const chromium = mod.chromium || mod.default?.chromium;
 	const browser = await chromium.launch({
@@ -168,6 +191,16 @@ async function run({ playwrightPath, chrome, base }) {
 		page.evaluate(() =>
 			document.querySelectorAll(".albanna-chat__bubble, .albanna-chat__bubble--plain").length,
 		);
+	const dividers = () => page.locator(".albanna-chat__message--turn-start").count();
+	const drawer = async () => {
+		await page.locator(".albanna-chat__icon[aria-label='Conversations']").first().click();
+		await page.locator(".albanna-drawer__item").first().waitFor({ timeout: 10000 });
+	};
+	const probeStatus = () =>
+		page.evaluate(
+			(url) => fetch(url).then((r) => r.status),
+			`${base}/api/resource/File/${fixture.file}`,
+		);
 
 	try {
 		await page.goto(`${base}/login`, { waitUntil: "domcontentloaded" });
@@ -180,7 +213,7 @@ async function run({ playwrightPath, chrome, base }) {
 		await page.waitForTimeout(3000);
 
 		// The panel opens the reader's most recent thread — the seeded
-		// one, with its three messages on screen.
+		// one, with its messages on screen.
 		log("The panel opens on the reader's most recent thread");
 		await page.locator(".albanna-side-chat-launcher").first().click();
 		await page
@@ -205,8 +238,7 @@ async function run({ playwrightPath, chrome, base }) {
 		);
 
 		log("The drawer describes threads without pages");
-		await page.locator(".albanna-chat__icon[aria-label='Conversations']").first().click();
-		await page.locator(".albanna-drawer__item").first().waitFor({ timeout: 10000 });
+		await drawer();
 		const metas = await page.evaluate(() =>
 			Array.from(document.querySelectorAll(".albanna-drawer__meta")).map((el) =>
 				el.textContent.trim().replace(/\s+/g, " "),
@@ -218,11 +250,33 @@ async function run({ playwrightPath, chrome, base }) {
 			JSON.stringify(metas.slice(0, 3)),
 		);
 
-		log("Opening a thread from the drawer");
-		await page.locator(".albanna-drawer__item").first().click();
-		await page.waitForTimeout(2000);
-		const reopened = await bubbles();
-		check("the thread is open again", reopened >= 3, `${reopened} bubbles`);
+		log("The long thread sits behind its window");
+		await page
+			.locator(".albanna-drawer__item", { hasText: "SMOKE: a long thread" })
+			.first()
+			.click();
+		const earlier = page.locator(".albanna-chat__earlier");
+		await earlier.waitFor({ timeout: 15000 });
+		const earlierLabel = (await earlier.textContent()).trim().replace(/\s+/g, " ");
+		check(
+			"the button names the count behind the window",
+			earlierLabel === `Show ${LONG_TURNS * 2 - 50} earlier messages`,
+			earlierLabel,
+		);
+		const dividersBefore = await dividers();
+		check(
+			"turn dividers open each exchange in the window",
+			dividersBefore === LONG_TURNS - 5,
+			`${dividersBefore} of ${LONG_TURNS - 5}`,
+		);
+		await earlier.click();
+		await earlier.waitFor({ state: "detached", timeout: 20000 });
+		const dividersAfter = await dividers();
+		check(
+			"the earlier page carries its dividers too",
+			dividersAfter === LONG_TURNS - 1,
+			`${dividersAfter} of ${LONG_TURNS - 1}`,
+		);
 
 		log("Moving through the Desk keeps the thread open");
 		const beforeNav = await bubbles();
@@ -239,6 +293,98 @@ async function run({ playwrightPath, chrome, base }) {
 			afterNav === beforeNav && afterNav >= 3,
 			`${beforeNav} -> ${afterNav}`,
 		);
+
+		log("Back to the main thread, where the undo turn waits");
+		await drawer();
+		await page.locator(".albanna-drawer__item").first().click();
+		await page
+			.locator(".albanna-chat__bubble", { hasText: "SMOKE: how many open sales orders" })
+			.first()
+			.waitFor({ timeout: 15000 });
+		const undoButton = page
+			.locator(".albanna-chat__message", { hasText: "wrote undo-probe" })
+			.locator("button[aria-label='Undo this turn']");
+		await undoButton.waitFor({ timeout: 10000 });
+		check("the undo turn offers Undo", (await undoButton.count()) === 1);
+		check("the probe file exists before the undo", (await probeStatus()) === 200);
+		await undoButton.click();
+		await undoButton.waitFor({ state: "detached", timeout: 20000 });
+		check("the Undo button is spent", (await undoButton.count()) === 0);
+		await page.waitForTimeout(1000);
+		check("the probe file is gone", (await probeStatus()) === 404);
+
+		log("The pending questions arrive as one card set");
+		const card = page.locator(".albanna-chat__question").first();
+		await card.waitFor({ timeout: 15000 });
+		const submit = card.locator(".albanna-chat__question-submit");
+		const progress = (await card.locator(".albanna-chat__question-progress").textContent())
+			.trim()
+			.replace(/\s+/g, " ");
+		check("the wizard starts at the first of two questions", progress === "1 / 2", progress);
+		check("Submit waits until every question is answered", await submit.isDisabled());
+
+		const option = (text) => card.locator(".albanna-chat__question-option", { hasText: text });
+		const selected = (text) =>
+			option(text).evaluate((el) => el.classList.contains("is-selected"));
+		await option("High").click();
+		check("the single choice takes one option", await selected("High"));
+		await option("Low").click();
+		check(
+			"and replaces it, not adds to it",
+			(await selected("Low")) && !(await selected("High")),
+		);
+		await card.locator(".albanna-chat__question-nav-btn", { hasText: "Next" }).click();
+		await option("Red").click();
+		await option("Blue").click();
+		check(
+			"the multiple choice takes several options",
+			(await selected("Red")) && (await selected("Blue")),
+		);
+		await option("Red").click();
+		check("and toggles one back off", !(await selected("Red")) && (await selected("Blue")));
+		await option("Red").click();
+		await card.locator(".albanna-chat__question-nav-btn", { hasText: "Back" }).click();
+		check("the walk back keeps the first answer", (await selected("Low")) && !(await selected("High")));
+		await card.locator(".albanna-chat__question-nav-btn", { hasText: "Next" }).click();
+		check(
+			"and the second one",
+			(await selected("Red")) && (await selected("Blue")),
+		);
+		check("Submit is ready once every question is answered", !(await submit.isDisabled()));
+
+		log("The answers go out as one turn, whose clock ticks");
+		await submit.click();
+		const activity = page.locator(".albanna-chat__activity-text").first();
+		await activity.waitFor({ timeout: 30000 }).catch(() => {});
+		const turned = await activity.isVisible();
+		if (!turned) {
+			check("the turn starts", false, "no activity line within 30s");
+		} else {
+			check("the turn starts", true);
+			await page
+				.waitForFunction(
+					() => {
+						const el = document.querySelector(".albanna-chat__activity-text");
+						return el && el.textContent.includes("·");
+					},
+					null,
+					{ timeout: 20000 },
+				)
+				.catch(() => {});
+			const t1 = await activity.textContent();
+			await page.waitForTimeout(2500);
+			const t2 = (await activity.isVisible()) ? await activity.textContent() : "";
+			check(
+				"the activity clock ticks",
+				t1 !== t2 && t2.length > 0,
+				`${t1.trim()} -> ${t2.trim()}`,
+			);
+			const ended = await page
+				.waitForSelector(".albanna-chat__activity", { state: "detached", timeout: 180000 })
+				.then(() => true)
+				.catch(() => false);
+			check("the turn ends", ended, "the activity line stayed up for 180s");
+		}
 	} finally {
 		await page.close().catch(() => {});
 		await browser.close().catch(() => {});

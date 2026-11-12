@@ -310,6 +310,7 @@ def pending(conversation: str, user: str) -> list[dict]:
             "answer",
             "answer_value",
             "conversation",
+            "turn",
             "asked_at",
             "answered_at",
         ],
