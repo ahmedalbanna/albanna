@@ -933,9 +933,11 @@ ADR-0102.  One real fix and a client cadence change:
   R3 (timeout → legible error), R6 (429 → clear message), R7 (401/403 →
   clear message with the admin's next step) and R8 (the answer is parked
   in the same transaction that marks the row `ok`) are pinned by named
-  tests and recorded with their evidence; R4 (fallback chain) and R5
-  (mid-turn failure) have their mechanism read and their live harness
-  listed as the remaining work in the pass.
+  tests and recorded with their evidence; R4 (the fallback chain walked
+  against a live mock provider: 2.0 s to the fallback's answer, the
+  error naming every provider tried) and R5 (a turn that fails after a
+  tool ran leaves the thread whole and the ledger says what ran) are
+  pinned by site-suite tests against loopback mocks.
 
 ### Later (v3) — §3, only with a named customer
 

@@ -115,45 +115,76 @@ sentences are pinned:
   `test_an_operators_error_is_not_the_readers_words`), and the app's
   internals never reach the panel.
 
-## R4 — the fallback is the chain, not a wish
+## R4 — the fallback is the chain, and the chain was walked
 
 `LLMConfig.chain()` (albanna/providers/base.py) returns
 `[primary, fallback]` filtered to usable configs, and `_complete`
 (albanna/services/chat_service.py) walks it in order, retrying transient
 failures once per provider and collecting each failure's sentence into
 `AllProvidersFailed` — the reader's error names every provider tried.
-**Harness pending:** a local mock provider speaking the OpenAI protocol
-as fallback with the primary pointed at a dead port (Stage R-c of the
-plan).  The chain's order and the failure aggregation are pinned by the
-unit tests around `_complete` (`tests/test_stream_restart.py` exercises
-the same walk); the live cross-provider measurement is what remains.
 
-## R5 — a failed turn leaves the thread's words alone
+**Measured** with a local mock provider speaking the OpenAI protocol's
+server-sent events as the fallback, the primary pointed at a loopback
+port nothing listens on (`albanna/tests/test_fallback.py`, site suite):
 
-The turn writes its answer only at the end: `_park` replaces the marker
-once, and the message rows are written by `ChatService.run` after the
-completion is in hand.  A turn that dies mid-execution — worker killed,
-provider error, timeout — leaves the thread's earlier question/answer
-pairs untouched (deletion happens only for a regenerate, and only inside
-the job, before the turn runs, committed first so the model never rereads
-replaced words).  The ledger row records what happened: started as
-`running` before the turn can die, updated in place — a ghost row is
-truth, not a leak (ADR-0101 S4 covers the row's reads).  The mid-failure
-harness (force a tool failure between two rounds, verify the thread) is
-Stage R-c of the plan.
+- the dead primary is tried, retried once (its failure is transient),
+  the fallback is then tried and answers: the turn completes against
+  the fallback in **2.0 s** wall, including the 2 s backoff between the
+  primary's attempts, and the completion's provider and model are the
+  fallback's — the reader's answer is not marked with the failure;
+- both providers dead, the error carries **both** labels, so the
+  operator reading the ledger sees the whole chain's verdict;
+- a working primary is answered by the primary, and the mock counts
+  **one** request: the fallback is not contacted for company.
 
-## R8 — the answer is parked before the row says ok
+**Pinned by** those three cases in the site suite.
 
-The write order is the atomicity claim: within the job's single
-transaction, the turn parks its answer in the cache (`_park`), emits
-`done`, commits — and only then does the endpoint's next request read the
-parked answer.  The ledger row's final `ok` is written inside the same
-transaction that parks (`ChatService.run` → `_log` → the job's
-`frappe.db.commit()`); a crash between park and commit leaves the row
-`running` and the reaper will not call it successful.  A turn recorded
-`ok` therefore always had an answer to park.  The reverse — an answer
-parked with no row — is the lost-turn row's business, and `_lost_turn`
-names the writes the row recorded (R1's reader sentence).
+## R5 — a turn that fails mid-execution leaves the thread whole
+
+The mechanism is the append discipline: the question and answer rows are
+written *together*, at the end, only after a completion is in hand — so a
+turn that dies mid-execution cannot leave a half-written answer behind
+it, and the failed turn's question is not inserted half-done either.
+What the turn does leave is its ledger row, started before the turn
+could die and updated in place: the row records the tool calls that ran
+before the failure, the failure class, and the provider's own detail —
+while the reader's sentence stays words (`tests/test_errors.py`).
+
+**Measured** with a mock that answers round one with a tool call (the
+tool runs), then fails round two with a transient HTTP 500 the chain
+retries once and gives up on (`albanna/tests/test_partial_turn.py`, site
+suite):
+
+- the thread's transcript is **exactly** what it was before the turn —
+  the earlier pairs intact, nothing of the failed turn appended;
+- the ledger row says `status=error`, `tool_calls=1` (the call that ran
+  before the failure), and carries the provider's detail
+  ("collapsed in round two") that the reader's panel never showed.
+
+**Pinned by** that case in the site suite.
+
+## R8 — the row says ok only after the answer exists
+
+The write order is the atomicity claim, and it is worth stating exactly,
+because the order is deliberate and split across three writes:
+
+1. the turn's completion is in hand (the stream ended, the answer text
+   exists);
+2. `_log` updates the row to `ok` and commits — its own commit, on
+   purpose: the audit row must survive even if what follows does not;
+3. the job parks the answer in the cache (`_park`), emits `done`, and
+   commits the job's own transaction.
+
+So a turn recorded `ok` always had an answer in hand when the row was
+written.  The residual window is between steps 2 and 3 — a process
+killed after the row's commit but before the cache write leaves the row
+`ok` and the marker running; the marker expires at the turn's budget,
+the poll says lost, and `_lost_turn`'s ledger read finds no unfinished
+row to name writes from.  That window is a single cache write wide and
+takes a crash inside it; the normal path delivers the answer over the
+socket or the poll within the same second.  The reverse hole — an answer
+parked with no row — cannot happen: the row is written first, and a row
+that stays `running` is what the reaper and `_lost_turn` exist for.
 
 The one deliberate exception, documented in the code, is a tool's own
 write: approved writes commit mid-turn so they survive a later turn
@@ -172,5 +203,5 @@ failure, and the row's payload records them — which is exactly what
   a process-local mirror is answering.
 - A 429/401 sentence quoting an exception class or a status code: the
   reader-message map was bypassed.
-- A row saying `ok` with no parked answer: the park/commit order was
-  inverted.
+- A row saying `ok` with no completion in hand, or a thread carrying a
+  half-written answer: the append-at-the-end discipline was broken.
