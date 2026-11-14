@@ -47,14 +47,11 @@ INDEXES = [
         ["conversation"],
         "the turn totals the drawer shows for each thread on its page",
     ),
-    (
-        "Albanna Chat Log",
-        ["user", "status", "creation"],
-        "the unfinished-turn read every ask and refresh makes; measured at a "
-        "million ledger rows, the user index alone still scanned the user's "
-        "own million rows for a running turn, 10.1 s per ask, and the "
-        "composite reads it in under a millisecond",
-    ),
+    # The composite (user, status, creation) index on this table used to
+    # sit in this list — measured, then appended after the patch had
+    # already executed on production, and a patch runs once.  It lives in
+    # ``add_turn_status_index`` now, which is the migration vehicle for
+    # every site; see the measured numbers in ADR-0101 (S4).
 ]
 
 

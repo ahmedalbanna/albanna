@@ -892,8 +892,10 @@ carrying attachment *bytes* when it already had *addresses* — was fixed
   every ask and every refresh fallback makes — take **10.1 s per ask**; the
   `user` index alone still scanned a heavy user's own million rows.  The
   composite `(user, status, creation)` index reads the same query in
-  **0.9 ms**, and it ships in `add_lookup_indexes` so `bench migrate` adds
-  it to every site.
+  **0.9 ms**, and it ships in `add_turn_status_index` — its own patch,
+  because the patch that carried the other indexes had already run on
+  production and a patch executes exactly once (`bench migrate` applies
+  it to every site).
 * **The usage dialog read the month into Python.**  85 k rows in a month
   took 6.8 s to sum in the application; the same totals aggregated in SQL
   return the same shape and the cost tracks the month's groups, not the

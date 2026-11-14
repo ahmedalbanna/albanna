@@ -137,12 +137,15 @@ numbers below are honest for this host and conservative for a tuned one.
   instead of 85 k rows), returning the same shape; its cost tracks the
   month's aggregation volume, not the ledger's total size.
 
-Shipped: the composite index joins `add_lookup_indexes` (the patch is
-idempotent; `bench migrate` adds it to every site), and the usage dialog
-reads groups, not rows.  The per-thread totals query was already served by
-the `conversation` index (4 ms at a million rows, measured — the NFR-P1
-work's index holding).  `count(*)` over the whole table remains a scan
-(~1.5 s here); nothing per-request reads it.
+Shipped: the composite index ships in `add_turn_status_index` — **its own
+patch**, because patches run once per site and `add_lookup_indexes` had
+already executed on production before the index was measured; the first
+production migrate after the measurement proved the appended entry is
+never reached.  A patch of its own reaches every site, old and new.
+The usage dialog reads groups, not rows.  The per-thread totals query
+was already served by the `conversation` index (4 ms at a million rows,
+measured — the NFR-P1 work's index holding).  `count(*)` over the whole
+table remains a scan (~1.5 s here); nothing per-request reads it.
 
 ## S5 — no vertical scaling for 100 active users
 
