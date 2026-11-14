@@ -133,6 +133,15 @@ The `program:process` name is required — `supervisorctl restart
 frappe-bench-frappe-chat-worker` answers *"no such process"*, because the
 process names carry a `-0` suffix.
 
+The chat worker runs **four processes** (`numprocs=4`, measured 2026-11-14
+for the scalability budgets).  RQ executes one job at a time per worker
+process, so one process means every concurrent turn queues behind the
+turn in hand: twenty simultaneous questions measured as one job running
+and a queue nineteen deep.  Four processes let four turns run at once —
+the same measurement after the change.  Raise `numprocs` further only
+when a site's measured demand says so; each idle process is cheap (the
+worker forks the job), the cost is peak memory during turns.
+
 Why the workers and not just the web server: each job runs in a worker
 process, and that process imported the app's modules when it started.  A
 worker that predates the deploy is running the old code, and a worker that
