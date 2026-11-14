@@ -37,55 +37,61 @@ def usage_summary() -> dict[str, Any]:
 
     The totals are the month's, not all time: a number that grows for
     ever is a number nobody reads twice.
+
+    The month is aggregated **in the database**, not row by row in
+    Python.  A ledger of a million rows makes a read-every-row month
+    summary a multi-second query, and the summary is opened by an
+    operator who asked one question.  The grouped read returns one row
+    per (provider, model, user, status) — a handful — so the query's
+    cost tracks the *aggregation* the site did this month, and a large
+    ledger costs no more than a small one of the same month shape.
     """
     start = _month_start()
 
-    rows = frappe.db.sql(
+    groups = frappe.db.sql(
         """
         select provider, model, `user`, status,
-               input_tokens, output_tokens, cost, provider_cost,
-               estimated, duration_ms
+               count(*) as turns,
+               sum(coalesce(input_tokens, 0) + coalesce(output_tokens, 0)) as tokens,
+               sum(coalesce(cost, 0)) as cost,
+               sum(coalesce(provider_cost, 0)) as provider_cost,
+               sum(case when coalesce(cost, 0) = 0
+                         and coalesce(input_tokens, 0) + coalesce(output_tokens, 0) > 0
+                        then 1 else 0 end) as uncosted,
+               max(coalesce(estimated, 0)) as estimated,
+               sum(case when status = 'error' then 1 else 0 end) as errors
         from `tabAlbanna Chat Log`
         where creation >= %s
           and status not in ('running', 'interrupted')
+        group by provider, model, `user`, status
         """,
         (start,),
         as_dict=True,
     )
 
-    tokens = sum(
-        _as_int(row.get("input_tokens")) + _as_int(row.get("output_tokens")) for row in rows
-    )
+    tokens = sum(_as_int(g.get("tokens")) for g in groups)
     # The site's own figure: the cost in the site's currency.
-    cost = sum(_as_float(row.get("cost")) for row in rows)
+    cost = sum(_as_float(g.get("cost")) for g in groups)
     # The provider's own figure, in the provider's own currency.  It is
     # beside the site's and never mixed with it.
-    provider_cost = sum(_as_float(row.get("provider_cost")) for row in rows)
-    errors = sum(1 for row in rows if row.get("status") == "error")
-
-    # A cost of zero with tokens recorded is a cost the provider did not
-    # report, and the operator is told so rather than shown a number
-    # that reads like "free".
-    uncosted = sum(
-        1
-        for row in rows
-        if _as_float(row.get("cost")) == 0
-        and (_as_int(row.get("input_tokens")) + _as_int(row.get("output_tokens"))) > 0
-    )
+    provider_cost = sum(_as_float(g.get("provider_cost")) for g in groups)
+    errors = sum(_as_int(g.get("errors")) for g in groups)
+    turns = sum(_as_int(g.get("turns")) for g in groups)
+    uncosted = sum(_as_int(g.get("uncosted")) for g in groups)
 
     return {
         "status": "ok",
         "month": start.strftime("%Y-%m"),
-        "turns": len(rows),
+        "turns": turns,
         "tokens": tokens,
         "cost": round(cost, 4),
         "provider_cost": round(provider_cost, 8),
         # The price the site prices a turn with, so that a total of zero
         # can be read as "no price was set" rather than "it was free".
-        "priced": any(_as_float(row.get("cost")) for row in rows),
+        "priced": any(_as_float(g.get("cost")) for g in groups),
         # True when any of the token counts is an estimate rather than a
         # number the provider reported.
-        "estimated": any(_as_int(row.get("estimated")) for row in rows),
+        "estimated": any(_as_int(g.get("estimated")) for g in groups),
         # The turns whose cost is not known.
         "uncosted_turns": uncosted,
         "errors": errors,
@@ -95,24 +101,26 @@ def usage_summary() -> dict[str, Any]:
         "budget_exceeded": (
             get_settings().monthly_budget > 0 and cost >= get_settings().monthly_budget
         ),
-        "by_model": _breakdown(rows, "model"),
-        "by_user": _breakdown(rows, "user"),
+        "by_model": _breakdown(groups, "model"),
+        "by_user": _breakdown(groups, "user"),
     }
 
 
 def _breakdown(rows: list[dict[str, Any]], field: str) -> list[dict[str, Any]]:
     """The top of a breakdown: what it was, and what it cost.
 
-    Ordered by what it cost, because that is what the operator is
-    looking for: the model that is expensive, the user that is using it.
+    The rows are the aggregated groups, so each carries a ``turns``
+    count and pre-summed tokens and cost.  Ordered by what it cost,
+    because that is what the operator is looking for: the model that is
+    expensive, the user that is using it.
     """
     totals: dict[str, dict[str, Any]] = {}
 
     for row in rows:
         name = str(row.get(field) or "") or "(unknown)"
         entry = totals.setdefault(name, {"name": name, "turns": 0, "tokens": 0, "cost": 0.0})
-        entry["turns"] += 1
-        entry["tokens"] += _as_int(row.get("input_tokens")) + _as_int(row.get("output_tokens"))
+        entry["turns"] += _as_int(row.get("turns"))
+        entry["tokens"] += _as_int(row.get("tokens"))
         entry["cost"] += _as_float(row.get("cost"))
 
     ordered = sorted(totals.values(), key=lambda entry: entry["cost"], reverse=True)
