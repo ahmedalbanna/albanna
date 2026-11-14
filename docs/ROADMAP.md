@@ -864,6 +864,53 @@ exactly those five, a picture attaches and the model sees it, a text file
 is refused in the site's own words before its bytes move, and a pin that
 fails says so.
 
+### Shipped in this pass (v0.2.8, the budgets are measured)
+
+Two passes turned the non-functional requirements from names into numbers:
+the performance budget (ADR-0100) and the scalability budget (ADR-0101).
+The discipline was the same for both — *measure first, fix what the
+measurement exposes, record the evidence* — and each batch produced
+measurements, at least one real fix, and an ADR that states its method and
+what would falsify it.
+
+**Performance (ADR-0100).** The emit path, the stream endpoint, the ask
+endpoint, CRUD on the four app doctypes, the drawer reads, and an A/B of the
+prompt were each put under a harness; the one gap found — the ask endpoint
+carrying attachment *bytes* when it already had *addresses* — was fixed
+(`0191ed7`), and every budget now has a number beside it.
+
+**Scalability (ADR-0101).** Six budgets (S1–S6), three real fixes:
+
+* **One chat worker was one turn at a time.** RQ executes one job per
+  worker process, and the supervisor ran the chat queue with `numprocs=1`:
+  twenty concurrent turn jobs measured one running and nineteen waiting
+  (wall 45.9 s for twenty 2-second jobs).  Four processes measured
+  `max_active=4` and a 10.5 s wall for the same twenty.  Scaling is linear
+  and horizontal — more processes, not a bigger host.
+* **The hot ledger read was a ten-second scan at a million rows.**  A
+  million synthetic ledger rows made the unfinished-turn read — the one
+  every ask and every refresh fallback makes — take **10.1 s per ask**; the
+  `user` index alone still scanned a heavy user's own million rows.  The
+  composite `(user, status, creation)` index reads the same query in
+  **0.9 ms**, and it ships in `add_lookup_indexes` so `bench migrate` adds
+  it to every site.
+* **The usage dialog read the month into Python.**  85 k rows in a month
+  took 6.8 s to sum in the application; the same totals aggregated in SQL
+  return the same shape and the cost tracks the month's groups, not the
+  ledger's size.
+* **A poll paid for the settings document it did not need.**  Every poll of
+  a running turn rebuilt the provider configuration — the API key
+  decrypted — to reach two integers.  The budgets are read from the cached
+  document now: a steady-state poll is one query (the access gate's own)
+  and ~3 ms, against five queries and ~130 ms before.
+
+The measurements themselves stand beside the fixes: 50 concurrent sessions
+over a real gunicorn pass 350/350 burst requests and 500/500 steady-state
+polls (p50 205 ms); 100 turns/min is worker arithmetic against the ledger's
+own measured turn-latency distribution (~76 median turns/min at four
+workers, linear in `numprocs`); Redis holds the turn's marker and answer,
+and the database is not polled for turn status.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
