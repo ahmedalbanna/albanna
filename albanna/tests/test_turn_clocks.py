@@ -30,7 +30,7 @@ from unittest import mock
 import frappe
 
 from albanna.api import chat as chat_api
-from albanna.services.chat_job import _mirror_to_marker
+from albanna.services.chat_job import _mirror_to_marker, _start_heartbeat
 from albanna.services.settings_service import get_settings, job_budget_seconds
 from albanna.tests.base import AlbannaTestCase
 
@@ -383,3 +383,87 @@ class TestTheParkedCard(AlbannaTestCase):
         assert pending.get("request_id") == "req-stale"
         # The stale running copy must not be written back clean of the card.
         assert parked.get("pending_approval"), "the card was lost to the stale copy"
+
+
+class TestTheHeartbeat(AlbannaTestCase):
+    """NFR-R1: a worker that dies mid-turn is announced within seconds.
+
+    The beat is the evidence of life: the job renews a short-TTL key
+    every second, and a poll that finds the marker's flag on but the
+    key gone calls the turn lost — instead of waiting out the turn's
+    whole budget, which is all the age check alone could offer a
+    reader.  The flag is the job's, not the endpoint's: it is written
+    when the job starts beating, so a turn still in the queue — and a
+    turn in flight across a deploy — is never declared lost for not
+    having started.
+    """
+
+    STREAM = "test-hb-stream"
+
+    def tearDown(self):
+        _drop_marker(self.STREAM)
+        frappe.cache().delete_value(chat_api.HB_KEY.format(stream_id=self.STREAM))
+        super().tearDown()
+
+    def test_a_gone_beat_with_a_flagged_marker_calls_the_turn_lost(self):
+        """The worker died; the key expired; the poll says so in words."""
+
+        _marker(
+            self.STREAM,
+            {"status": "running", "started_at": time.time(), "heartbeat": True},
+        )
+        # No beat key: the worker is dead and the TTL has done its work.
+
+        result = chat_api.status(stream_id=self.STREAM)
+
+        assert result["status"] == "error"
+
+    def test_a_live_beat_says_running(self):
+        """A slow turn is not a dead one: the beat is present."""
+
+        _marker(
+            self.STREAM,
+            {"status": "running", "started_at": time.time(), "heartbeat": True},
+        )
+        frappe.cache().set_value(
+            chat_api.HB_KEY.format(stream_id=self.STREAM),
+            1,
+            expires_in_sec=30,
+        )
+
+        result = chat_api.status(stream_id=self.STREAM)
+
+        assert result["status"] == "running"
+
+    def test_an_unflagged_marker_is_judged_by_age_alone(self):
+        """No flag, no heartbeat check: a queued turn is not a lost one."""
+
+        _marker(self.STREAM, {"status": "running", "started_at": time.time()})
+
+        result = chat_api.status(stream_id=self.STREAM)
+
+        assert result["status"] == "running"
+
+    def test_the_job_beats_first_and_flags_second(self):
+        """The order the check depends on: a flagged marker always has a
+        beat underneath it, so no poll can see the flag and read the
+        absence of a beat as death during the job's own startup."""
+
+        _marker(self.STREAM, {"status": "running", "started_at": time.time()})
+
+        stop = _start_heartbeat(self.STREAM)
+        try:
+            beat = frappe.cache().get_value(
+                chat_api.HB_KEY.format(stream_id=self.STREAM),
+                expires=True,
+            )
+            flagged = frappe.cache().get_value(
+                chat_api.TURN_CACHE_KEY.format(stream_id=self.STREAM),
+                expires=True,
+            )
+        finally:
+            stop.set()
+
+        assert beat, "the first beat was not written"
+        assert flagged.get("heartbeat") is True, "the marker was not told the job is alive"
+        assert flagged.get("status") == "running"

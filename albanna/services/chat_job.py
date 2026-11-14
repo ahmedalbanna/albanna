@@ -28,12 +28,20 @@ Two details make this reliable rather than merely clever:
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from typing import Any
 
 import frappe
 
-from albanna.api.chat import STALE_GRACE_SECONDS, STREAM_EVENT, TURN_CACHE_KEY
+from albanna.api.chat import (
+    HB_KEY,
+    HEARTBEAT_INTERVAL,
+    HEARTBEAT_TTL,
+    STALE_GRACE_SECONDS,
+    STREAM_EVENT,
+    TURN_CACHE_KEY,
+)
 from albanna.core.attachments import read_attachment_list
 from albanna.core.errors import reader_message
 
@@ -50,6 +58,71 @@ def _reader_error(exc: BaseException) -> str:
         return frappe._(message)
     except Exception:
         return message
+
+
+def _start_heartbeat(stream_id: str) -> threading.Event:
+    """Beat the turn's heart until the returned event is set.
+
+    The beat is how a dead worker is told from a slow turn: the key
+    carries a short TTL and the job renews it every beat, so when the
+    worker dies — a kill, a crash, a timeout's SIGKILL, which takes
+    this thread with the process — the key expires within seconds and
+    the reader's next poll calls the turn lost, instead of waiting out
+    the turn's whole budget.  ``albanna.api.chat.HB_KEY`` carries the
+    arithmetic; NFR-R1 promises the reader ten seconds.
+
+    The beat starts *before* the marker is told about it.  The marker's
+    ``heartbeat`` flag is what switches the poll's check on, and a flag
+    seen without a beat underneath it would read as a dead worker — so
+    the beat is written first, and the flag second, and a turn that
+    died between the two statements is lost by the old, slow rule
+    rather than mislabelled the new, fast one.  A turn still sitting in
+    the queue carries no flag at all and is judged by the old rule too.
+
+    The flag is written before the turn runs, so no ``_mirror_to_marker``
+    can be in flight — the two would read-modify-write the same marker.
+    Afterwards the beat touches only its own key, and the marker is the
+    mirror's alone again.
+
+    A failed beat is logged and retried on the next tick: a redis
+    hiccup must not kill the thread whose whole purpose is to say
+    "alive".
+    """
+    stop = threading.Event()
+    beat_key = HB_KEY.format(stream_id=stream_id)
+    marker_key = TURN_CACHE_KEY.format(stream_id=stream_id)
+
+    def beat() -> None:
+        while not stop.wait(HEARTBEAT_INTERVAL):
+            try:
+                frappe.cache().set_value(beat_key, 1, expires_in_sec=HEARTBEAT_TTL)
+            except Exception:
+                logger.exception("Could not beat the chat turn's heart for %s", stream_id)
+
+    from albanna.services.settings_service import get_settings, job_budget_seconds
+
+    cache = frappe.cache()
+    cache.set_value(beat_key, 1, expires_in_sec=HEARTBEAT_TTL)
+    # The mirror note in ``_mirror_to_marker`` applies here too: a value
+    # read without ``expires=True`` is served from this process's copy,
+    # and a marker written back from a stale copy would drop whatever a
+    # concurrent writer had put in it.
+    frappe.local.cache.pop(cache.make_key(marker_key), None)
+    marker = cache.get_value(marker_key, expires=True)
+    if isinstance(marker, dict) and marker.get("status") == "running":
+        marker["heartbeat"] = True
+        cache.set_value(
+            marker_key,
+            marker,
+            # The marker's span is renewed, not shortened: the same rule
+            # every mirror follows, so a marker cannot die under a turn
+            # that is still working.
+            expires_in_sec=job_budget_seconds(get_settings()) + STALE_GRACE_SECONDS,
+        )
+
+    thread = threading.Thread(target=beat, name=f"chat-heartbeat-{stream_id}", daemon=True)
+    thread.start()
+    return stop
 
 
 def run_turn_job(
@@ -108,45 +181,63 @@ def run_turn_job(
     else:
         attachments, attachment_urls, attachment_texts = [], [], []
 
-    if replace_message:
-        _replace_old_pair(conversation_id, replace_message)
-
+    # The heart beats from here to the end of the job — including the
+    # park and the commit, which are part of "the turn finished": a
+    # worker killed while parking would otherwise leave a marker the
+    # poll trusts by age alone.
+    heartbeat_stop = _start_heartbeat(stream_id)
     try:
-        outcome = ChatService().run(
-            TurnRequest(
-                question=question,
-                conversation_id=conversation_id,
-                page=page,
-                page_context=page_context,
-                stream=True,
-                attachments=attachments,
-                attachment_urls=attachment_urls,
-                attachment_texts=attachment_texts,
-            ),
-            emit=emit,
-        )
-        payload = turn_payload(outcome)
-    except Exception as exc:  # noqa: BLE001 - the job must always answer
-        logger.exception("Chat turn failed")
-        # The detail is in the log above.  The reader is told what
-        # happened in words they can act on: an exception's class and
-        # message are the app's internals, and "JobTimeoutException: Task
-        # exceeded maximum timeout value (600 seconds)" is not an
-        # explanation.
-        payload = {
-            "status": "error",
-            "reply": "",
-            "error": _reader_error(exc),
-            "conversation_id": conversation_id,
-        }
+        if replace_message:
+            _replace_old_pair(conversation_id, replace_message)
 
-    _park(stream_id, payload)
-    emit({"event": "done", "result": payload})
+        try:
+            outcome = ChatService().run(
+                TurnRequest(
+                    question=question,
+                    conversation_id=conversation_id,
+                    page=page,
+                    page_context=page_context,
+                    stream=True,
+                    attachments=attachments,
+                    attachment_urls=attachment_urls,
+                    attachment_texts=attachment_texts,
+                ),
+                emit=emit,
+            )
+            payload = turn_payload(outcome)
+        except Exception as exc:  # noqa: BLE001 - the job must always answer
+            logger.exception("Chat turn failed")
+            # The detail is in the log above.  The reader is told what
+            # happened in words they can act on: an exception's class and
+            # message are the app's internals, and "JobTimeoutException: Task
+            # exceeded maximum timeout value (600 seconds)" is not an
+            # explanation.
+            payload = {
+                "status": "error",
+                "reply": "",
+                "error": _reader_error(exc),
+                "conversation_id": conversation_id,
+            }
 
-    try:
-        frappe.db.commit()
-    except Exception:
-        logger.exception("Could not commit the chat turn")
+        _park(stream_id, payload)
+        emit({"event": "done", "result": payload})
+
+        try:
+            frappe.db.commit()
+        except Exception:
+            logger.exception("Could not commit the chat turn")
+    finally:
+        # Stopping the thread first keeps its beats from landing after
+        # the key is dropped — a stray beat would resurrect a key the
+        # next turn's poll might still be reading.  The key is then
+        # deleted outright rather than left to its TTL: a turn that
+        # finished in half a second would otherwise leave a live beat
+        # behind it, saying "alive" about a turn that is done.
+        heartbeat_stop.set()
+        try:
+            frappe.cache().delete_value(HB_KEY.format(stream_id=stream_id))
+        except Exception:
+            logger.exception("Could not clear the chat turn's heartbeat for %s", stream_id)
 
 
 def _replace_old_pair(conversation_id: str, replace_message: str) -> None:

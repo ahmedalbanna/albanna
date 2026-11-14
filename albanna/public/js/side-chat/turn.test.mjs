@@ -190,13 +190,16 @@ import { nextPollDelay } from "./turn.mjs";
 
 // A socket that has spoken recently has proven the transport works, and
 // the poll slows right down — every idle poll it has run notwithstanding.
-// The times are real clock times: a busy morning, not the epoch.
+// The gap is still bounded: a dead worker is announced by the next poll,
+// so the while-alive gap may not be long enough to spend the whole
+// ten-second budget a single wait.  The times are real clock times: a
+// busy morning, not the epoch.
 {
 	const t = 1735000000000;
-	assert.equal(nextPollDelay({ lastEventAt: t - 100, idlePolls: 0 }, t), 12000);
+	assert.equal(nextPollDelay({ lastEventAt: t - 100, idlePolls: 0 }, t), 6000);
 	assert.equal(
-		nextPollDelay({ lastEventAt: t - 7900, idlePolls: 9 }, t),
-		12000,
+		nextPollDelay({ lastEventAt: t - 5900, idlePolls: 9 }, t),
+		6000,
 		"recent counts even after many idle polls",
 	);
 	// And an event older than the window falls back to the ramp.

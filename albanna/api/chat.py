@@ -108,6 +108,31 @@ def _read_attachments(
 #: Where a finished turn is parked for the polling fallback.
 TURN_CACHE_KEY = "albanna:turn:{stream_id}"
 
+#: Where a running turn's job beats its heart.
+#:
+#: The job touches this key every second while it lives.  The key carries a
+#: short TTL, so when the worker dies the key dies with it — within seconds —
+#: and the next poll notices.  Without it a dead worker's turn was declared
+#: lost only when the marker outlived the *whole job budget* plus a grace
+#: (the turn's own clock can be half an hour), and the reader sat in front of
+#: a "running" panel for that long.
+HB_KEY = "albanna:turn:hb:{stream_id}"
+
+#: How long a beat is trusted.  A live worker beats every
+#: ``HEARTBEAT_INTERVAL`` seconds (see the job); a dead one beats never, so
+#: the key vanishes this long after its last beat.  The whole detection
+#: budget — beats stop, key expires, the next poll reads it gone — must fit
+#: inside ten seconds, which is what NFR-R1 promises the reader.  The
+#: client's slowest poll while the socket looks alive is six seconds
+#: (``STATUS_POLL_MS_WHILE_ALIVE`` in the panel), so beat interval plus this
+#: TTL must leave the poll room: they are one second and three, worst case
+#: the key is gone four seconds after the worker died, and the reader hears
+#: it by the next poll — at most six seconds later.
+HEARTBEAT_TTL = 3
+
+#: How often the job beats while the turn lives.
+HEARTBEAT_INTERVAL = 1
+
 #: How long a parked "running" marker is trusted before the turn is declared
 #: lost.  The worker's own timeout is the yardstick, with a minute of slack
 #: for the job to be picked up and for the result to be written.
@@ -498,6 +523,26 @@ def status(stream_id: str = "", conversation: str = "") -> dict[str, Any]:
 
         age = time.time() - float(payload.get("started_at") or time.time())
         if age > _turn_deadline():
+            return _lost_turn(conversation)
+        # The marker says the job was beating its heart — the job writes
+        # the flag when it starts beating, never before, so a turn still
+        # sitting in the queue is not judged by this check and cannot be
+        # declared lost for not having started.  Once the flag is on, a
+        # gone beat with a young marker is not a slow turn: a slow turn
+        # beats too.  It is a worker that died, and the beat died with
+        # it — the whole point of the TTL.  The turn is declared lost
+        # now, not when the marker's age outgrows the whole job budget,
+        # which is how long a reader could sit in front of a "running"
+        # panel before.
+        #
+        # The beat is read with ``expires=True`` for the same reason the
+        # marker is: a value read without it is mirrored into this
+        # process, and a mirrored "alive" would keep answering long
+        # after the key had expired in redis.
+        if payload.get("heartbeat") and not frappe.cache().get_value(
+            HB_KEY.format(stream_id=stream_id),
+            expires=True,
+        ):
             return _lost_turn(conversation)
         return {"status": "running"}
 

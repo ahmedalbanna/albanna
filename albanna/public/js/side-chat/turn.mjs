@@ -46,8 +46,16 @@ export const STATUS_POLL_MAX_MS = 9000;
  *
  * When events are arriving, the transport is working and a poll is
  * almost redundant — yet a guarantee that is never exercised is not a
- * guarantee, so it still runs, slowly. */
-export const STATUS_POLL_MS_WHILE_ALIVE = 12000;
+ * guarantee, so it still runs, slowly.  How slowly is a promise, not a
+ * preference: a worker that dies mid-turn is detected by the *next*
+ * poll, because the server's heartbeat key outlives the worker by only
+ * seconds (the beat TTL plus the beat interval), and the whole
+ * detection — beats stop, key expires, poll reads it gone — must reach
+ * the reader inside ten seconds.  A twelve-second gap alone could spend
+ * the whole budget on one wait, so the gap is six: the reader hears
+ * about a dead turn by the first poll after the key expires, worst
+ * case inside ten seconds of the death. */
+export const STATUS_POLL_MS_WHILE_ALIVE = 6000;
 
 /** How long after a socket event the socket still counts as alive. */
 export const SOCKET_ALIVE_WINDOW_MS = 8000;
