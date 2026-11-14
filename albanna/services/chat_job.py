@@ -28,6 +28,7 @@ Two details make this reliable rather than merely clever:
 from __future__ import annotations
 
 import logging
+import pickle
 import threading
 import time
 from typing import Any
@@ -89,20 +90,28 @@ def _start_heartbeat(stream_id: str) -> threading.Event:
     "alive".
     """
     stop = threading.Event()
-    beat_key = HB_KEY.format(stream_id=stream_id)
+    cache = frappe.cache()
+    # The thread has no site context of its own — ``frappe.conf`` is an
+    # unbound proxy there, and ``set_value`` needs it to build the key.
+    # So the prefixed key and the pickled value are built *here*, once,
+    # and the thread speaks raw redis through the client's own
+    # connection pool, which is thread-safe by design.  The value is
+    # pickled because the reader (``status``) reads it through
+    # ``get_value``, which unpickles whatever it finds.
+    beat_key = cache.make_key(HB_KEY.format(stream_id=stream_id))
+    beat_value = pickle.dumps(1)
     marker_key = TURN_CACHE_KEY.format(stream_id=stream_id)
 
     def beat() -> None:
         while not stop.wait(HEARTBEAT_INTERVAL):
             try:
-                frappe.cache().set_value(beat_key, 1, expires_in_sec=HEARTBEAT_TTL)
+                cache.set(beat_key, beat_value, ex=HEARTBEAT_TTL)
             except Exception:
                 logger.exception("Could not beat the chat turn's heart for %s", stream_id)
 
     from albanna.services.settings_service import get_settings, job_budget_seconds
 
-    cache = frappe.cache()
-    cache.set_value(beat_key, 1, expires_in_sec=HEARTBEAT_TTL)
+    cache.set(beat_key, beat_value, ex=HEARTBEAT_TTL)
     # The mirror note in ``_mirror_to_marker`` applies here too: a value
     # read without ``expires=True`` is served from this process's copy,
     # and a marker written back from a stale copy would drop whatever a
