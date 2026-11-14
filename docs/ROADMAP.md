@@ -929,15 +929,17 @@ ADR-0102.  One real fix and a client cadence change:
 * **The panel's while-alive poll gap dropped 12 s → 6 s**, because that
   gap bounded the client-visible detection — a single twelve-second wait
   could have spent the whole budget on its own.
-* R2 (reconnect recovers the answer from the cache, no re-submission),
+* R2 (reconnect recovers the answer from the cache, no re-submission —
+  measured at 5.9 s over the poll alone),
   R3 (timeout → legible error), R6 (429 → clear message), R7 (401/403 →
-  clear message with the admin's next step) and R8 (the answer is parked
-  in the same transaction that marks the row `ok`) are pinned by named
-  tests and recorded with their evidence; R4 (the fallback chain walked
-  against a live mock provider: 2.0 s to the fallback's answer, the
-  error naming every provider tried) and R5 (a turn that fails after a
-  tool ran leaves the thread whole and the ledger says what ran) are
-  pinned by site-suite tests against loopback mocks.
+  clear message with the admin's next step) and R8 (the row says ok only
+  after the completion is in hand; the write order stated exactly) are
+  pinned by named tests and recorded with their evidence; R4 (the
+  fallback chain walked against a live mock provider: 2.0 s to the
+  fallback's answer, the error naming every provider tried) and R5 (a
+  turn that fails after a tool ran leaves the thread whole and the
+  ledger says what ran) are pinned by site-suite tests against loopback
+  mocks.
 
 ### Later (v3) — §3, only with a named customer
 

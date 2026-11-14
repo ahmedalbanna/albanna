@@ -81,14 +81,15 @@ job beats before it flags.  The client cadence is pinned by
 
 ## R2 — the socket never carries the only copy
 
-The parked answer *is* the reconnect path.  A turn run over HTTP alone —
-no socket.io subscription ever opened — delivered its answer through
-`status` polling alone; the poll is the delivery guarantee and the socket
-the fast path (`docs/adr/0101` S6 measured the poll's cost).  A
-reconnecting client resubscribes and, until events arrive, polls; the
-parked marker hands back the finished answer (or the running state) with
-no re-submission — `ask_stream` is called once per question, and nothing
-in the reconnect path enqueues again.
+The parked answer *is* the reconnect path.  **Measured** with a turn run
+over HTTP alone — no socket.io subscription ever opened — on
+`test.localhost`: the answer arrived through `status` polling alone in
+**5.9 s**, status `ok`, no re-submission.  The poll is the delivery
+guarantee and the socket the fast path (ADR-0101 S6 measured the poll's
+cost); a reconnecting client resubscribes and, until events arrive,
+polls, and the parked marker hands back the finished answer (or the
+running state) with nothing enqueued again — `ask_stream` is called once
+per question.
 
 **Pinned by** the same marker tests as R1 (the poll answers from the
 cache), plus the turn-await cases in `turn-await.test.mjs` (the card that
