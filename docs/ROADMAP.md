@@ -911,6 +911,32 @@ own measured turn-latency distribution (~76 median turns/min at four
 workers, linear in `numprocs`); Redis holds the turn's marker and answer,
 and the database is not polled for turn status.
 
+### Shipped in this pass (v0.2.9, the reliability budgets are measured)
+
+Eight reliability budgets (R1–R8), measured the same way and recorded in
+ADR-0102.  One real fix and a client cadence change:
+
+* **A dead worker's turn is announced inside ten seconds.**  Nothing
+  announced a worker's death before: the poll declared a turn lost only
+  when the marker outlived the *whole job budget* plus a grace — a
+  half-hour ceiling for a turn that died in its first second.  The job
+  now beats a short-TTL key every second and `status()` declares a
+  flagged running turn with a gone beat lost: a SIGKILLed turn's runner
+  was announced **3.0 s** after the kill, against the 10 s budget.  The
+  flag is written by the job after its first beat, so a turn still in the
+  queue is judged by the old age rule and cannot be declared lost for
+  not having started.
+* **The panel's while-alive poll gap dropped 12 s → 6 s**, because that
+  gap bounded the client-visible detection — a single twelve-second wait
+  could have spent the whole budget on its own.
+* R2 (reconnect recovers the answer from the cache, no re-submission),
+  R3 (timeout → legible error), R6 (429 → clear message), R7 (401/403 →
+  clear message with the admin's next step) and R8 (the answer is parked
+  in the same transaction that marks the row `ok`) are pinned by named
+  tests and recorded with their evidence; R4 (fallback chain) and R5
+  (mid-turn failure) have their mechanism read and their live harness
+  listed as the remaining work in the pass.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
