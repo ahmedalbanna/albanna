@@ -31,6 +31,7 @@ assert.equal(toolLabel("get_doc"), "Reading");
 assert.equal(toolLabel("get_doctype_meta"), "Checking fields");
 assert.equal(toolLabel("read_file"), "Reading a file");
 assert.equal(toolLabel("run_report"), "Running a report");
+assert.equal(toolLabel("read_thread_history"), "Reading the thread");
 assert.equal(toolLabel("create_doc"), "Creating");
 assert.equal(toolLabel("write_file"), "Creating a file");
 assert.equal(toolLabel("edit_file"), "Editing a file");

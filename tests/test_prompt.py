@@ -156,6 +156,20 @@ def test_the_prompt_says_how_much_of_the_thread_is_behind_the_window():
     assert "behind what you can see" in prompt
 
 
+def test_the_prompt_reaches_before_it_asks_the_reader_to_repeat():
+    """ADR-0104: the count got hands.
+
+    The instruction used to end at "ask the reader to repeat the
+    decision" — honest, but it made the reader do the machine's work.
+    The model is told to look the earlier words up first, and to ask
+    only when the tool cannot find them.
+    """
+    prompt = build_system_prompt([], PromptContext(history_behind=290))
+
+    assert "read_thread_history" in prompt
+    assert "Ask the reader to repeat a decision only when the tool cannot find it" in prompt
+
+
 def test_a_short_thread_says_nothing_about_what_is_behind_it():
     """A line about messages that do not exist is a line of noise.
 

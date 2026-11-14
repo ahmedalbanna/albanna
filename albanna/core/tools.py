@@ -54,6 +54,7 @@ WRITE = "write"
 #: manifest may not import Frappe and the service may not import the
 #: implementations, and this is the one thing both sides have to agree on.
 ASK_QUESTION_TOOL = "ask_question"
+READ_THREAD_HISTORY_TOOL = "read_thread_history"
 
 #: The longest tool result handed back to the model, in characters.
 #:
@@ -906,6 +907,54 @@ ASK_QUESTION = ToolSpec(
 )
 
 
+#: The thread's own earlier messages, reachable (ADR-0104).
+#:
+#: This is the other tool that does not act on the site's data: it reads
+#: the conversation the turn runs in, behind the model's own history
+#: window.  The conversation comes from the port's context — the model
+#: cannot name a thread, because a wrong name would be a read of
+#: somebody else's words — so the schema carries only what the model is
+#: looking for: an optional search term and a page.
+READ_THREAD_HISTORY = ToolSpec(
+    name=READ_THREAD_HISTORY_TOOL,
+    description=(
+        "Read this conversation's own earlier messages — the ones behind "
+        "what you can already see. Use this before asking the reader to "
+        "repeat something decided earlier in the thread: search it for a "
+        "word or a name, or page back from the most recent messages you "
+        "cannot see. Each message comes labelled with its position in the "
+        "thread; quote the words and say which message they came from."
+    ),
+    parameters={
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "search": {
+                "type": "string",
+                "description": (
+                    "Text to look for in the thread's messages. The match "
+                    "is a plain contains-match: %, _ and \\ are ordinary "
+                    "characters in what you type, not patterns. Omit to "
+                    "page back from the newest message you cannot see."
+                ),
+            },
+            "page": {
+                "type": "integer",
+                "minimum": 0,
+                "description": (
+                    "Which page of twenty messages, counting from zero. "
+                    "Page 0 is the newest you cannot see; each further "
+                    "page goes further back."
+                ),
+                "default": 0,
+            },
+        },
+        "required": [],
+    },
+    tier=READ,
+)
+
+
 #: Every tool the app knows about.
 #:
 #: Rule: no tool may declare a SQL-shaped parameter (sql, query,
@@ -931,6 +980,7 @@ TOOL_MANIFEST = ToolRegistry(
         AMEND_DOC,
         DELETE_DOC,
         ASK_QUESTION,
+        READ_THREAD_HISTORY,
     ]
 )
 

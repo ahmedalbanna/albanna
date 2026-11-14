@@ -52,6 +52,8 @@ export function toolLabel(name) {
 			return __("Checking fields");
 		case "read_file":
 			return __("Reading a file");
+		case "read_thread_history":
+			return __("Reading the thread");
 		case "run_report":
 			return __("Running a report");
 		case "create_doc":

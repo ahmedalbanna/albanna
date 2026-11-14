@@ -43,6 +43,7 @@ IMPLEMENTATION_MODULES = {
     "amend_doc": "albanna.tools.erpnext",
     "delete_doc": "albanna.tools.erpnext",
     "ask_question": "albanna.tools.questions",
+    "read_thread_history": "albanna.tools.history",
 }
 
 #: The model's arguments and the implementation's parameters are the same
@@ -58,6 +59,7 @@ IMPLEMENTATIONS = {
     "create_doc": ("albanna.tools.erpnext", "create_doc"),
     "update_doc": ("albanna.tools.erpnext", "update_doc"),
     "ask_question": ("albanna.tools.questions", "ask_question"),
+    "read_thread_history": ("albanna.tools.history", "read_thread_history"),
 }
 
 

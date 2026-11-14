@@ -93,13 +93,20 @@ class TestReadToolsAreGated(AlbannaTestCase):
     }
 
     def test_every_read_tool_refuses_a_caller_who_may_not_read(self):
-        # ``ask_question`` is a read-tier tool but it reads no site data:
-        # it asks the reader a question.  It has no target a caller could
-        # be refused for, so it is outside this guard's scope.
+        # Two read-tier tools read no site data, so they have no target a
+        # caller could be refused for, and are outside this guard's
+        # scope: ``ask_question`` asks the reader a question, and
+        # ``read_thread_history`` reads the *caller's own* thread — the
+        # conversation is supplied by the port's context, never by the
+        # model, and the turn it runs in already belongs to the caller
+        # (ADR-0104).  The access question for both is thread ownership,
+        # which is decided where the turn is opened, and covered by the
+        # refusals in their own tests.
+        conversation_tools = {"ask_question", "read_thread_history"}
         read_tools = [
             spec.name
             for spec in TOOL_MANIFEST.all()
-            if spec.tier == "read" and spec.name != "ask_question"
+            if spec.tier == "read" and spec.name not in conversation_tools
         ]
 
         # read_file's target is the private file made in setUp — a file

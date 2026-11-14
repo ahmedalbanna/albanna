@@ -1096,6 +1096,9 @@ msgid ""
 "on it."
 msgstr "لا يمكنك قراءة هذه التذكرة، لذلك لا يمكن تسليم المحادثة عليها."
 
+msgid "Reading the thread"
+msgstr "قراءة المحادثة"
+
 
 msgid "Undo"
 msgstr "تراجع"
