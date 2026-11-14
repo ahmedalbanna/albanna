@@ -1091,6 +1091,11 @@ msgstr "تم التصعيد إلى الدعم."
 msgid "Could not escalate the conversation."
 msgstr "تعذّر تصعيد المحادثة."
 
+msgid ""
+"You may not read this ticket, so the conversation cannot be handed over "
+"on it."
+msgstr "لا يمكنك قراءة هذه التذكرة، لذلك لا يمكن تسليم المحادثة عليها."
+
 
 msgid "Undo"
 msgstr "تراجع"

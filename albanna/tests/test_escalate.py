@@ -281,6 +281,158 @@ class TestEscalation(AlbannaTestCase):
 
     # -- what it refuses ----------------------------------------------------
 
+    def test_a_thread_on_a_ticket_hands_over_as_a_todo_on_that_ticket(self):
+        """Escalating from a ticket lands on the ticket, not on a second one.
+
+        This is the confirmed live problem: the thread was anchored on an
+        Issue's page, the button was pressed, and the reader had two open
+        tickets for one customer's words.  The handover is a ToDo on the
+        ticket the reader is in, carrying the same transcript the Issue
+        path builds, allocated to the ticket's existing assignee.
+        """
+        self._as(self.owner)
+        issue = frappe.new_doc("Issue")
+        issue.subject = "Customer cannot see their invoices"
+        issue.raised_by = self.owner
+        issue.insert()
+
+        conversation = self._thread("Open orders for Acme")
+        frappe.db.set_value(
+            "Albanna Conversation", conversation, "page", f"form|Issue|{issue.name}"
+        )
+        # The ticket already has a person on it: the assignment system
+        # records assignments as open ToDo rows on the Issue.
+        assignment = frappe.new_doc("ToDo")
+        assignment.description = "assigned by the framework"
+        assignment.reference_type = "Issue"
+        assignment.reference_name = issue.name
+        assignment.allocated_to = self.other
+        assignment.flags.ignore_permissions = True
+        assignment.insert()
+
+        issues_before = frappe.db.count("Issue")
+        result = escalate_conversation(conversation=conversation)
+
+        self.assertIn("todo", result)
+        self.assertEqual(result["issue"], issue.name)
+        self.assertEqual(result["allocated_to"], self.other)
+        self.assertEqual(frappe.db.count("Issue"), issues_before, "a second ticket was opened")
+
+        todo = frappe.get_doc("ToDo", result["todo"])
+        self.assertEqual(todo.reference_type, "Issue")
+        self.assertEqual(todo.reference_name, issue.name)
+        self.assertEqual(todo.allocated_to, self.other)
+        self.assertIn("How many open orders are there?", todo.description)
+        self.assertIn("Here are your open orders.", todo.description)
+
+    def test_an_unassigned_ticket_gets_an_unallocated_handover(self):
+        """Nobody assigned means an unallocated ToDo, said out loud.
+
+        A handover addressed to \"somebody\" is honest about being
+        unaddressed: the reply's ``allocated_to`` is empty, and the way
+        forward is the ticket's own assignment UI — which is the
+        organisation's answer to \"who is on this ticket\" and not a
+        second one invented here.
+        """
+        self._as(self.owner)
+        issue = frappe.new_doc("Issue")
+        issue.subject = "Customer cannot see their invoices"
+        issue.raised_by = self.owner
+        issue.insert()
+
+        conversation = self._thread("Open orders for Acme")
+        frappe.db.set_value(
+            "Albanna Conversation", conversation, "page", f"form|Issue|{issue.name}"
+        )
+
+        result = escalate_conversation(conversation=conversation)
+
+        todo = frappe.get_doc("ToDo", result["todo"])
+        self.assertEqual(todo.reference_name, issue.name)
+        self.assertFalse(todo.allocated_to, "a person was invented")
+        self.assertEqual(result["allocated_to"], "")
+
+    def test_a_closed_ticket_escalates_out(self):
+        """A closed Issue is not a destination: a new Issue, as before.
+
+        There is nothing open to attach to, and a ToDo parked on a
+        ticket nobody will read is the wrong handover in the other
+        direction.
+        """
+        self._as(self.owner)
+        issue = frappe.new_doc("Issue")
+        issue.subject = "Customer cannot see their invoices"
+        issue.raised_by = self.owner
+        issue.insert()
+        frappe.db.set_value("Issue", issue.name, "status", "Closed")
+
+        conversation = self._thread("Open orders for Acme")
+        frappe.db.set_value(
+            "Albanna Conversation", conversation, "page", f"form|Issue|{issue.name}"
+        )
+        todos_before = frappe.db.count("ToDo")
+
+        result = escalate_conversation(conversation=conversation)
+
+        self.assertIn("issue", result)
+        self.assertNotEqual(result["issue"], issue.name)
+        self.assertEqual(frappe.db.count("ToDo"), todos_before, "a ToDo was parked on a closed ticket")
+
+    def test_a_reader_who_may_not_read_the_ticket_is_refused(self):
+        """The ToDo path's gate is the ticket, read the assignment way.
+
+        A reader who can open the chat but cannot *read* the ticket the
+        thread was born on is refused before anything is created — the
+        refusal names the permission, and the reader is never handed a
+        second ticket as a side effect of being refused.  The gate is
+        read on the reference document, the same one the framework's
+        assignment UI applies (``assign_to.add`` calls
+        ``check_permission`` on the ticket): ToDo's own controller hook
+        admits only System Manager by default, which is why the
+        framework bypasses it for assignments.
+        """
+        self._as(self.owner)
+        issue = frappe.new_doc("Issue")
+        issue.subject = "Customer cannot see their invoices"
+        issue.raised_by = self.owner
+        issue.insert()
+
+        # A chat reader with no Support role: the chat opens, but the
+        # ticket is not theirs to read.
+        outsider = "albanna.test.escalate.outsider@albanna.dev"
+        if not frappe.db.exists("User", outsider):
+            former = frappe.session.user
+            frappe.set_user("Administrator")
+            try:
+                user = frappe.new_doc("User")
+                user.email = outsider
+                user.first_name = "Albanna"
+                user.last_name = "Escalate"
+                user.flags.ignore_permissions = True
+                user.insert()
+            finally:
+                frappe.set_user(former)
+        got = frappe.get_doc("User", outsider)
+        got.flags.ignore_permissions = True
+        got.add_roles("Albanna User")
+        frappe.local.role_permissions = {}
+        frappe.local.perms = {}
+
+        conversation = new_thread(outsider, f"form|Issue|{issue.name}")
+        todos_before = frappe.db.count("ToDo")
+        issues_before = frappe.db.count("Issue")
+
+        self._as(outsider)
+        with self.assertRaises(frappe.PermissionError):
+            escalate_conversation(conversation=conversation)
+
+        self.assertEqual(frappe.db.count("ToDo"), todos_before, "a ToDo was created")
+        self.assertEqual(
+            frappe.db.count("Issue"),
+            issues_before,
+            "the refusal fell through to a second ticket",
+        )
+
     def test_another_users_conversation_is_refused(self):
         """A conversation that is not the caller's is not theirs to hand over.
 

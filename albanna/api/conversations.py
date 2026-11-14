@@ -234,6 +234,15 @@ def escalate_conversation(conversation: str = "") -> dict:
 
     The conversation must belong to the caller.  The Issue is created as
     the caller, so Frappe's own permission engine applies.
+
+    When the thread is anchored on an open Issue — the conversation's
+    page identity is that ticket's form page — the handover lands on the
+    ticket the reader is already in: a ToDo carrying the same
+    transcript, not a second ticket for the same words (ADR-0103).  The
+    caller must be allowed to write to *that Issue document*; a reader
+    who may not is refused with the permission named.  Every other
+    anchor — a list page, a report, a closed Issue — takes the original
+    path.
     """
     require_chat_access()
 
@@ -251,6 +260,132 @@ def escalate_conversation(conversation: str = "") -> dict:
     window = transcript_window(conversation, limit=400, before_idx=0)
     messages = window.get("messages") or []
 
+    handover = _handover_text(subject, messages)
+
+    issue_name = _issue_anchor(conversation)
+    if issue_name:
+        # The thread says it was born on a ticket.  Either the handover
+        # lands on that ticket, or the reader is refused with the
+        # permission named — a reader standing in a ticket is never
+        # handed a *second* ticket as a side effect of being refused
+        # (ADR-0103).  Only an anchor that is not a live, open ticket
+        # falls through to the original path.
+        issue_name = _handover_target(user, issue_name)
+    if issue_name:
+        todo, allocated_to = _handover_todo(user, issue_name, subject, handover)
+        return {"todo": todo, "issue": issue_name, "allocated_to": allocated_to}
+
+    issue = frappe.new_doc("Issue")
+    issue.subject = subject
+    issue.description = handover
+    issue.raised_by = user
+    issue.insert()
+
+    return {"issue": issue.name}
+
+
+def _issue_anchor(conversation: str) -> str:
+    """The Issue this thread was born on, when it was born on one.
+
+    The panel's page identity is ``form|<doctype>|<name>`` for a form
+    page and the route itself for everything else, so the doctype decides
+    and the route never pretends to be a ticket.
+    """
+    page = str(frappe.db.get_value("Albanna Conversation", conversation, "page") or "")
+    parts = page.split("|")
+    if len(parts) == 3 and parts[0] == "form" and parts[1] == "Issue":
+        return parts[2]
+    return ""
+
+
+def _handover_target(user: str, issue_name: str) -> str:
+    """The ticket the handover may land on, or the refusal, or nothing.
+
+    Returns the Issue's name when the anchor is a live, open ticket this
+    reader may read; ``""`` when the anchor is not a destination — the
+    ticket is gone, or closed — so the caller falls through to the
+    original new-Issue path; and raises :class:`frappe.PermissionError`
+    naming the missing right when the ticket is live and open but the
+    reader may not even see it.
+
+    The gate is the one the framework's own assignment UI applies:
+    ``frappe.desk.form.assign_to.add`` gates on the *reference
+    document's* permission and inserts the ToDo bypassing the ToDo's own
+    — because ToDo's controller hook admits only the roles explicitly
+    granted on ToDo, and by default that is System Manager alone.  A
+    handover onto a ticket is an assignment; its gate is the ticket.
+
+    The framework's gate is *read*, and this endpoint matches it: the
+    handover changes the ticket's assignment state, which is exactly
+    what the Desk's assign panel changes for a reader who can open the
+    ticket.
+    """
+    if not frappe.db.exists("Issue", issue_name):
+        return ""
+    status = str(frappe.db.get_value("Issue", issue_name, "status") or "")
+    if status == "Closed":
+        return ""
+    issue = frappe.get_doc("Issue", issue_name)
+    if not frappe.has_permission("Issue", "read", doc=issue, user=user):
+        raise frappe.PermissionError(
+            _(
+                "You may not read this ticket, so the conversation cannot be handed over on it."
+            )
+        )
+    return issue_name
+
+
+def _handover_todo(
+    user: str, issue_name: str, subject: str, handover: str
+) -> tuple[str, str]:
+    """The ToDo that carries the handover, and who it went to.
+
+    The assignee is the Issue's existing assignee — read from the open
+    assignment ToDos the assignment system writes, the one source there
+    is.  Nobody assigned means an unallocated ToDo and an honest answer:
+    the endpoint's reply says ``allocated_to: ""``, and the way forward is
+    the ticket's own assignment UI.
+    """
+    assigned = frappe.get_all(
+        "ToDo",
+        filters={
+            "reference_type": "Issue",
+            "reference_name": issue_name,
+            "allocated_to": ("is", "set"),
+        },
+        order_by="creation desc",
+        limit_page_length=1,
+        pluck="allocated_to",
+    )
+    allocated_to = str(assigned[0]) if assigned else ""
+
+    todo = frappe.new_doc("ToDo")
+    todo.description = f"# {subject}\n\n{handover}"
+    todo.reference_type = "Issue"
+    todo.reference_name = issue_name
+    if allocated_to:
+        todo.allocated_to = allocated_to
+    # The framework's own assignment path inserts the ToDo with the
+    # ToDo's own permission checks bypassed
+    # (``frappe.desk.form.assign_to.add``), because ToDo's controller
+    # hook admits only the roles explicitly granted on ToDo — System
+    # Manager, by default — and assignment would otherwise be an
+    # admin-only act.  The gate this endpoint applies is the reference
+    # document's (``_handover_target``); the ToDo itself follows the
+    # framework's practice, and is recorded as created by the caller.
+    todo.flags.ignore_permissions = True
+    todo.insert()
+
+    return todo.name, allocated_to
+
+
+def _handover_text(subject: str, messages: list[dict]) -> str:
+    """The handover block both escalation shapes carry.
+
+    One builder for the Issue path and the ToDo path: a handover whose
+    two shapes drift apart is a handover the person picking it up cannot
+    trust to be the whole truth.
+    """
     lines = [f"# {subject}", "", "Escalated from an Albanna conversation.", ""]
     for message in messages:
         role = "User" if message.get("role") == "user" else "Assistant"
@@ -267,15 +402,7 @@ def escalate_conversation(conversation: str = "") -> dict:
             lines.extend(tool_lines)
         lines.append("")
 
-    description = "\n".join(lines).strip()
-
-    issue = frappe.new_doc("Issue")
-    issue.subject = subject
-    issue.description = description
-    issue.raised_by = user
-    issue.insert()
-
-    return {"issue": issue.name}
+    return "\n".join(lines).strip()
 
 
 def _tool_lines(tools: list[dict]) -> list[str]:

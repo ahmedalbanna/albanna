@@ -127,7 +127,13 @@ def options() -> dict[str, Any]:
         # escalate" already has an answer in the system: whoever Frappe
         # lets create an Issue.  This reads that answer rather than
         # inventing a second one.
-        can_escalate = checker.can_create("Issue")
+        #
+        # A second shape joined the first (ADR-0103): a thread anchored
+        # on an open Issue hands over as a ToDo on that ticket, and a
+        # reader who cannot raise tickets but can add ToDos is a support
+        # agent whose button is real.  The endpoint enforces whichever
+        # path the shape takes; this publishes that *a* path exists.
+        can_escalate = checker.can_create("Issue") or checker.can_create("ToDo")
 
     return {
         "visible": visible,
