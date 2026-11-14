@@ -584,9 +584,10 @@ def _turn_deadline() -> float:
     The job's clock covers the work *and* the wait (see
     ``job_budget_seconds``); the grace on top is for pickup and parking.
     """
-    from albanna.services.settings_service import get_settings, job_budget_seconds
+    from albanna.services.settings_service import get_budgets, job_budget_seconds
 
-    return job_budget_seconds(get_settings()) + STALE_GRACE_SECONDS
+    turn, wait = get_budgets()
+    return job_budget_seconds(turn, wait) + STALE_GRACE_SECONDS
 
 
 @frappe.whitelist()
@@ -628,9 +629,10 @@ def confirm_write(request_id: str = "", decision: str = "") -> dict[str, Any]:
         record_decision,
         wait_seconds,
     )
-    from albanna.services.settings_service import get_settings
+    from albanna.services.settings_service import get_budgets
 
-    ttl = int(wait_seconds(get_settings().confirm_timeout)) + 60
+    _turn, wait = get_budgets()
+    ttl = int(wait_seconds(wait)) + 60
 
     try:
         pending = record_decision(request_id, decision, ttl=ttl)

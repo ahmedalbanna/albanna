@@ -75,3 +75,36 @@ def test_the_slack_survives_zero_budgets():
     reads as an instant kill."""
 
     assert job_budget_seconds(_settings(turn=0, wait=0)) == TURN_SLACK_SECONDS
+
+
+def test_the_budgets_are_read_without_the_provider(monkeypatch):
+    """The poll reads the two clocks straight from the settings document.
+
+    Answering them through ``get_settings`` would build the whole
+    provider configuration — the API key decrypted — on every poll of
+    every session, for two integers.  The budgets come from the cached
+    document instead, with ``_build``'s defaults applied.
+    """
+    import types
+
+    from albanna.services.settings_service import get_budgets
+
+    monkeypatch.setattr(
+        "frappe.get_cached_doc",
+        lambda doctype: types.SimpleNamespace(turn_timeout=300, confirm_timeout=60),
+    )
+    assert get_budgets() == (300, 60)
+
+
+def test_unset_budgets_read_their_defaults(monkeypatch):
+    """A document the operator never dialled gives the same defaults
+    ``_build`` applies."""
+    import types
+
+    from albanna.services.settings_service import get_budgets
+
+    monkeypatch.setattr(
+        "frappe.get_cached_doc",
+        lambda doctype: types.SimpleNamespace(turn_timeout=None, confirm_timeout=None),
+    )
+    assert get_budgets() == (600, 120)

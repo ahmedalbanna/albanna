@@ -121,6 +121,29 @@ def get_settings(refresh: bool = False) -> AppSettings:
     return settings
 
 
+def get_budgets() -> tuple[int, int]:
+    """The two clocks a turn is governed by, read without the provider.
+
+    A running poll asks how long a turn may run for, and a confirmed
+    write asks how long the wait was.  Answering either through
+    :func:`get_settings` builds the *whole* provider configuration to
+    reach two integers: the singles read, the controller, and the API
+    key decrypted — on every poll of every session.  The settings are
+    memoised per request, but a poll is its own request, so the memo
+    never carries over.
+
+    Read the two fields straight from the cached document instead: the
+    same defaults :func:`_build` applies, none of the decryption.  The
+    document cache is invalidated when the settings are saved, so an
+    operator's change is honoured on the next poll.
+    """
+    doc = frappe.get_cached_doc("Albanna Settings")
+    return (
+        max(10, _int(doc.turn_timeout, 600)),
+        _int(getattr(doc, "confirm_timeout", 0), DEFAULT_CONFIRM_TIMEOUT),
+    )
+
+
 def _build() -> AppSettings:
     doc = frappe.get_single("Albanna Settings")
 
