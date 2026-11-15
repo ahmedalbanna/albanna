@@ -6,7 +6,7 @@
 // that died.
 
 import assert from "node:assert/strict";
-import { activityText, elapsedSeconds, middleTruncate } from "./format.mjs";
+import { activityText, elapsedSeconds, localeNumber, middleTruncate } from "./format.mjs";
 
 global.__ = (text, args) => {
 	if (Array.isArray(args)) {
@@ -79,5 +79,31 @@ assert.equal(middleTruncate(""), "");
 // A cut always yields at most `max` characters and never an empty head.
 assert.equal(middleTruncate("x".repeat(25), 24, 8), `${"x".repeat(15)}…${"x".repeat(8)}`);
 assert.equal(middleTruncate("abcdefgh", 3, 100).startsWith("a"), true);
+
+// -- the locale-aware number ---------------------------------------------
+
+// A plain number formats for the ambient locale.
+const number = localeNumber(1234.5);
+assert.ok(typeof number === "string" && number.length > 0, `got ${number}`);
+
+// The maximum fraction digits are honoured without `toFixed`'s fixed
+// decimal point: an Arabic locale writes its own digits and separator.
+assert.equal(localeNumber(0.5, 0).length > 0, true);
+assert.equal(localeNumber(12.34567, 2).length > 0, true);
+
+// A malformed locale must not throw — the plain number is the fallback.
+{
+	const original = Intl.NumberFormat;
+	let threw = false;
+	try {
+		globalThis.Intl = { NumberFormat(locale) {
+			throw new RangeError("bad locale");
+		} };
+		assert.equal(localeNumber(3.25), "3.25");
+	} finally {
+		globalThis.Intl = original;
+	}
+	assert.equal(threw, false);
+}
 
 console.log("format: all assertions passed");

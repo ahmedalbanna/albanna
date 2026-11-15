@@ -62,7 +62,7 @@ import ConversationDrawer from "./ConversationDrawer.vue";
 import { pageIdentity, resolveContext } from "./context.mjs";
 import { DOCK_OFF_QUERY, isOverlay, nextFocusable } from "./focus-trap.mjs";
 import { examplesFor } from "./examples.mjs";
-import { activityText, clockTime, readablePage } from "./format.mjs";
+import { activityText, clockTime, localeNumber, readablePage } from "./format.mjs";
 import { dayLabel, isDayStart } from "./day-dividers.mjs";
 import { conversationToMarkdown, exportFilename } from "./export.mjs";
 import { renderMarkdown, tableAsCsv, tableAsTsv } from "./markdown.js";
@@ -3220,7 +3220,7 @@ onBeforeUnmount(() => {
 									"
 									class="albanna-chat__cost"
 								>
-									{{ __("This turn cost {0}.", [Number(message.cost).toFixed(4)]) }}
+									{{ __("This turn cost {0}.", [localeNumber(message.cost, 4)]) }}
 								</span>
 								<button
 									v-if="message.role === 'assistant' && message.content"

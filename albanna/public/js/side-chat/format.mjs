@@ -130,6 +130,46 @@ export function clockTime(value) {
 }
 
 /**
+ * A number, in the reader's locale.
+ *
+ * The reader's digits and the reader's decimal separator: the cost line
+ * and the attachment sizes are numbers the reader compares against
+ * money and disks, and a locale that writes "٠٫٠١٢٣" should read them
+ * the way it reads everything else.  Formatters are cached per locale,
+ * for the same reason the time formatters are.
+ *
+ * @param {number} value the number
+ * @param {number} [maxFractionDigits] the most decimals worth showing
+ * @returns {string} the number, formatted for the reader
+ */
+const numberFormatters = new Map();
+
+export function localeNumber(value, maxFractionDigits = 3) {
+	const locale = currentLocale();
+	const key = `${locale}:${maxFractionDigits}`;
+	if (!numberFormatters.has(key)) {
+		let formatter = null;
+		try {
+			formatter = new Intl.NumberFormat(locale, {
+				maximumFractionDigits: maxFractionDigits,
+			});
+		} catch (error) {
+			formatter = null;
+		}
+		numberFormatters.set(key, formatter);
+	}
+	const formatter = numberFormatters.get(key);
+	if (formatter) {
+		try {
+			return formatter.format(Number(value));
+		} catch (error) {
+			// Fall through to the plain number below.
+		}
+	}
+	return String(value);
+}
+
+/**
  * A page identity, as a readable phrase.
  *
  * The identity is `view|doctype|name`; the chip under a message shows the

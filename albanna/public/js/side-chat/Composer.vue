@@ -14,7 +14,7 @@ import {
 	withType,
 } from "./attachments.mjs";
 import { serverMessage } from "./errors.mjs";
-import { middleTruncate } from "./format.mjs";
+import { localeNumber, middleTruncate } from "./format.mjs";
 import { MAX_SESSION_MS, mergeTranscript, readResults, voiceErrorText } from "./voice.mjs";
 import { DEFAULT_QUESTION_LENGTH, submitDecision } from "./submit.mjs";
 
@@ -586,7 +586,7 @@ async function onChooseFile() {
 					middleTruncate(file.name)
 				}}</span>
 				<span class="albanna-chat__attach-chip-size"
-					>{{ (file.size / 1024).toFixed(1) }} KB</span
+					>{{ localeNumber(file.size / 1024, 1) }} KB</span
 				>
 				<span
 					v-if="file.stored"
