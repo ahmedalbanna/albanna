@@ -80,7 +80,32 @@
 	 * button nobody can read the word on. */
 	--albanna-on-danger: #ffffff;
 	--albanna-panel-width: 400px;
-	--albanna-panel-height: 70vh;
+	/* The panel's height: the height of the Desk itself.
+	 *
+	 * The panel is a column of the Desk, so it is as tall as the Desk is:
+	 * it starts just under the navbar and stops just above the launcher,
+	 * and the reader gets the whole column instead of 70% of one.  The
+	 * subtractions are the four things that stand between the panel and
+	 * the viewport's edges, and each one is a number this sheet already
+	 * spends elsewhere:
+	 *
+	 *   var(--navbar-height)  the Desk's own navbar, which the panel sits
+	 *                        below rather than over — it is the Desk's
+	 *                        variable, so a Desk that grows a taller
+	 *                        navbar grows the panel's offset with it;
+	 *   16px                 the gap under the navbar, the same inset the
+	 *                        widget root uses at the screen's edge;
+	 *   52px                 the launcher's room, the panel's own
+	 *                        `inset-block-end` below;
+	 *   16px                 the widget root's own inset above the
+	 *                        viewport's bottom edge.
+	 *
+	 * `dvh` and not `vh`: on a browser whose toolbars come and go, `vh`
+	 * is the *large* viewport and the panel's bottom edge sits under
+	 * them.  The `vh` line above it is the fallback for a browser that
+	 * has never heard of `dvh`, and it is the same number. */
+	--albanna-panel-height: calc(100vh - var(--navbar-height, 48px) - 16px - 52px - 16px);
+	--albanna-panel-height: calc(100dvh - var(--navbar-height, 48px) - 16px - 52px - 16px);
 	--albanna-shadow: 0 8px 28px rgba(20, 30, 40, 0.14);
 }
 
