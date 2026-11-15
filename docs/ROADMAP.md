@@ -1140,6 +1140,36 @@ ADR-0111.  Six held as read — one measured; one was exposed and fixed:
   (D7).  Eight walkers in `tests/test_deployment_pins.py` keep the
   surface that way.
 
+### Shipped in this pass (v0.2.17, the observability facts are read and pinned)
+
+Five observability requirements (O1–O5), verified against the turn
+paths, the ledger and the running site, recorded in ADR-0112.  Three
+held — one strengthened; two were exposed and fixed:
+
+* **The turn's log lines carry the identifiers.**  The ledger row was
+  already complete — user, conversation, provider, model, status,
+  error class, a secret-stripped error message — but the log lines
+  were not: the turn-failure line said "Chat turn failed" with no
+  stream, no user, no conversation, and a walker found five more bare
+  lines beside it.  Every error line in the turn paths now names its
+  audit row, stream, user or conversation, so a grep joins the log
+  against the ledger; one INFO line per turn records the provider
+  metadata (model, tokens, duration) in the log, numbers and names
+  only.
+* **A health check a monitor can read.**  The app exposed none.
+  `albanna.api.health.check` is the one guest door, named in the SEC3
+  pin's allowlist: database and cache probes, a chat-configured
+  boolean, `ok`/`degraded` and the version — nothing else, held to an
+  allowlisted key set, and a failing check is reported as degraded,
+  not raised.
+* The three that already held are recorded with their evidence in
+  ADR-0112: the ledger as the primary tool, aggregated in the database
+  month-to-date with uncosted turns counted apart (O4); the status
+  vocabulary with every path writing it — provider errors, round
+  caps, truncations, the reaper (O5, now standard-filterable in the
+  list view).  Eight walkers in `tests/test_observability_pins.py`
+  keep the surface that way.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
