@@ -1076,6 +1076,42 @@ code *declared*:
   responsive layers — ≤991px overlay, ≤640px full-screen sheet sized
   by `100dvh` with its `vh` fallback, and the touch lift (C7).
 
+### Shipped in this pass (v0.2.15, the internationalisation facts are read and pinned)
+
+Six translation requirements (I1–I6), verified against the panel
+sources, the server sources and the catalogue itself, recorded in
+ADR-0110.  Four held as read; two were exposed and fixed:
+
+* **The tools' messages went through the translator.**  The panel and
+  the server api/services were already whole — 141 panel strings
+  through `__`, the server's `_()` with `{0}` placeholders, 433
+  catalogue entries with no gap and no fuzzy — but the tool layer's
+  ~93 message templates (the summary line beside every tool's name,
+  the text of every error card) were bare English f-strings, four of
+  them *concatenated fragments* that no catalogue can hold and Arabic
+  reading order cannot survive.  Every reader-facing message is now a
+  complete `_('template {0}').format(...)` sentence, the catalogue
+  carries 107 new Arabic entries (543 total, babel-parsed, zero
+  untranslated), and ten walkers in
+  `tests/test_internationalisation_pins.py` keep it that way.  The
+  translator alias lives in `tools/base.py` — Frappe's `_()` when a
+  site is up, identity when none is — so the bench-free suite (M2)
+  keeps running.
+* **The panel's numbers follow the reader's locale.**  Dates and times
+  already did (the Desk's document language through
+  `Intl.RelativeTimeFormat`); the turn cost and the attachment size
+  used `toFixed`, pinning the decimal point and Western digits.
+  `localeNumber()` in format.mjs formats both with
+  `Intl.NumberFormat` for the reader's locale, and the walker keeps
+  `toFixed` out of the panel.
+* The four that already held are recorded with their evidence in
+  ADR-0110: the build compiles the catalogue (Frappe's own
+  `bench build` does it — no app-side step wanted, I3); a rebuild plus
+  `bench clear-cache` regenerates the redis-cached translation dict
+  with no restart, verified live end-to-end (I4); the manifest's
+  descriptions stay English because `core/tools.py` cannot even import
+  frappe, and the model-facing/reader-facing split is now pinned (I5).
+
 ### Later (v3) — §3, only with a named customer
 
 ---
