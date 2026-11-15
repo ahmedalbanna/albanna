@@ -965,6 +965,33 @@ tests; one was exposed and fixed:
   of its own — so a security fact cannot die by edit without a suite
   noticing.
 
+### Shipped in this pass (v0.2.11, the usability facts are read and pinned)
+
+Ten usability requirements (U1–U10), verified against the panel's
+source and stylesheet and recorded in ADR-0106.  Eight already held;
+two were exposed and fixed, with one gap of polish:
+
+* **Muted ink now meets AA contrast.**  `--albanna-muted` read the
+  Desk's `--text-light` — gray-600, 4.17:1 on white and 3.76:1 on the
+  reader's own bubble, under the 4.5:1 the words have to meet, in some
+  forty call sites.  It reads `--text-muted` now (gray-700 light,
+  gray-400 dark), which clears both themes and both surfaces.
+* **Touch targets answer to the finger, not the screen width.**  The
+  old tap-target block was gated on `max-width: 991px` — so the
+  1024px tablet U5 names got nothing — and set min-height only.  A
+  `pointer: coarse` block lifts both sides of every interactive
+  element to 44px, whatever the screen.
+* **The quiet buttons' keyboard reach is drawn by the panel's own
+  design**, in the accent, instead of leaning on the browser default
+  outline.
+* The walking harnesses (`tests/test_usability_pins.py`) hold the
+  three facts at the stylesheet — the eight colour pairs meet their
+  WCAG floors in both themes (computed, not eyeballed), the touch
+  block covers every interactive element's both sides, the focus
+  group covers every quiet button — so a colour tuned by eye or a
+  control added outside the touch block fails a suite rather than a
+  reader.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
