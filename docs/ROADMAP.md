@@ -1112,6 +1112,34 @@ ADR-0110.  Four held as read; two were exposed and fixed:
   descriptions stay English because `core/tools.py` cannot even import
   frappe, and the model-facing/reader-facing split is now pinned (I5).
 
+### Shipped in this pass (v0.2.16, the deployment facts are read and pinned)
+
+Seven deployment requirements (D1–D7), verified against the app's
+install surface, its outbound calls and the running bench, recorded in
+ADR-0111.  Six held as read — one measured; one was exposed and fixed:
+
+* **The turn's job runs on a stock queue.**  The chat enqueued every
+  turn to a custom `chat` queue, which works only where a worker was
+  configured for it — on a stock Frappe Cloud install the job would
+  sit in Redis forever and the turn would never start.  The queue is
+  now the `background_queue` setting (Select: short/default/long,
+  default short), and the settings honour only those three names — a
+  typo must not park every turn.  The isolation the custom queue gave
+  is a known loss, bounded by the job's own timeout; a site that wants
+  it back picks `long` or runs its own worker topology.
+* The six that already held are recorded with their evidence in
+  ADR-0111: the standard install surface (metadata, one module, six
+  idempotent patches, idempotent installer hooks — D1, with the
+  fresh-site install evidence narrowed by the host's MariaDB root
+  credential drift); one outbound surface, the model provider (D2);
+  no license machinery — `app_license = "mit"` is metadata, not a
+  check (D3); all schema changes through the migration system's
+  patches with zero runtime DDL (D4); an asset build measured at
+  **6.5s forced** against the 120s budget (D6); and hooks that extend
+  through the framework's own points, overriding no core behaviour
+  (D7).  Eight walkers in `tests/test_deployment_pins.py` keep the
+  surface that way.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
