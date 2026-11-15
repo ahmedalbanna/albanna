@@ -992,6 +992,31 @@ two were exposed and fixed, with one gap of polish:
   control added outside the touch block fails a suite rather than a
   reader.
 
+### Shipped in this pass (v0.2.12, the accessibility facts are read and pinned)
+
+Six accessibility requirements (A1–A6), verified against the panel's
+source and recorded in ADR-0107.  Four already held, two of them as
+deliberate design decisions now spelled out in the code; two were
+exposed and fixed:
+
+* **The overlay panel holds the keyboard.**  The panel was a column
+  of the Desk by design — but it is an overlay when floating and
+  whenever the viewport is past the dock-off breakpoint, and there Tab
+  walked straight out into content the reader cannot see the panel
+  leaving.  Tab now cycles within the panel in exactly the overlay
+  modes and only those; the docked column's neighbour stays usable.
+  The logic is a pure module with thirteen node tests.
+* **Reduced motion reaches the whole widget.**  The reduce block was
+  scoped to the Vue subtree, so the launcher's hover lift and the
+  resize handle's fade kept moving after `prefers-reduced-motion:
+  reduce`.  It reaches the widget's root now; the walker in
+  `tests/test_usability_pins.py` pins the scope.
+* The four that already held are recorded with their evidence in
+  ADR-0107: the ARIA inventory (roles, labels, expanded/controls), the
+  deliberately-shaped live regions (the transcript is a log, the
+  *outcome* is announced once), the Desk's Automatic theme following
+  the OS with a live listener, and Escape closing.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
