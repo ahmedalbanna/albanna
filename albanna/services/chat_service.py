@@ -498,7 +498,11 @@ class ChatService:
             self._audit_name = running.name
             frappe.db.commit()
         except Exception:
-            logger.exception("Could not write the running audit row")
+            logger.exception(
+                "Could not write the running audit row for user %s conversation %s",
+                principal.user,
+                conversation,
+            )
 
         company = default_company()
         from albanna.user_policy import confirm_writes_for
@@ -1197,7 +1201,11 @@ class ChatService:
                 try:
                     frappe.db.commit()
                 except Exception:
-                    logger.exception("Could not commit a successful write")
+                    logger.exception(
+                        "Could not commit a successful write for audit row %s (tool %s)",
+                        self._audit_name,
+                        call.name,
+                    )
 
                 # The change is made, and the row does not know it.
                 # The row is the truth about the turn, so it is told
@@ -1210,7 +1218,11 @@ class ChatService:
                     try:
                         frappe.db.commit()
                     except Exception:
-                        logger.exception("Could not record a write in the audit row")
+                        logger.exception(
+                            "Could not record a write in the audit row %s (tool %s)",
+                            self._audit_name,
+                            call.name,
+                        )
         except Exception as exc:  # noqa: BLE001 - a tool must not kill the turn
             logger.exception("Tool '%s' could not be run", call.name)
             message = f"The tool '{call.name}' could not be run: {type(exc).__name__}: {exc}"
@@ -1405,7 +1417,10 @@ class ChatService:
         try:
             frappe.db.commit()
         except Exception:
-            logger.exception("Could not commit the approval to the chat log row")
+            logger.exception(
+                "Could not commit the approval to the chat log row %s",
+                self._audit_name,
+            )
 
     def _record_write(self, call: ToolCall, result: ToolResult, request_id: str) -> bool:
         """Write the call into the turn's audit row, and mark its approval.
@@ -1546,7 +1561,10 @@ class ChatService:
             if answer:
                 return answer, completion.truncated
         except Exception:
-            logger.exception("Could not close a capped turn with a summary")
+            logger.exception(
+                "Could not close a capped turn for audit row %s",
+                self._audit_name,
+            )
 
         return self._capped_reply(diagnosis), False
 
@@ -1640,6 +1658,27 @@ class ChatService:
                 doc.error_message = _without_secrets(audit.error_message)[:500]
             doc.had_attachment = 1 if audit.had_attachment else 0
 
+            # The turn's metadata line: one per turn, in the log, so a
+            # reader of the log sees the same numbers the ledger row
+            # carries without opening the ledger.  Numbers and names
+            # only — the question and the answer are the reader's
+            # words, and they reach no log (NFR O2).
+            in_tokens = usage.input_tokens if audit.usage is not None else "-"
+            out_tokens = usage.output_tokens if audit.usage is not None else "-"
+            logger.info(
+                "chat turn: user=%s provider=%s model=%s status=%s rounds=%d "
+                "in=%s out=%s duration_ms=%d cost=%s",
+                audit.user,
+                audit.provider,
+                audit.model,
+                audit.status,
+                audit.rounds,
+                in_tokens,
+                out_tokens,
+                doc.duration_ms,
+                doc.cost,
+            )
+
             if is_update:
                 doc.save(ignore_permissions=True)
             else:
@@ -1649,9 +1688,17 @@ class ChatService:
             try:
                 frappe.db.commit()
             except Exception:
-                logger.exception("Could not commit the chat log row")
+                logger.exception(
+                    "Could not commit the chat log row %s for user %s",
+                    self._audit_name,
+                    audit.user,
+                )
         except Exception:
-            logger.exception("Could not write the chat log row")
+            logger.exception(
+                "Could not write the chat log row for user %s conversation %s",
+                audit.user,
+                audit.conversation,
+            )
 
 
 def tool_done_event(

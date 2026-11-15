@@ -215,7 +215,12 @@ def run_turn_job(
             )
             payload = turn_payload(outcome)
         except Exception as exc:  # noqa: BLE001 - the job must always answer
-            logger.exception("Chat turn failed")
+            logger.exception(
+                "Chat turn failed for stream %s user %s conversation %s",
+                stream_id,
+                user,
+                conversation_id,
+            )
             # The detail is in the log above.  The reader is told what
             # happened in words they can act on: an exception's class and
             # message are the app's internals, and "JobTimeoutException: Task
@@ -234,7 +239,11 @@ def run_turn_job(
         try:
             frappe.db.commit()
         except Exception:
-            logger.exception("Could not commit the chat turn")
+            logger.exception(
+                "Could not commit the chat turn for stream %s user %s",
+                stream_id,
+                user,
+            )
     finally:
         # Stopping the thread first keeps its beats from landing after
         # the key is dropped — a stray beat would resurrect a key the
