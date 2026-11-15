@@ -91,6 +91,23 @@ def tool_handler(fn):
     return fn
 
 
+def translate(text: str) -> str:
+    """Frappe's ``_()`` when a site is up; the text itself when none is.
+
+    The tools' result and refusal messages are the summary lines the
+    panel shows beside a tool's name and the text of its error card —
+    the reader's language, not the model's (NFR I1/I2).  But the unit
+    suite runs without a bench (NFR M2), where Frappe's translation
+    machinery has no cache to read and no site to speak for, so the
+    call degrades to identity there instead of raising.
+    """
+    import frappe
+
+    if not getattr(frappe.local, "site", None):
+        return text
+    return frappe._(text)
+
+
 class ToolBackend(Protocol):
     """Runs a tool."""
 

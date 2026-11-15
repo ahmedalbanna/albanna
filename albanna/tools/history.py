@@ -21,6 +21,7 @@ from typing import Any
 import frappe
 
 from albanna.tools.base import ToolContext, tool_handler
+from albanna.tools.base import translate as _
 
 #: How many messages one call returns.  Twenty is a page the model can
 #: quote from without the answer outrunning a tool round's budget; the
@@ -50,11 +51,11 @@ def read_thread_history(
     can find it.
     """
     if context is None:
-        return _refusal("The history could not be read: no context was resolved for this call.")
+        return _refusal(_('The history could not be read: no context was resolved for this call.'))
 
     conversation = (context.conversation or "").strip()
     if not conversation:
-        return _refusal("The history could not be read: this call is not part of a conversation.")
+        return _refusal(_('The history could not be read: this call is not part of a conversation.'))
 
     from albanna.services.conversation_service import PARENT_FIELD, _like_pattern
     from albanna.services.settings_service import get_settings
@@ -62,9 +63,9 @@ def read_thread_history(
     try:
         page = int(page or 0)
     except (TypeError, ValueError):
-        return _refusal("The page must be a whole number, counting from zero.")
+        return _refusal(_('The page must be a whole number, counting from zero.'))
     if page < 0:
-        return _refusal("The page counts from zero.")
+        return _refusal(_('The page counts from zero.'))
 
     term = str(search or "").strip()
     window = max(1, int(get_settings().history_limit))
@@ -109,7 +110,7 @@ def read_thread_history(
         )
         pages = max(1, -(-matching // PAGE_SIZE))
         if page >= pages and matching:
-            return _refusal(f"The page counts from zero; this search has {pages} pages.")
+            return _refusal(_('The page counts from zero; this search has {0} pages.').format(pages))
     else:
         matching = behind
         if not behind:
@@ -127,7 +128,7 @@ def read_thread_history(
             )
         pages = max(1, -(-behind // PAGE_SIZE))
         if page >= pages:
-            return _refusal(f"The page counts from zero; the thread has {pages} pages behind the window.")
+            return _refusal(_('The page counts from zero; the thread has {0} pages behind the window.').format(pages))
 
         # The page's positions: the newest behind first, twenty at a
         # time — page 0 is positions B..B-19, page 1 the twenty before

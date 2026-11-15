@@ -37,6 +37,7 @@ import frappe
 from albanna.core.attachments import attachment_text
 from albanna.core.tools import MAX_RESULT_CHARS
 from albanna.tools.base import tool_handler
+from albanna.tools.base import translate as _
 from albanna.tools.erpnext import _file_for_url, _may_read_file, error, ok
 
 #: The most text one read returns, in characters.
@@ -88,13 +89,13 @@ def read_file(file: str, offset: Any = None) -> str:
             for one read.  Omit to read from the beginning.
     """
     if not isinstance(file, str) or not file.strip():
-        return error("A file is required: its URL or the name of its File record.")
+        return error(_('A file is required: its URL or the name of its File record.'))
 
     file = file.strip()
     source = _resolve(file)
     if source is None:
         return error(
-            f"No file was found at '{file}'.",
+            _("No file was found at '{0}'.").format(file),
             actionable=(
                 "Use the exact URL the attachment or the document named — "
                 "a /files/... or /private/files/... path — or the name of "
@@ -104,8 +105,7 @@ def read_file(file: str, offset: Any = None) -> str:
 
     if not _may_read_file(source):
         return error(
-            f"The file '{source.file_url or source.name}' could not be read: "
-            "this account may not read it.",
+            _("The file '{0}' could not be read: this account may not read it.").format(source.file_url or source.name),
             denied=True,
             actionable=(
                 "A private file belongs to the account that uploaded it. "
@@ -119,8 +119,7 @@ def read_file(file: str, offset: Any = None) -> str:
     )
     if mime.startswith("image/"):
         return error(
-            f"'{source.file_url or source.name}' is a picture, and a picture's "
-            "pixels cannot be read as text.",
+            _("'{0}' is a picture, and a picture's pixels cannot be read as text.").format(source.file_url or source.name),
             actionable=(
                 "A picture attached to a message travels to the model "
                 "directly, when the model can see pictures; in later turns "
@@ -134,7 +133,7 @@ def read_file(file: str, offset: Any = None) -> str:
         content = source.get_content()
     except Exception as exc:
         return error(
-            f"The file '{source.file_url or source.name}' could not be read: {exc}",
+            _("The file '{0}' could not be read: {1}").format(source.file_url or source.name, exc),
             actionable=(
                 "The file's row exists but its bytes do not — it may be "
                 "stored elsewhere, or removed. Do not retry the same read."
@@ -146,7 +145,7 @@ def read_file(file: str, offset: Any = None) -> str:
     text = attachment_text(content or b"", mime, ceiling=None)
     if not text:
         return error(
-            f"The file '{source.file_url or source.name}' holds no text that could be extracted.",
+            _("The file '{0}' holds no text that could be extracted.").format(source.file_url or source.name),
             actionable=(
                 "It may be a scan — pictures of words, which read as no "
                 "words at all — or a binary kind this site cannot read. "
@@ -162,22 +161,21 @@ def read_file(file: str, offset: Any = None) -> str:
             start = int(offset)
         except (TypeError, ValueError):
             return error(
-                f"The offset {offset!r} is not a character offset.",
+                _('The offset {0} is not a character offset.').format(offset),
                 actionable="Read again with a whole number of characters, or without an offset.",
             )
         if start < 0:
             start = 0
         if start >= total:
             return error(
-                f"The offset {start} is past the end of the file: it holds {total} characters.",
+                _('The offset {0} is past the end of the file: it holds {1} characters.').format(start, total),
                 actionable="Read again with a smaller offset, or without one.",
             )
 
     chunk = text[start : start + READ_CHUNK_CHARS]
     more = start + len(chunk) < total
     return ok(
-        f"Read characters {start}–{start + len(chunk)} of {total} "
-        f"from '{source.file_url or source.name}'",
+        _("Read characters {0}–{1} of {2} from '{3}'").format(start, start + len(chunk), total, source.file_url or source.name),
         data={
             "file": source.file_url or source.name,
             "is_private": bool(getattr(source, "is_private", 1)),
@@ -218,10 +216,10 @@ def write_file(file_name: str, content: str, is_private: Any = None) -> str:
         is_private: True for a private file (the default), false for public.
     """
     if not isinstance(file_name, str) or not file_name.strip():
-        return error("A file name is required, with its extension — e.g. 'customers.csv'.")
+        return error(_("A file name is required, with its extension — e.g. 'customers.csv'."))
     if not isinstance(content, str) or not content:
         return error(
-            "The file's content is required, as text.",
+            _("The file's content is required, as text."),
             actionable=(
                 "A binary kind — a picture, a PDF — cannot be written by "
                 "this tool. Say so rather than sending bytes you do not have."
@@ -249,10 +247,10 @@ def write_file(file_name: str, content: str, is_private: Any = None) -> str:
         # authority layer believed about the manifest.
         document.insert()
     except Exception as exc:
-        return error(f"The file could not be created: {exc}")
+        return error(_('The file could not be created: {0}').format(exc))
 
     return ok(
-        f"Created file '{document.file_url}'",
+        _("Created file '{0}'").format(document.file_url),
         data={
             "name": document.name,
             "file_url": document.file_url,
@@ -272,12 +270,12 @@ def edit_file(file: str, content: str) -> str:
         content: The full new text, replacing what the file held.
     """
     if not isinstance(content, str) or not content:
-        return error("The file's new content is required, as text.")
+        return error(_("The file's new content is required, as text."))
 
     source = _resolve((file or "").strip()) if isinstance(file, str) else None
     if source is None:
         return error(
-            f"No file was found at '{file}'.",
+            _("No file was found at '{0}'.").format(file),
             actionable=(
                 "Use the exact URL the attachment or the document named — "
                 "a /files/... or /private/files/... path — or the name of "
@@ -287,8 +285,7 @@ def edit_file(file: str, content: str) -> str:
 
     if not _may_read_file(source):
         return error(
-            f"The file '{source.file_url or source.name}' could not be read: "
-            "this account may not read it.",
+            _("The file '{0}' could not be read: this account may not read it.").format(source.file_url or source.name),
             denied=True,
             actionable=(
                 "A file this account cannot read is a file it cannot "
@@ -297,8 +294,7 @@ def edit_file(file: str, content: str) -> str:
         )
     if not frappe.has_permission("File", "write", doc=source):
         return error(
-            f"The file '{source.file_url or source.name}' could not be "
-            "changed: this account may not write files.",
+            _("The file '{0}' could not be changed: this account may not write files.").format(source.file_url or source.name),
             denied=True,
             actionable="State that as a fact about the account, and do not apologise for it.",
         )
@@ -308,8 +304,7 @@ def edit_file(file: str, content: str) -> str:
     )
     if mime.startswith("image/"):
         return error(
-            f"'{source.file_url or source.name}' is a picture, and a picture's "
-            "pixels cannot be written as text.",
+            _("'{0}' is a picture, and a picture's pixels cannot be written as text.").format(source.file_url or source.name),
             actionable="Say that the picture cannot be edited this way.",
         )
 
@@ -328,7 +323,7 @@ def edit_file(file: str, content: str) -> str:
         source.save_file(content=content, overwrite=True)
         source.save()
     except Exception as exc:
-        return error(f"The file could not be changed: {exc}")
+        return error(_('The file could not be changed: {0}').format(exc))
 
     data = {
         "name": source.name,
@@ -341,6 +336,6 @@ def edit_file(file: str, content: str) -> str:
         data["before"] = {"content": old_content}
 
     return ok(
-        f"Changed file '{source.file_url}'",
+        _("Changed file '{0}'").format(source.file_url),
         data=data,
     )

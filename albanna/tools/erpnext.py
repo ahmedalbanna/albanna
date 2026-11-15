@@ -37,6 +37,7 @@ import frappe
 
 from albanna.permissions import may_read, readable_doctypes
 from albanna.tools.base import tool_handler
+from albanna.tools.base import translate as _
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,7 @@ def _meta(doctype: str):
     try:
         return frappe.get_meta(doctype)
     except Exception as exc:
-        return error(f"DocType '{doctype}' not found: {exc}", doctype=doctype)
+        return error(_("DocType '{0}' not found: {1}").format(doctype, exc), doctype=doctype)
 
 
 def _known_fields(meta) -> set[str]:
@@ -177,7 +178,7 @@ def _validate_fields(meta, doctype: str, fields: list[str]) -> str | None:
         return None
 
     return error(
-        f"Unknown field(s) for DocType '{doctype}': " + "; ".join(problems),
+        _("Unknown field(s) for DocType '{0}': {1}").format(doctype, "; ".join(problems)),
         doctype=doctype,
         actionable="Call get_doctype_meta for this DocType to see its fieldnames.",
     )
@@ -203,15 +204,13 @@ def _validate_filters(filters: Any, doctype: str = "") -> str | None:
         for key, value in filters.items():
             if not isinstance(key, str) or not str(key).strip():
                 return error(
-                    f"Filter keys must be fieldnames (strings) for DocType '{doctype}'.",
+                    _("Filter keys must be fieldnames (strings) for DocType '{0}'.").format(doctype),
                     doctype=doctype,
                     actionable="Filters are [fieldname, operator, value] triples.",
                 )
             if not isinstance(value, str):
                 return error(
-                    f"A filter value must be a plain string, not a "
-                    f"{type(value).__name__}. For 'in' or 'not in' write one "
-                    f"condition per value rather than a list.",
+                    _("A filter value must be a plain string, not a {0}. For 'in' or 'not in' write one condition per value rather than a list.").format(type(value).__name__),
                     doctype=doctype,
                     actionable="Filters are [fieldname, operator, value] triples; the value is always a plain string.",
                 )
@@ -219,8 +218,7 @@ def _validate_filters(filters: Any, doctype: str = "") -> str | None:
 
     if not isinstance(filters, list):
         return error(
-            f"Filters must be a list of [fieldname, operator, value] triples "
-            f"for DocType '{doctype}'.",
+            _("Filters must be a list of [fieldname, operator, value] triples for DocType '{0}'.").format(doctype),
             doctype=doctype,
             actionable="Filters are [fieldname, operator, value] triples; the value is always a plain string.",
         )
@@ -228,28 +226,26 @@ def _validate_filters(filters: Any, doctype: str = "") -> str | None:
     for condition in filters:
         if not isinstance(condition, (list, tuple)):
             return error(
-                f"Each filter must be a three-element list "
-                f"[fieldname, operator, value] for DocType '{doctype}'.",
+                _("Each filter must be a three-element list [fieldname, operator, value] for DocType '{0}'.").format(doctype),
                 doctype=doctype,
                 actionable="Filters are [fieldname, operator, value] triples; the value is always a plain string.",
             )
         if len(condition) != 3:
             return error(
-                f"A filter must have exactly three elements "
-                f"[fieldname, operator, value]; got {len(condition)}.",
+                _('A filter must have exactly three elements [fieldname, operator, value]; got {0}.').format(len(condition)),
                 doctype=doctype,
                 actionable="Filters are [fieldname, operator, value] triples; the value is always a plain string.",
             )
         fieldname, operator, value = condition
         if not isinstance(fieldname, str) or not str(fieldname).strip():
             return error(
-                f"A filter's fieldname must be a string for DocType '{doctype}'.",
+                _("A filter's fieldname must be a string for DocType '{0}'.").format(doctype),
                 doctype=doctype,
                 actionable="Filters are [fieldname, operator, value] triples; the value is always a plain string.",
             )
         if not isinstance(operator, str) or operator not in _VALID_FILTER_OPS:
             return error(
-                f"Unknown filter operator '{operator}' for DocType '{doctype}'.",
+                _("Unknown filter operator '{0}' for DocType '{1}'.").format(operator, doctype),
                 doctype=doctype,
                 actionable=(
                     "Allowed operators: =, !=, >, <, >=, <=, like, not like, "
@@ -258,9 +254,7 @@ def _validate_filters(filters: Any, doctype: str = "") -> str | None:
             )
         if not isinstance(value, str):
             return error(
-                f"A filter value must be a plain string, not a "
-                f"{type(value).__name__}. For 'in' or 'not in' write one "
-                f"condition per value rather than a list.",
+                _("A filter value must be a plain string, not a {0}. For 'in' or 'not in' write one condition per value rather than a list.").format(type(value).__name__),
                 doctype=doctype,
                 actionable="Filters are [fieldname, operator, value] triples; the value is always a plain string.",
             )
@@ -286,20 +280,20 @@ def _validate_order_by(meta, doctype: str, order_by: Any) -> str | None:
             field, direction = tokens
             if str(direction).lower() not in ("asc", "desc"):
                 return error(
-                    f"Unknown sort direction '{direction}' for DocType '{doctype}'.",
+                    _("Unknown sort direction '{0}' for DocType '{1}'.").format(direction, doctype),
                     doctype=doctype,
                     actionable="Sort as 'fieldname asc' or 'fieldname desc'.",
                 )
         else:
             return error(
-                f"Sort must be 'fieldname' or 'fieldname asc|desc' for DocType '{doctype}'.",
+                _("Sort must be 'fieldname' or 'fieldname asc|desc' for DocType '{0}'.").format(doctype),
                 doctype=doctype,
                 actionable="Sort as 'fieldname asc' or 'fieldname desc'.",
             )
 
         if field.lower() in ("asc", "desc"):
             return error(
-                f"A sort needs a fieldname, not just a direction, for DocType '{doctype}'.",
+                _("A sort needs a fieldname, not just a direction, for DocType '{0}'.").format(doctype),
                 doctype=doctype,
                 actionable="Sort as 'fieldname asc' or 'fieldname desc'.",
             )
@@ -308,7 +302,7 @@ def _validate_order_by(meta, doctype: str, order_by: Any) -> str | None:
             matches = difflib.get_close_matches(field, sorted(known), n=3, cutoff=0.45)
             hint = ", ".join(f"'{match}'" for match in matches) if matches else "none"
             return error(
-                f"Unknown sort field '{field}' for DocType '{doctype}' (closest: {hint}).",
+                _("Unknown sort field '{0}' for DocType '{1}' (closest: {2}).").format(field, doctype, hint),
                 doctype=doctype,
                 actionable="Call get_doctype_meta for this DocType to see its fieldnames.",
             )
@@ -429,7 +423,7 @@ def _read_refusal(doctype: str, name: str) -> str:
     roles = _roles_for(doctype, "read")
     if roles:
         return error(
-            f"{doctype} '{name}' could not be read: this account may not read it.",
+            _("{0} '{1}' could not be read: this account may not read it.").format(doctype, name),
             doctype=doctype,
             name=name,
             denied=True,
@@ -440,7 +434,7 @@ def _read_refusal(doctype: str, name: str) -> str:
         )
 
     return error(
-        f"{doctype} '{name}' could not be read: this account may not read it.",
+        _("{0} '{1}' could not be read: this account may not read it.").format(doctype, name),
         doctype=doctype,
         name=name,
         denied=True,
@@ -466,9 +460,9 @@ def _load_for_action(doctype: str, name: str):
     try:
         document = frappe.get_doc(doctype, name)
     except frappe.DoesNotExistError:
-        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
+        return error(_("{0} '{1}' not found").format(doctype, name), doctype=doctype, name=name)
     except Exception as exc:
-        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+        return error(_("Failed to read {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
 
     if not may_read(document):
         return _read_refusal(doctype, name)
@@ -533,7 +527,7 @@ def _resolve_assigned_to(doctype: str, filters: Any) -> tuple[Any, str | None]:
     user = str(frappe.session.user or "")
     if not user:
         return filters, error(
-            "Cannot tell which documents are yours: no reader is signed in.",
+            _('Cannot tell which documents are yours: no reader is signed in.'),
             doctype=doctype,
         )
 
@@ -589,7 +583,7 @@ def list_docs(
         order_by: The sort order, e.g. "modified desc".
     """
     if not doctype:
-        return error("A doctype is required.")
+        return error(_('A doctype is required.'))
 
     meta = _meta(doctype)
     if isinstance(meta, str):
@@ -637,7 +631,7 @@ def list_docs(
             order_by=order_by or None,
         )
     except Exception as exc:
-        return error(f"Failed to list {doctype}: {exc}", doctype=doctype)
+        return error(_('Failed to list {0}: {1}').format(doctype, exc), doctype=doctype)
 
     # A listing of Communications is silently filtered by Frappe's
     # permission engine: a user with no User Email account sees only
@@ -661,7 +655,7 @@ def list_docs(
             )
 
     return ok(
-        f"Found {len(documents)} {doctype}",
+        _('Found {0} {1}').format(len(documents), doctype),
         data=documents,
         doctype=doctype,
         hints=hints,
@@ -824,14 +818,14 @@ def get_doc(doctype: str, name: str, fields: Any = None) -> str:
         fields: The fieldnames to return.  Omit for the whole document.
     """
     if not doctype or not name:
-        return error("A doctype and a name are required.")
+        return error(_('A doctype and a name are required.'))
 
     try:
         document = frappe.get_doc(doctype, name)
     except frappe.DoesNotExistError:
-        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
+        return error(_("{0} '{1}' not found").format(doctype, name), doctype=doctype, name=name)
     except Exception as exc:
-        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+        return error(_("Failed to read {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
 
     # The read is loaded first and checked second, and the order is
     # deliberate: loading is what gives the check something to check.  A
@@ -863,7 +857,7 @@ def get_doc(doctype: str, name: str, fields: Any = None) -> str:
                 "account and was not returned."
             )
         return ok(
-            f"Read {doctype} '{name}'",
+            _("Read {0} '{1}'").format(doctype, name),
             data=data,
             doctype=doctype,
             name=name,
@@ -877,7 +871,7 @@ def get_doc(doctype: str, name: str, fields: Any = None) -> str:
     # field the reader may not see is not in the answer at all.
     for field in hidden:
         data.pop(field, None)
-    return ok(f"Read {doctype} '{name}'", data=data, doctype=doctype, name=name)
+    return ok(_("Read {0} '{1}'").format(doctype, name), data=data, doctype=doctype, name=name)
 
 
 @tool_handler
@@ -889,12 +883,12 @@ def get_doctype_meta(doctype: str, fields: Any = None) -> str:
         fields: The fieldnames to describe.  Omit for every field.
     """
     if not doctype:
-        return error("A doctype is required.")
+        return error(_('A doctype is required.'))
 
     try:
         meta = frappe.get_meta(doctype)
     except Exception as exc:
-        return error(f"DocType '{doctype}' not found: {exc}", doctype=doctype)
+        return error(_("DocType '{0}' not found: {1}").format(doctype, exc), doctype=doctype)
 
     # The field definitions are the DocType's own, and a DocType the
     # caller may not read is not theirs to describe: its fieldnames,
@@ -920,7 +914,7 @@ def get_doctype_meta(doctype: str, fields: Any = None) -> str:
                 f"fact about the site, and do not apologise for it."
             )
         return error(
-            f"DocType '{doctype}' could not be read: this account may not read it.",
+            _("DocType '{0}' could not be read: this account may not read it.").format(doctype),
             doctype=doctype,
             denied=True,
             actionable=actionable,
@@ -970,7 +964,7 @@ def run_report(
         offset: How many rows to skip, for paging.
     """
     if not report:
-        return error("A report name is required.")
+        return error(_('A report name is required.'))
 
     resolved = _resolve_report(report, filters)
     if isinstance(resolved, str):
@@ -991,7 +985,7 @@ def run_report(
     missing = _missing_mandatory_filters(report_doc, report_filters)
     if missing:
         return error(
-            f"Report '{report}' requires filter(s): {', '.join(missing)}",
+            _("Report '{0}' requires filter(s): {1}").format(report, ', '.join(missing)),
             report=report,
             missing_filters=missing,
             actionable="Call run_report again with these filters added.",
@@ -1010,7 +1004,7 @@ def run_report(
         raw = _execute_report(report_doc, report_filters)
     except Exception as exc:
         _rollback_to(savepoint)
-        return error(f"Report '{report}' failed: {exc}", report=report)
+        return error(_("Report '{0}' failed: {1}").format(report, exc), report=report)
 
     _rollback_to(savepoint)
 
@@ -1018,7 +1012,7 @@ def run_report(
     formatted = _as_dicts(columns, rows)
     payload = _report_payload(report, report_doc, columns, formatted, limit, offset)
     return ok(
-        f"Report '{report}' returned {payload['total_rows']} row(s)",
+        _("Report '{0}' returned {1} row(s)").format(report, payload['total_rows']),
         data={"columns": payload["columns"], "rows": payload["rows"]},
         **{
             key: value for key, value in payload.items() if key not in ("status", "columns", "rows")
@@ -1031,9 +1025,9 @@ def _resolve_report(report: str, filters: Any) -> Any:
     try:
         report_doc = frappe.get_doc("Report", report)
     except frappe.DoesNotExistError:
-        return error(f"Report '{report}' not found", report=report)
+        return error(_("Report '{0}' not found").format(report), report=report)
     except Exception as exc:
-        return error(f"Failed to read report '{report}': {exc}", report=report)
+        return error(_("Failed to read report '{0}': {1}").format(report, exc), report=report)
 
     if isinstance(filters, str):
         try:
@@ -1094,7 +1088,7 @@ def _report_refusal(report_doc, report: str) -> str | None:
         permitted = False
     if not permitted:
         return error(
-            f"You do not have access to report '{report}'",
+            _("You do not have access to report '{0}'").format(report),
             report=report,
             actionable="This report is restricted to specific roles.",
         )
@@ -1102,14 +1096,14 @@ def _report_refusal(report_doc, report: str) -> str | None:
     ref_doctype = report_doc.ref_doctype
     if ref_doctype and not frappe.has_permission(ref_doctype, ptype="report"):
         return error(
-            f"You do not have permission to run reports on '{ref_doctype}'",
+            _("You do not have permission to run reports on '{0}'").format(ref_doctype),
             report=report,
             ref_doctype=ref_doctype,
         )
 
     if report_doc.get("disabled"):
         return error(
-            f"Report '{report}' is disabled",
+            _("Report '{0}' is disabled").format(report),
             report=report,
             actionable="An administrator has turned this report off.",
         )
@@ -1121,15 +1115,15 @@ def _report_bounds(limit: Any, offset: Any) -> Any:
     try:
         limit = int(limit)
     except (TypeError, ValueError):
-        return error("limit must be an integer")
+        return error(_('limit must be an integer'))
     try:
         offset = int(offset)
     except (TypeError, ValueError):
-        return error("offset must be an integer")
+        return error(_('offset must be an integer'))
     if limit < 1 or limit > 5000:
-        return error("limit must be between 1 and 5000")
+        return error(_('limit must be between 1 and 5000'))
     if offset < 0:
-        return error("offset must be >= 0")
+        return error(_('offset must be >= 0'))
     return limit, offset
 
 
@@ -1242,9 +1236,10 @@ def create_doc(doctype: str, data: Any, submit: bool = False) -> str:
         if not submitted:
             return error(message, doctype=doctype)
 
-    message = f"Created {doctype} '{document.name}'"
     if submitted:
-        message += " and submitted it"
+        message = _("Created {0} '{1}' and submitted it.").format(doctype, document.name)
+    else:
+        message = _("Created {0} '{1}'.").format(doctype, document.name)
     return ok(
         message,
         data={"doctype": doctype, "name": document.name, "submitted": submitted},
@@ -1341,8 +1336,9 @@ def _child_table_refusal(meta, doctype: str, data: dict[str, Any], depth: int = 
             # put it — and the same wrong fieldname is plausible at the
             # top level too.
             return error(
-                f"Unknown field(s) in the rows of '{fieldname}' for DocType '{child}': "
-                + invalid.split(": ", 1)[-1],
+                _("Unknown field(s) in the rows of '{0}' for DocType '{1}': {2}").format(
+                    fieldname, child, invalid.split(": ", 1)[-1]
+                ),
                 doctype=doctype,
                 actionable=(
                     f"Call get_doctype_meta for '{child}' to see the fieldnames a row may carry."
@@ -1372,15 +1368,15 @@ def _create_refusal_for(doctype: str, data: Any) -> str | None:
     assistant's to set.
     """
     if not doctype:
-        return error("A doctype is required.")
+        return error(_('A doctype is required.'))
     if not isinstance(data, dict) or not data:
-        return error("The document's data is required, as an object of field values.")
+        return error(_("The document's data is required, as an object of field values."))
     if "doctype" in data:
         # The DocType is the first argument, and the authority layer
         # authorised *that* one.  A DocType inside the data would be a
         # second, unchecked answer to the same question.
         return error(
-            "The document's data must not name a doctype: the doctype is the first argument.",
+            _("The document's data must not name a doctype: the doctype is the first argument."),
             doctype=doctype,
         )
 
@@ -1425,15 +1421,15 @@ def _create_refusal(exc: Exception, doctype: str, savepoint: str) -> str:
 
     if isinstance(exc, frappe.PermissionError):
         return error(
-            f"Failed to create {doctype}: {exc}",
+            _('Failed to create {0}: {1}').format(doctype, exc),
             doctype=doctype,
             actionable="This account may not create this kind of document.",
         )
     if isinstance(exc, frappe.DuplicateEntryError):
-        return error(f"Duplicate entry: {exc}", doctype=doctype)
+        return error(_('Duplicate entry: {0}').format(exc), doctype=doctype)
     if isinstance(exc, frappe.ValidationError):
-        return error(f"Validation failed: {exc}", doctype=doctype)
-    return error(f"Failed to create {doctype}: {exc}", doctype=doctype)
+        return error(_('Validation failed: {0}').format(exc), doctype=doctype)
+    return error(_('Failed to create {0}: {1}').format(doctype, exc), doctype=doctype)
 
 
 @tool_handler
@@ -1447,11 +1443,11 @@ def update_doc(doctype: str, name: str, data: Any, submit: bool = False) -> str:
         submit: Submit it afterwards, for a submittable DocType in draft.
     """
     if not doctype:
-        return error("A doctype is required.")
+        return error(_('A doctype is required.'))
     if not name:
-        return error("A document name is required.")
+        return error(_('A document name is required.'))
     if not isinstance(data, dict) or not data:
-        return error("The changes are required, as an object of field values.")
+        return error(_('The changes are required, as an object of field values.'))
 
     document = _load_for_update(doctype, name, data)
     if isinstance(document, str):
@@ -1463,7 +1459,7 @@ def update_doc(doctype: str, name: str, data: Any, submit: bool = False) -> str:
         # client, not in `db_update`.  So the guard is here, where the chat
         # can state it, and the answer names the way a person does it.
         return error(
-            f"{doctype} '{name}' is submitted and cannot be changed.",
+            _("{0} '{1}' is submitted and cannot be changed.").format(doctype, name),
             doctype=doctype,
             name=name,
             actionable=(
@@ -1476,7 +1472,7 @@ def update_doc(doctype: str, name: str, data: Any, submit: bool = False) -> str:
     changes = _actual_changes(document, data)
     if not changes:
         return ok(
-            f"{doctype} '{name}' already has those values; nothing was changed.",
+            _("{0} '{1}' already has those values; nothing was changed.").format(doctype, name),
             data={"doctype": doctype, "name": name, "changed": {}},
             doctype=doctype,
             name=name,
@@ -1525,7 +1521,7 @@ def _protected_refusal(doctype: str, data: dict, name: str = "") -> str | None:
     if not protected:
         return None
     return error(
-        f"These field(s) belong to the framework and cannot be set: {', '.join(protected)}.",
+        _('These field(s) belong to the framework and cannot be set: {0}.').format(', '.join(protected)),
         doctype=doctype,
         name=name,
         actionable="Give only the fields the user asked to change.",
@@ -1557,7 +1553,7 @@ def _field_refusal(meta, doctype: str, data: dict, name: str = "") -> str | None
     readonly = _read_only_fields(meta, data)
     if readonly:
         return error(
-            f"These field(s) are read-only and cannot be changed: {', '.join(readonly)}.",
+            _('These field(s) are read-only and cannot be changed: {0}.').format(', '.join(readonly)),
             doctype=doctype,
             name=name,
             actionable="Give only the fields the user asked to change.",
@@ -1582,9 +1578,9 @@ def _load_for_update(doctype: str, name: str, data: dict[str, Any]):
     try:
         document = frappe.get_doc(doctype, name)
     except frappe.DoesNotExistError:
-        return error(f"{doctype} '{name}' not found", doctype=doctype, name=name)
+        return error(_("{0} '{1}' not found").format(doctype, name), doctype=doctype, name=name)
     except Exception as exc:
-        return error(f"Failed to read {doctype} '{name}': {exc}", doctype=doctype, name=name)
+        return error(_("Failed to read {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
 
     # A change is a write, and a write is not a read: the roles that hold
     # one do not always hold the other.  The read check comes first, so
@@ -1702,7 +1698,7 @@ def _attachment_refusal(meta, doctype: str, changes: dict[str, Any]) -> str | No
             continue
         if not _may_read_file(source):
             return error(
-                f"{doctype}: the file in '{fieldname}' may not be read by this account.",
+                _("{0}: the file in '{1}' may not be read by this account.").format(doctype, fieldname),
                 doctype=doctype,
                 actionable=(
                     "Only a file this account may read can be attached to a "
@@ -1830,7 +1826,7 @@ def _update_refusal(exc: Exception, doctype: str, name: str) -> str:
     """The envelope for a change that could not be saved."""
     if isinstance(exc, frappe.PermissionError):
         return error(
-            f"Failed to update {doctype} '{name}': {exc}",
+            _("Failed to update {0} '{1}': {2}").format(doctype, name, exc),
             doctype=doctype,
             name=name,
             actionable=(
@@ -1841,11 +1837,11 @@ def _update_refusal(exc: Exception, doctype: str, name: str) -> str:
         )
     if isinstance(exc, frappe.ValidationError):
         return error(
-            f"Validation failed for {doctype} '{name}': {exc}",
+            _("Validation failed for {0} '{1}': {2}").format(doctype, name, exc),
             doctype=doctype,
             name=name,
         )
-    return error(f"Failed to update {doctype} '{name}': {exc}", doctype=doctype, name=name)
+    return error(_("Failed to update {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
 
 
 def _submit_update(document, doctype: str, name: str) -> str | None:
@@ -1861,7 +1857,7 @@ def _submit_update(document, doctype: str, name: str) -> str | None:
     except Exception as exc:
         _rollback_to(savepoint)
         return error(
-            f"Updated {doctype} '{name}' but could not submit it: {exc}",
+            _("Updated {0} '{1}' but could not submit it: {2}").format(doctype, name, exc),
             doctype=doctype,
             name=name,
         )
@@ -1946,19 +1942,22 @@ def _update_message(
     something anybody can check, and a table that lost a line is named too,
     because a replacement is not a change of one field.
     """
-    message = f"Updated {doctype} '{name}': {', '.join(sorted(changes))}"
+    message = _("Updated {0} '{1}': {2}.").format(doctype, name, ", ".join(sorted(changes)))
 
     for field in sorted(lines_before):
         before = lines_before.get(field, 0)
         after = len(document.get(field) or [])
         if after == before:
             continue
-        message += f". Replaced the {before} line(s) of '{field}' with {after}"
         if after < before:
-            message += f" — the {before - after} line(s) that were not in the new list are gone"
+            message += " " + _(
+                "Replaced the {0} line(s) of '{1}' with {2} — the {3} line(s) that were not in the new list are gone."
+            ).format(before, field, after, before - after)
+        else:
+            message += " " + _("Replaced the {0} line(s) of '{1}' with {2}.").format(before, field, after)
 
     if submitted:
-        message += ", and submitted it"
+        message += " " + _("The document was submitted.")
     return message
 
 
@@ -1971,9 +1970,9 @@ def submit_doc(doctype: str, name: str) -> str:
         name: The document's name, e.g. "ACC-SINV-00042".
     """
     if not doctype:
-        return error("A doctype is required.")
+        return error(_('A doctype is required.'))
     if not name:
-        return error("A document name is required.")
+        return error(_('A document name is required.'))
 
     document = _load_for_action(doctype, name)
     if isinstance(document, str):
@@ -1981,7 +1980,7 @@ def submit_doc(doctype: str, name: str) -> str:
 
     if document.docstatus != 0:
         return error(
-            f"{doctype} '{name}' is not a draft and cannot be submitted.",
+            _("{0} '{1}' is not a draft and cannot be submitted.").format(doctype, name),
             doctype=doctype,
             name=name,
             actionable=(
@@ -1996,7 +1995,7 @@ def submit_doc(doctype: str, name: str) -> str:
     except frappe.PermissionError as exc:
         _rollback_to(savepoint)
         return error(
-            f"Failed to submit {doctype} '{name}': {exc}",
+            _("Failed to submit {0} '{1}': {2}").format(doctype, name, exc),
             doctype=doctype,
             name=name,
             actionable=(
@@ -2008,13 +2007,13 @@ def submit_doc(doctype: str, name: str) -> str:
         )
     except frappe.ValidationError as exc:
         _rollback_to(savepoint)
-        return error(f"Validation failed for {doctype} '{name}': {exc}", doctype=doctype, name=name)
+        return error(_("Validation failed for {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
     except Exception as exc:
         _rollback_to(savepoint)
-        return error(f"Failed to submit {doctype} '{name}': {exc}", doctype=doctype, name=name)
+        return error(_("Failed to submit {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
 
     return ok(
-        f"Submitted {doctype} '{name}'.",
+        _("Submitted {0} '{1}'.").format(doctype, name),
         data={"doctype": doctype, "name": name, "submitted": True},
         doctype=doctype,
         name=name,
@@ -2030,9 +2029,9 @@ def cancel_doc(doctype: str, name: str) -> str:
         name: The document's name, e.g. "ACC-SINV-00042".
     """
     if not doctype:
-        return error("A doctype is required.")
+        return error(_('A doctype is required.'))
     if not name:
-        return error("A document name is required.")
+        return error(_('A document name is required.'))
 
     document = _load_for_action(doctype, name)
     if isinstance(document, str):
@@ -2040,7 +2039,7 @@ def cancel_doc(doctype: str, name: str) -> str:
 
     if document.docstatus != 1:
         return error(
-            f"{doctype} '{name}' is not submitted and cannot be cancelled.",
+            _("{0} '{1}' is not submitted and cannot be cancelled.").format(doctype, name),
             doctype=doctype,
             name=name,
             actionable=(
@@ -2055,7 +2054,7 @@ def cancel_doc(doctype: str, name: str) -> str:
     except frappe.PermissionError as exc:
         _rollback_to(savepoint)
         return error(
-            f"Failed to cancel {doctype} '{name}': {exc}",
+            _("Failed to cancel {0} '{1}': {2}").format(doctype, name, exc),
             doctype=doctype,
             name=name,
             actionable=(
@@ -2067,13 +2066,13 @@ def cancel_doc(doctype: str, name: str) -> str:
         )
     except frappe.ValidationError as exc:
         _rollback_to(savepoint)
-        return error(f"Validation failed for {doctype} '{name}': {exc}", doctype=doctype, name=name)
+        return error(_("Validation failed for {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
     except Exception as exc:
         _rollback_to(savepoint)
-        return error(f"Failed to cancel {doctype} '{name}': {exc}", doctype=doctype, name=name)
+        return error(_("Failed to cancel {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
 
     return ok(
-        f"Cancelled {doctype} '{name}'.",
+        _("Cancelled {0} '{1}'.").format(doctype, name),
         data={"doctype": doctype, "name": name, "cancelled": True},
         doctype=doctype,
         name=name,
@@ -2089,9 +2088,9 @@ def amend_doc(doctype: str, name: str) -> str:
         name: The document's name, e.g. "ACC-SINV-00042".
     """
     if not doctype:
-        return error("A doctype is required.")
+        return error(_('A doctype is required.'))
     if not name:
-        return error("A document name is required.")
+        return error(_('A document name is required.'))
 
     document = _load_for_action(doctype, name)
     if isinstance(document, str):
@@ -2099,7 +2098,7 @@ def amend_doc(doctype: str, name: str) -> str:
 
     if document.docstatus != 1:
         return error(
-            f"{doctype} '{name}' is not submitted and cannot be amended.",
+            _("{0} '{1}' is not submitted and cannot be amended.").format(doctype, name),
             doctype=doctype,
             name=name,
             actionable=(
@@ -2124,7 +2123,7 @@ def amend_doc(doctype: str, name: str) -> str:
     except frappe.PermissionError as exc:
         _rollback_to(savepoint)
         return error(
-            f"Failed to amend {doctype} '{name}': {exc}",
+            _("Failed to amend {0} '{1}': {2}").format(doctype, name, exc),
             doctype=doctype,
             name=name,
             actionable=(
@@ -2135,13 +2134,13 @@ def amend_doc(doctype: str, name: str) -> str:
         )
     except frappe.ValidationError as exc:
         _rollback_to(savepoint)
-        return error(f"Validation failed for {doctype} '{name}': {exc}", doctype=doctype, name=name)
+        return error(_("Validation failed for {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
     except Exception as exc:
         _rollback_to(savepoint)
-        return error(f"Failed to amend {doctype} '{name}': {exc}", doctype=doctype, name=name)
+        return error(_("Failed to amend {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
 
     return ok(
-        f"Amended {doctype} '{name}': created '{new_doc.name}' (draft).",
+        _("Amended {0} '{1}': created '{2}' (draft).").format(doctype, name, new_doc.name),
         data={"doctype": doctype, "name": name, "amended": new_doc.name},
         doctype=doctype,
         name=name,
@@ -2157,9 +2156,9 @@ def delete_doc(doctype: str, name: str) -> str:
         name: The document's name, e.g. "CUST-0001".
     """
     if not doctype:
-        return error("A doctype is required.")
+        return error(_('A doctype is required.'))
     if not name:
-        return error("A document name is required.")
+        return error(_('A document name is required.'))
 
     document = _load_for_action(doctype, name)
     if isinstance(document, str):
@@ -2167,7 +2166,7 @@ def delete_doc(doctype: str, name: str) -> str:
 
     if document.docstatus not in (0, 2):
         return error(
-            f"{doctype} '{name}' is submitted and cannot be deleted.",
+            _("{0} '{1}' is submitted and cannot be deleted.").format(doctype, name),
             doctype=doctype,
             name=name,
             actionable=(
@@ -2182,7 +2181,7 @@ def delete_doc(doctype: str, name: str) -> str:
     except frappe.PermissionError as exc:
         _rollback_to(savepoint)
         return error(
-            f"Failed to delete {doctype} '{name}': {exc}",
+            _("Failed to delete {0} '{1}': {2}").format(doctype, name, exc),
             doctype=doctype,
             name=name,
             actionable=(
@@ -2193,13 +2192,13 @@ def delete_doc(doctype: str, name: str) -> str:
         )
     except frappe.ValidationError as exc:
         _rollback_to(savepoint)
-        return error(f"Validation failed for {doctype} '{name}': {exc}", doctype=doctype, name=name)
+        return error(_("Validation failed for {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
     except Exception as exc:
         _rollback_to(savepoint)
-        return error(f"Failed to delete {doctype} '{name}': {exc}", doctype=doctype, name=name)
+        return error(_("Failed to delete {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
 
     return ok(
-        f"Deleted {doctype} '{name}'.",
+        _("Deleted {0} '{1}'.").format(doctype, name),
         data={"doctype": doctype, "name": name, "deleted": True},
         doctype=doctype,
         name=name,
@@ -2227,8 +2226,7 @@ def _bulk_approved_set_refusal(doctype: str, names: list, approved_names: Any) -
     if disappeared:
         parts.append("disappeared: " + ", ".join(disappeared))
     return error(
-        f"The set of {doctype} documents changed since approval "
-        f"({' ; '.join(parts)}); nothing was changed.",
+        _('The set of {0} documents changed since approval ({1}); nothing was changed.').format(doctype, ' ; '.join(parts)),
         doctype=doctype,
         actionable="Read the documents again and propose the change afresh.",
     )
@@ -2256,7 +2254,7 @@ def _bulk_lookup_names(doctype: str, filters: Any, limit: Any) -> tuple[list, st
         # name — and change — rows the reader cannot see.
         names = frappe.get_list(doctype, filters=frappe_filters, pluck="name", limit=limit)
     except Exception as exc:
-        return [], error(f"Could not look up {doctype}: {exc}", doctype=doctype)
+        return [], error(_('Could not look up {0}: {1}').format(doctype, exc), doctype=doctype)
 
     return list(names), None
 
@@ -2274,11 +2272,11 @@ def bulk_update_doc(
         limit: The most documents to change (default 50, max 200).
     """
     if not doctype:
-        return error("A doctype is required.")
+        return error(_('A doctype is required.'))
     if not isinstance(filters, list) or not filters:
-        return error("At least one filter is required.")
+        return error(_('At least one filter is required.'))
     if not isinstance(data, dict) or not data:
-        return error("The changes are required, as an object of field values.")
+        return error(_('The changes are required, as an object of field values.'))
 
     # The same field checks a single change gets — a bulk change that
     # skipped them would be the one place where the framework's own
@@ -2301,7 +2299,7 @@ def bulk_update_doc(
 
     if not names:
         return ok(
-            f"No {doctype} documents matched the filters; nothing was changed.",
+            _('No {0} documents matched the filters; nothing was changed.').format(doctype),
             data={"doctype": doctype, "changed": 0, "names": []},
             doctype=doctype,
         )
@@ -2321,11 +2319,13 @@ def bulk_update_doc(
         elif reason:
             failed.append(f"{name}: {reason}")
 
-    message = f"Changed {changed} of {len(names)} {doctype} document(s)."
+    message = _("Changed {0} of {1} {2} document(s).").format(changed, len(names), doctype)
     if failed:
-        message += " Failed: " + "; ".join(failed[:5])
+        first = "; ".join(failed[:5])
         if len(failed) > 5:
-            message += f" (and {len(failed) - 5} more)"
+            message += " " + _("Failed: {0} (and {1} more).").format(first, len(failed) - 5)
+        else:
+            message += " " + _("Failed: {0}.").format(first)
 
     return ok(
         message,
@@ -2350,7 +2350,7 @@ def _bulk_filters(filters: Any) -> list | str:
     triples: list[list[Any]] = []
     for entry in filters:
         if not isinstance(entry, (list, tuple)) or len(entry) != 3:
-            return error("Each filter must be a [field, operator, value] triple.")
+            return error(_('Each filter must be a [field, operator, value] triple.'))
         triples.append([str(entry[0]), str(entry[1]), entry[2]])
     return triples
 
@@ -2412,7 +2412,7 @@ def list_doctypes(
 
     readable = readable_doctypes(str(frappe.session.user or ""))
     if not readable:
-        return ok("Found 0 DocType(s)", data=None, count=0, doctypes=[])
+        return ok(_('Found 0 DocType(s)'), data=None, count=0, doctypes=[])
 
     filters: list[list[Any]] = [["name", "in", readable]]
     if module:
@@ -2431,10 +2431,10 @@ def list_doctypes(
             limit_page_length=min(max(int(limit or 100), 1), 500),
         )
     except Exception as exc:
-        return error(f"Failed to list DocTypes: {exc}")
+        return error(_('Failed to list DocTypes: {0}').format(exc))
 
     return ok(
-        f"Found {len(rows)} DocType(s)",
+        _('Found {0} DocType(s)').format(len(rows)),
         data=None,
         count=len(rows),
         doctypes=rows,

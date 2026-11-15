@@ -23,6 +23,7 @@ import json
 from typing import Any
 
 from albanna.tools.base import ToolContext, tool_handler
+from albanna.tools.base import translate as _
 
 
 @tool_handler
@@ -47,11 +48,11 @@ def ask_question(
     from albanna.services.questions import ask as ask_the_reader
 
     if context is None:
-        return _refusal("The question could not be asked: no context was resolved for this call.")
+        return _refusal(_('The question could not be asked: no context was resolved for this call.'))
 
     conversation = (context.conversation or "").strip()
     if not conversation:
-        return _refusal("The question could not be asked: this call is not part of a conversation.")
+        return _refusal(_('The question could not be asked: this call is not part of a conversation.'))
 
     try:
         card = ask_the_reader(
