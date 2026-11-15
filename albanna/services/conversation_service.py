@@ -787,7 +787,7 @@ def delete_turn(conversation: str, message: str) -> int:
 
     row = frappe.db.sql(
         """
-        select name, role from `tabAlbanna Message`
+        select name, role, attachment_urls from `tabAlbanna Message`
         where name = %s and parent = %s and parentfield = %s
         """,
         (message, conversation, PARENT_FIELD),
@@ -801,7 +801,7 @@ def delete_turn(conversation: str, message: str) -> int:
         # The answer is the assistant row that came after it.
         partner = frappe.db.sql(
             """
-            select name from `tabAlbanna Message`
+            select name, attachment_urls from `tabAlbanna Message`
             where parent = %s and parentfield = %s and role = 'assistant'
               and idx > (
                 select idx from `tabAlbanna Message` where name = %s
@@ -814,7 +814,7 @@ def delete_turn(conversation: str, message: str) -> int:
         # The question is the user row that came before it.
         partner = frappe.db.sql(
             """
-            select name from `tabAlbanna Message`
+            select name, attachment_urls from `tabAlbanna Message`
             where parent = %s and parentfield = %s and role = 'user'
               and idx < (
                 select idx from `tabAlbanna Message` where name = %s
@@ -825,11 +825,23 @@ def delete_turn(conversation: str, message: str) -> int:
         )
 
     names = [row.name] + [item[0] for item in partner]
+    urls = [row.attachment_urls] + [item.attachment_urls for item in partner]
     frappe.db.sql(
         "delete from `tabAlbanna Message` where name in %(names)s",
         {"names": tuple(names)},
     )
+    from albanna.services.attachments import release_message_files
+
+    release_message_files([u for pair in urls for u in _url_list(pair)])
     return len(names)
+
+
+def _url_list(value: Any) -> list[str]:
+    """The addresses a wire attachment field holds, rubbish tolerated."""
+    from albanna.core.attachments import read_attachment_list
+
+    items, readable = read_attachment_list(value)
+    return items if readable else []
 
 
 def validate_regenerate(conversation: str, message: str, user: str) -> dict[str, Any]:
@@ -973,6 +985,10 @@ def delete_conversation(conversation: str) -> None:
     somebody else's history without any complaint from the framework.
     """
     assert_owns(conversation, frappe.session.user or "")
+    stored_urls = frappe.db.sql(
+        "select attachment_urls from `tabAlbanna Message` where parent = %s",
+        (conversation,),
+    )
     frappe.db.sql("delete from `tabAlbanna Message` where parent = %s", (conversation,))
     # The audit trail is the operator's, not the reader's: the chat is the
     # reader's and goes when the reader says so, and the ledger is what
@@ -1001,6 +1017,15 @@ def delete_conversation(conversation: str) -> None:
         (conversation,),
     )
     frappe.db.sql("delete from `tabAlbanna Question` where conversation = %s", (conversation,))
+    # The files the messages' rows pointed at go with the rows: they are
+    # the chat's own private stores, attached to no document the reader
+    # owns, and rows gone with nobody following the addresses leave the
+    # bytes on the disk for ever.  A file another surviving row still
+    # names — a regeneration's replacement carries the old addresses —
+    # is kept, so only the truly orphaned ones are removed.
+    from albanna.services.attachments import release_message_files
+
+    release_message_files([u for (value,) in stored_urls for u in _url_list(value)])
     frappe.delete_doc("Albanna Conversation", conversation, ignore_permissions=True)
 
 

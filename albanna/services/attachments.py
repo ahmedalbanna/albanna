@@ -18,6 +18,7 @@ the turn.
 from __future__ import annotations
 
 import base64
+import json
 import logging
 from typing import Any
 
@@ -37,6 +38,7 @@ from albanna.core.attachments import (
     attachment_text,
     check_attachment,
     decode_data_url,
+    read_attachment_list,
 )
 
 logger = logging.getLogger(__name__)
@@ -272,3 +274,132 @@ def ceiling_in_kb(settings: Any) -> int:
         return int(getattr(settings, "max_attachment_size_kb", 0) or 0)
     except (AttributeError, TypeError, ValueError):
         return 0
+
+
+def _is_chat_file(document: Any) -> bool:
+    """Whether a File record is one this chat stored.
+
+    The chat names every file it writes ``albanna-…`` and stores it
+    privately, and it attaches it to no document the reader owns.  A
+    file that is not that is somebody else's — a letter the reader
+    uploaded through the desk, an ERPNext attachment — and no cleanup
+    this app runs may delete it.
+    """
+    name = str(getattr(document, "file_name", "") or "")
+    return bool(getattr(document, "is_private", 0)) and name.startswith("albanna-")
+
+
+def release_message_files(urls: list[str]) -> int:
+    """Delete the stored files that rows which have just gone pointed at.
+
+    A message row carries addresses, and the bytes live in File records
+    the chat created.  When the rows are deleted — a turn the reader
+    asked to forget, a thread emptied by its owner — the files outlive
+    them for ever unless somebody follows the addresses; this follows
+    them.  A file another surviving row still names is kept:
+    regeneration copies an old row's addresses onto its replacement, so
+    the file the deleted row named may still be the new turn's
+    attachment.  A file the chat did not store is never touched.
+
+    Returns how many files were removed.
+    """
+    removed = 0
+    for url in urls or []:
+        if not url:
+            continue
+        try:
+            name = frappe.db.get_value("File", {"file_url": url})
+            if not name:
+                continue
+            document = frappe.get_doc("File", name)
+            if not _is_chat_file(document):
+                continue
+            still_named = frappe.db.sql(
+                """
+                select 1 from `tabAlbanna Message`
+                where attachment_urls = %s or attachment_urls like %s
+                limit 1
+                """,
+                (url, f'%"{url}"%'),
+            )
+            if still_named:
+                continue
+            frappe.delete_doc("File", name, ignore_permissions=True)
+            removed += 1
+        except Exception:
+            logger.exception("Could not release a message's stored file: %s", url)
+    return removed
+
+
+def _strip_url(url: str, value: Any) -> Any:
+    """One address removed from a stored attachment field.
+
+    Returns the value with the address gone, or the value unchanged when
+    it does not name the address, or would not read back as a list of
+    strings — rubbish is left for the reader's own tolerance to answer.
+    """
+    items, readable = read_attachment_list(value)
+    if not readable or url not in items:
+        return value
+    return json.dumps([item for item in items if item != url])
+
+
+def _strip_text_at(url: str, url_value: Any, text_value: Any) -> Any:
+    """The text dropped where its address is, so the lists stay parallel.
+
+    ``attachment_urls`` and ``attachment_texts`` are parallel lists: the
+    text at position *i* is what the address at position *i* held.  An
+    address removed and its text kept would misalign the lists, and a
+    follow-up about the second attachment would be answered with the
+    third's text.  The positions are read off the *original* url list,
+    so texts survive a duplicate address untouched.
+    """
+    items, urls_readable = read_attachment_list(url_value)
+    texts, texts_readable = read_attachment_list(text_value)
+    if not urls_readable or not texts_readable or len(items) != len(texts):
+        return text_value
+    kept = [text for text, item in zip(texts, items, strict=False) if item != url]
+    return json.dumps(kept)
+
+
+def on_file_trash(doc: Any, method: str | None = None) -> None:
+    """A File is going away: stop the message rows that name it.
+
+    Wired to ``File.on_trash``.  A file deleted outside the chat — the
+    file manager, a cleared upload — leaves every row that still carries
+    its address pointing at nothing, and the reader sees a link that
+    fails when it is clicked.  The address is removed here, and the text
+    that travelled beside it goes with it, so what the row carries
+    stays a true account of what can still be read.
+
+    The guard is the address match: rows that name some other file are
+    never rewritten, and files that are not the chat's own are beyond
+    this hook's reach — it answers only to the rows that name the one
+    going away.
+    """
+    url = str(getattr(doc, "file_url", "") or "")
+    if not url:
+        return
+    try:
+        rows = frappe.db.sql(
+            """
+            select name, attachment_urls, attachment_texts
+            from `tabAlbanna Message`
+            where attachment_urls = %s or attachment_urls like %s
+            """,
+            (url, f'%"{url}"%'),
+            as_dict=True,
+        )
+        for row in rows:
+            urls = _strip_url(url, row.attachment_urls)
+            if urls == row.attachment_urls:
+                continue
+            texts = _strip_text_at(url, row.attachment_urls, row.attachment_texts)
+            frappe.db.set_value(
+                "Albanna Message",
+                row.name,
+                {"attachment_urls": urls, "attachment_texts": texts},
+                update_modified=False,
+            )
+    except Exception:
+        logger.exception("Could not clean a deleted file's address out of the messages")

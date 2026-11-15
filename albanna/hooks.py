@@ -69,6 +69,19 @@ has_permission = {
     "Albanna Question": "albanna.services.questions.has_permission",
 }
 
+# A stored attachment is a reference between two ends: the message row
+# carries the address, the File record carries the bytes.  When a File is
+# deleted outside the chat — the file manager, a cleared upload — the
+# rows that still name it would point at a dead link for ever.  The hook
+# strips the address, and the text that travelled beside it, from every
+# row that carried it, so what a row says it holds is what can still be
+# read.
+doc_events = {
+    "File": {
+        "on_trash": "albanna.services.attachments.on_file_trash",
+    },
+}
+
 # The installer creates the Single settings row so the app is usable the
 # moment it is installed, instead of failing on a missing document the first
 # time somebody opens the widget.
