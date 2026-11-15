@@ -57,8 +57,13 @@ fail_under = 80
 # package_name = "~=1.1.0"
 
 [tool.bench.frappe-dependencies]
-frappe = ">=16.0.0-dev,<17.0.0"
-erpnext = ">=16.0.0-dev,<17.0.0"
+# Frappe Cloud's stable line is v15 and v16 (NFR C1).  The API surface
+# this app touches is verified against both: every `frappe.*` symbol it
+# uses exists on the version-15 branch, and the suite runs live on v16
+# — the walker in tests/test_compatibility_pins.py keeps the surface
+# deliberately checked.
+frappe = ">=15.0.0,<17.0.0"
+erpnext = ">=15.0.0,<17.0.0"
 
 [tool.ruff]
 line-length = 100
