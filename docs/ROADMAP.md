@@ -1207,6 +1207,43 @@ exposed and fixed:
   `tests/test_data_integrity_pins.py` keep it that way, three
   red-checked live.
 
+### Shipped in this pass (v0.2.19, the resource efficiency facts are measured and pinned)
+
+Five resource efficiency requirements (RE1–RE5), measured against a
+fresh interpreter and the live workers, recorded in ADR-0114.  Three
+held outright; one was exposed with a number and fixed; one was
+bounded but nobody's choice and now is:
+
+* **The provider HTTP stack loads with the first turn, not at boot.**
+  Measured: frappe import baseline 42,100 kB; the whole app on top
+  51,596 kB — 22.6%, over the 10% budget.  Every megabyte of it was
+  `requests` and its tree, dragged into every worker by the providers
+  package's eager adapter imports.  The package now re-exports the
+  base names at import time and resolves the concrete adapter classes
+  on first use; `build_provider` still imports only the kind a turn
+  speaks to.  **After the fix: 3.8% at boot**, and the 8 MB HTTP
+  stack arrives with the turn that needs it — kept, because
+  replacing `requests` would cost the keep-alive pooling a turn's
+  tool rounds depend on.
+* **Parked answers live an hour, and the operator says so.**  The
+  marker and its parked answer always expired — bounded, never
+  unbounded — but the span was derived arithmetic off the turn's
+  budget.  A `turn_cache_ttl_seconds` setting (default 3600) is now
+  the span, floored at the turn's own clock: a marker that dies under
+  a live turn would have the panel declare the turn lost while it is
+  still working.
+* The three that already held are recorded with their evidence in
+  ADR-0114: no database connections of the app's own — everything
+  goes through the request-scoped `frappe.db` and the pooled
+  `frappe.cache()` (RE2); the history bound is the configured limit,
+  default 50, read by both consumers and bounded in the *database*
+  (RE4); and turn status is delivered over socket.io with the cache
+  as the polling fallback — the running path reads only the cache,
+  the database is asked once at the lost verdict, never per poll
+  (RE5).  Ten walkers and a subprocess import check in
+  `tests/test_resource_pins.py` keep it that way, three red-checked
+  live.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
