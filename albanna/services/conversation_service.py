@@ -825,7 +825,7 @@ def delete_turn(conversation: str, message: str) -> int:
         )
 
     names = [row.name] + [item[0] for item in partner]
-    urls = [row.attachment_urls] + [item.attachment_urls for item in partner]
+    urls = [row.attachment_urls] + [item[1] for item in partner]
     frappe.db.sql(
         "delete from `tabAlbanna Message` where name in %(names)s",
         {"names": tuple(names)},
