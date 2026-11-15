@@ -30,7 +30,8 @@ precise classification of the failure, so the service can tell a timeout
 (which is worth retrying) from a rejected key (which is not).
 """
 
-from albanna.providers.anthropic import AnthropicProvider
+from typing import Any
+
 from albanna.providers.base import (
     ChatProvider,
     Completion,
@@ -41,8 +42,22 @@ from albanna.providers.base import (
     Usage,
     build_provider,
 )
-from albanna.providers.ollama import OllamaProvider
-from albanna.providers.openai import OpenAIProvider
+
+#: The concrete adapters, by the class name this package exports them
+#: under.  They are **not** imported here: every one of them pulls in
+#: ``providers.http`` and with it ``requests`` — some nine megabytes of
+#: the adapter's HTTP stack — and a worker that imports anything under
+#: ``albanna.providers`` would pay for all three whether it talks to
+#: any of them or not.  ``settings_service`` imports ``base``, so the
+#: eager import would put the HTTP stack in every worker at boot.
+#: The classes resolve on first attribute use instead, and
+#: ``build_provider`` still imports only the kind the turn actually
+#: speaks to.
+_ADAPTERS: dict[str, str] = {
+    "AnthropicProvider": "anthropic",
+    "OllamaProvider": "ollama",
+    "OpenAIProvider": "openai",
+}
 
 __all__ = [
     "AnthropicProvider",
@@ -57,3 +72,17 @@ __all__ = [
     "Usage",
     "build_provider",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    """The concrete adapters, imported the first time they are asked for."""
+    module = _ADAPTERS.get(name)
+    if module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import importlib
+
+    return getattr(importlib.import_module(f"{__name__}.{module}"), name)
+
+
+def __dir__() -> list[str]:
+    return sorted(set(__all__) | set(globals()))
