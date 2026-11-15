@@ -1049,6 +1049,33 @@ and recorded in ADR-0108.  Six already held, two were exposed and fixed:
   discovery is not the execution of model text, and both discovery
   mechanisms need it.
 
+### Shipped in this pass (v0.2.14, the compatibility facts are read and pinned)
+
+Seven compatibility requirements (C1–C7), verified against the source,
+the declared metadata and the running bench, recorded in ADR-0109.
+Six held as read; one was exposed — not in the code, but in what the
+code *declared*:
+
+* **The version range now says what the code is.**  Every `frappe.*`
+  symbol the app calls exists on the version-15 branch and nothing
+  uses Python 3.11+ syntax — but `pyproject.toml` declared
+  `>=16.0.0-dev`, so a v15 bench was told it could not install an app
+  that would run on it.  The range is `>=15.0.0,<17.0.0` now, matching
+  Frappe Cloud's stable line, and the claim is enforced: a walker
+  fails the suite on any frappe call nobody has read against v15.
+  Said plainly in the ADR: this is an API-surface verification and a
+  live v16 suite — not a claim of a tested v15 install.
+* The six that already held are recorded with their evidence in
+  ADR-0109: ERPNext as a required app with the escalation path
+  targeting its `Issue` doctype (C2); the three provider adapters
+  driven entirely by Settings — any OpenAI-compatible endpoint, local
+  or remote Ollama, Anthropic's API, all without code changes
+  (C3/C4/C5); the panel's browser budget, with the build's `es2017`
+  target carrying syntax and the walker keeping the CSS inside what
+  the four engines' stable releases carry (C6); and the three
+  responsive layers — ≤991px overlay, ≤640px full-screen sheet sized
+  by `100dvh` with its `vh` fallback, and the touch lift (C7).
+
 ### Later (v3) — §3, only with a named customer
 
 ---
