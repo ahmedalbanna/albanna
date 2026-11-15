@@ -943,6 +943,28 @@ ADR-0102.  One real fix and a client cadence change:
   ledger says what ran) are pinned by site-suite tests against loopback
   mocks.
 
+### Shipped in this pass (v0.2.10, the security facts are read and pinned)
+
+Twelve security requirements (SEC1–SEC12), verified against the code and
+recorded in ADR-0105.  Eleven already held and are now pinned by walking
+tests; one was exposed and fixed:
+
+* **A turn reads back only the attachments its user may read.**
+  `load_attached_files` trusted `frappe.get_doc` to refuse another
+  user's private file — and `get_doc` runs no permission check.  A
+  crafted turn naming someone else's private file URL would have
+  carried that file's bytes to the model.  The read-back now makes the
+  same `frappe.has_permission("File", "read", doc=…)` check the read
+  and copy tools make, failing closed, and the turn's note says the
+  contents could not be read.  Pinned by
+  `albanna/tests/test_attachment_read_guard.py`, red-checked.
+* The walking harnesses (`tests/test_security_pins.py`) hold six facts
+  at the source — keys are Password fields, no endpoint admits a guest,
+  the audit log holds no reader words, no code execution from model
+  output in shipped Python or panel JS, and the panel opens no socket
+  of its own — so a security fact cannot die by edit without a suite
+  noticing.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
