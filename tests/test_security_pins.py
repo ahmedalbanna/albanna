@@ -68,7 +68,15 @@ def test_the_settings_keys_are_password_fields():
 
 
 def test_no_endpoint_admits_a_guest():
-    """A whitelisted door that lets a guest in is anonymous access (SEC3)."""
+    """A whitelisted door that lets a guest in is anonymous access (SEC3).
+
+    The one exception is named, not silent: the health check (NFR O3)
+    must answer a monitor that holds no session, and its response is
+    booleans, a status word and the app version — nothing the site has
+    not already published.  See ADR-0112 and the ALLOWED_KEYS walker in
+    test_observability_pins.py, which holds the response to exactly that.
+    """
+    allowed = {"health.py"}
     guests: list[str] = []
     for path, node in _whitelisted_endpoints():
         for decorator in node.decorator_list:
@@ -76,6 +84,8 @@ def test_no_endpoint_admits_a_guest():
                 if argument.arg == "allow_guest":
                     truthy = ast.literal_eval(argument.value)
                     if truthy:
+                        if path.name in allowed:
+                            continue
                         guests.append(f"{path.name}:{node.name}")
     assert guests == [], f"endpoints behind an open door: {guests}"
 

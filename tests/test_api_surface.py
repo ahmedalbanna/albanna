@@ -121,10 +121,13 @@ def test_every_endpoint_is_behind_a_door():
 
     assert endpoints, "no endpoint was found — the rule below would pass on nothing"
 
+    # The health check (NFR O3) is the deliberate exception: a monitor
+    # holds no session, and the endpoint returns booleans and a version.
+    # The SEC3 pin carries it in its allowlist, with the reasoning.
     ungated = [
         f"{module}.{function} (line {line})"
         for module, function, line, called in endpoints
-        if not (called & GATES)
+        if not (called & GATES) and not (module == "health" and function == "check")
     ]
 
     assert not ungated, (
