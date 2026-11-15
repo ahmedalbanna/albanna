@@ -1017,6 +1017,38 @@ exposed and fixed:
   *outcome* is announced once), the Desk's Automatic theme following
   the OS with a live listener, and Escape closing.
 
+### Shipped in this pass (v0.2.13, the maintainability facts are read and pinned)
+
+Eight maintainability requirements (M1–M8), verified against the source
+and recorded in ADR-0108.  Six already held, two were exposed and fixed:
+
+* **A new tool is two places.**  It was three: one `ToolSpec`, one
+  handler, and one line in the backend's `_BOUND_TOOLS` — plus two
+  parallel dicts in the manifest test that duplicated the mapping.  A
+  handler now marks itself with `@tool_handler` and the backend
+  discovers its bindings from the marker; the test derives its pairings
+  from the same marker.  Nothing else has to say the manifest's
+  contract is the implementation's signature.
+* **A new provider is one file.**  It was one file plus four edits in
+  `providers/base.py` (kind constant, kind list, two dispatch
+  branches).  An adapter class now declares its `kind` and aliases
+  beside itself, and `base.py` discovers the registry by scanning the
+  package; `base.py` no longer names any adapter.  The one registration
+  left is the Settings dropdown's options line — declarative metadata,
+  not a dispatch.
+* The four that already held are recorded with their evidence in
+  ADR-0108: the `core/` domain's zero-dependency rule (was written in
+  its `__init__` but enforced by nothing — now enforced by a walker),
+  the bench-free unit suite (guarded imports excepted), the 39-field
+  Settings doctype that carries every operational knob, and the
+  standard Frappe app layout.  Two are now measured rather than
+  assumed: the domain layer's coverage is **92%** with an 80% floor
+  gated in `pyproject.toml` (M5), and all 23 whitelisted endpoints
+  carry docstrings (M6, walker-pinned).  The SEC11 walker's `importlib`
+  ban was narrowed to `__import__`/`eval`/`exec`/`compile` — module
+  discovery is not the execution of model text, and both discovery
+  mechanisms need it.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
