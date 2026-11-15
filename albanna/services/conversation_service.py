@@ -155,8 +155,26 @@ def append_messages(conversation: str, rows: list[dict]) -> list[tuple[str, str]
     interleaves the turns — so the model reads its own earlier answer as
     though it came *after* the question that prompted it, and then
     contradicts itself.
+
+    The index is allocated under a lock on the conversation's own row.
+    A plain read of ``max(idx)`` followed by an insert races another
+    append doing exactly the same — two turns queued for one thread, one
+    per open tab — and two rows that share an index have no order
+    between them, which is the lie the reader then reads back.  With the
+    conversation row locked, the second append waits until the first's
+    transaction commits and reads the index the first actually wrote.
     """
     if not rows:
+        return []
+
+    locked = frappe.db.sql(
+        "select name from `tabAlbanna Conversation` where name = %s for update",
+        (conversation,),
+    )
+    if not locked:
+        # The thread was deleted while its turn was running.  Writing
+        # rows whose parent no longer exists orphans them — history
+        # nobody can open — so the turn answers by storing nothing.
         return []
 
     now = frappe.utils.now()
