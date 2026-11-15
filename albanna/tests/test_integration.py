@@ -709,7 +709,10 @@ class TestEditingAndRegenerating(AlbannaTestCase):
 
         self.assertEqual(result["status"], "queued")
         self.assertEqual(captured["method"], "albanna.services.chat_job.run_turn_job")
-        self.assertEqual(captured["queue"], "chat")
+        # The queue is the site's setting, and a stock name: a custom
+        # queue is one no stock worker serves, and the turn would sit in
+        # Redis forever (NFR D5).
+        self.assertEqual(captured["queue"], "short")
         self.assertEqual(captured["replace_message"], names[2])
         # The turn is asked from the page the old question was born on,
         # whatever page the reader is reading the thread from now.
