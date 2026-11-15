@@ -1462,3 +1462,324 @@ msgstr "معاً"
 
 msgid "vllm"
 msgstr "VLLM"
+
+msgid "'{0}' is a picture, and a picture's pixels cannot be read as text."
+msgstr "'{0}' صورة، ولا يمكن قراءة بكسلات الصورة كنص."
+
+msgid "'{0}' is a picture, and a picture's pixels cannot be written as text."
+msgstr "'{0}' صورة، ولا يمكن كتابة بكسلات الصورة كنص."
+
+msgid "A doctype and a name are required."
+msgstr "مطلوب نوع المستند والاسم معًا."
+
+msgid "A doctype is required."
+msgstr "مطلوب نوع المستند."
+
+msgid "A document name is required."
+msgstr "مطلوب اسم المستند."
+
+msgid "A file is required: its URL or the name of its File record."
+msgstr "مطلوب ملف: رابطه أو اسم سجل الملف الخاص به."
+
+msgid "A file name is required, with its extension — e.g. 'customers.csv'."
+msgstr "مطلوب اسم ملف مع امتداده — مثل 'customers.csv'."
+
+msgid "A filter must have exactly three elements [fieldname, operator, value]; got {0}."
+msgstr "يجب أن يتكون كل مرشّح من ثلاثة عناصر بالضبط [اسم الحقل، المعامل، القيمة]؛ تم استلام {0}."
+
+msgid "A filter value must be a plain string, not a {0}. For 'in' or 'not in' write one condition per value rather than a list."
+msgstr "يجب أن تكون قيمة المرشّح نصًا عاديًا وليس {0}. للعمليتين 'in' أو 'not in' اكتب شرطًا لكل قيمة بدلًا من قائمة."
+
+msgid "A filter's fieldname must be a string for DocType '{0}'."
+msgstr "يجب أن يكون اسم حقل المرشّح نصًا لنوع المستند '{0}'."
+
+msgid "A report name is required."
+msgstr "مطلوب اسم التقرير."
+
+msgid "A sort needs a fieldname, not just a direction, for DocType '{0}'."
+msgstr "يحتاج الترتيب إلى اسم حقل وليس مجرد اتجاه لنوع المستند '{0}'."
+
+msgid "Amended {0} '{1}': created '{2}' (draft)."
+msgstr "أُنشئت مسودة جديدة من {0} '{1}': '{2}' (مسودة)."
+
+msgid "At least one filter is required."
+msgstr "مطلوب مرشّح واحد على الأقل."
+
+msgid "Cancelled {0} '{1}'."
+msgstr "تم إلغاء {0} '{1}'."
+
+msgid "Cannot tell which documents are yours: no reader is signed in."
+msgstr "لا يمكن تحديد المستندات الخاصة بك: لا يوجد قارئ مسجَّل للدخول."
+
+msgid "Changed file '{0}'"
+msgstr "تم تغيير الملف '{0}'"
+
+msgid "Changed {0} of {1} {2} document(s)."
+msgstr "تم تغيير {0} من {1} مستند(ات) من نوع {2}."
+
+msgid "Could not look up {0}: {1}"
+msgstr "تعذّر البحث عن {0}: {1}"
+
+msgid "Created file '{0}'"
+msgstr "تم إنشاء الملف '{0}'"
+
+msgid "Created {0} '{1}' and submitted it."
+msgstr "تم إنشاء {0} '{1}' وإرساله."
+
+msgid "Created {0} '{1}'."
+msgstr "تم إنشاء {0} '{1}'."
+
+msgid "Deleted {0} '{1}'."
+msgstr "تم حذف {0} '{1}'."
+
+msgid "DocType '{0}' could not be read: this account may not read it."
+msgstr "تعذّرت قراءة نوع المستند '{0}': هذا الحساب لا يملك صلاحية قراءته."
+
+msgid "DocType '{0}' not found: {1}"
+msgstr "نوع المستند '{0}' غير موجود: {1}"
+
+msgid "Duplicate entry: {0}"
+msgstr "إدخال مكرر: {0}"
+
+msgid "Each filter must be a [field, operator, value] triple."
+msgstr "يجب أن يكون كل مرشّح ثلاثية [حقل، معامل، قيمة]."
+
+msgid "Each filter must be a three-element list [fieldname, operator, value] for DocType '{0}'."
+msgstr "يجب أن يكون كل مرشّح قائمة من ثلاثة عناصر [اسم الحقل، المعامل، القيمة] لنوع المستند '{0}'."
+
+msgid "Failed to amend {0} '{1}': {2}"
+msgstr "فشل إنشاء مسودة جديدة من {0} '{1}': {2}"
+
+msgid "Failed to cancel {0} '{1}': {2}"
+msgstr "فشل إلغاء {0} '{1}': {2}"
+
+msgid "Failed to create {0}: {1}"
+msgstr "فشل إنشاء {0}: {1}"
+
+msgid "Failed to delete {0} '{1}': {2}"
+msgstr "فشل حذف {0} '{1}': {2}"
+
+msgid "Failed to list DocTypes: {0}"
+msgstr "فشل عرض أنواع المستندات: {0}"
+
+msgid "Failed to list {0}: {1}"
+msgstr "فشل عرض {0}: {1}"
+
+msgid "Failed to read report '{0}': {1}"
+msgstr "فشلت قراءة التقرير '{0}': {1}"
+
+msgid "Failed to read {0} '{1}': {2}"
+msgstr "فشلت قراءة {0} '{1}': {2}"
+
+msgid "Failed to submit {0} '{1}': {2}"
+msgstr "فشل إرسال {0} '{1}': {2}"
+
+msgid "Failed to update {0} '{1}': {2}"
+msgstr "فشل تحديث {0} '{1}': {2}"
+
+msgid "Failed: {0} (and {1} more)."
+msgstr "فشل: {0} (و{1} أخرى)."
+
+msgid "Failed: {0}."
+msgstr "فشل: {0}."
+
+msgid "Filter keys must be fieldnames (strings) for DocType '{0}'."
+msgstr "يجب أن تكون مفاتيح المرشّح أسماء حقول (نصوص) لنوع المستند '{0}'."
+
+msgid "Filters must be a list of [fieldname, operator, value] triples for DocType '{0}'."
+msgstr "يجب أن تكون المرشحات قائمة من ثلاثيات [اسم الحقل، المعامل، القيمة] لنوع المستند '{0}'."
+
+msgid "Found 0 DocType(s)"
+msgstr "لم يُعثر على أي نوع مستند"
+
+msgid "Found {0} DocType(s)"
+msgstr "عُثر على {0} من أنواع المستندات"
+
+msgid "Found {0} {1}"
+msgstr "عُثر على {0} {1}"
+
+msgid "No file was found at '{0}'."
+msgstr "لا يوجد ملف عند '{0}'."
+
+msgid "No {0} documents matched the filters; nothing was changed."
+msgstr "لا توجد مستندات {0} مطابقة للمرشحات؛ لم يُغيَّر شيء."
+
+msgid "Read characters {0}–{1} of {2} from '{3}'"
+msgstr "قُرئت المحارف {0}–{1} من {2} من '{3}'"
+
+msgid "Read {0} '{1}'"
+msgstr "قُرأ {0} '{1}'"
+
+msgid "Replaced the {0} line(s) of '{1}' with {2} — the {3} line(s) that were not in the new list are gone."
+msgstr "استُبدلت {0} سطرًا في '{1}' بـ{2} — و{3} سطرًا لم تكن في القائمة الجديدة فحُذفت."
+
+msgid "Replaced the {0} line(s) of '{1}' with {2}."
+msgstr "استُبدلت {0} سطرًا في '{1}' بـ{2}."
+
+msgid "Report '{0}' failed: {1}"
+msgstr "فشل التقرير '{0}': {1}"
+
+msgid "Report '{0}' is disabled"
+msgstr "التقرير '{0}' معطَّل"
+
+msgid "Report '{0}' not found"
+msgstr "التقرير '{0}' غير موجود"
+
+msgid "Report '{0}' requires filter(s): {1}"
+msgstr "التقرير '{0}' يتطلب مرشحات: {1}"
+
+msgid "Report '{0}' returned {1} row(s)"
+msgstr "أعاد التقرير '{0}' {1} صف(صفوف)"
+
+msgid "Sort must be 'fieldname' or 'fieldname asc|desc' for DocType '{0}'."
+msgstr "يجب أن يكون الترتيب 'fieldname' أو 'fieldname asc|desc' لنوع المستند '{0}'."
+
+msgid "Submitted {0} '{1}'."
+msgstr "تم إرسال {0} '{1}'."
+
+msgid "The changes are required, as an object of field values."
+msgstr "التغييرات مطلوبة، ككائن من قيم الحقول."
+
+msgid "The document was submitted."
+msgstr "تم إرسال المستند."
+
+msgid "The document's data is required, as an object of field values."
+msgstr "بيانات المستند مطلوبة، ككائن من قيم الحقول."
+
+msgid "The document's data must not name a doctype: the doctype is the first argument."
+msgstr "يجب ألا تحدد بيانات المستند نوع المستند: نوع المستند هو الوسيطة الأولى."
+
+msgid "The file '{0}' could not be changed: this account may not write files."
+msgstr "تعذّر تغيير الملف '{0}': هذا الحساب لا يملك صلاحية كتابة الملفات."
+
+msgid "The file '{0}' could not be read: this account may not read it."
+msgstr "تعذّرت قراءة الملف '{0}': هذا الحساب لا يملك صلاحية قراءته."
+
+msgid "The file '{0}' could not be read: {1}"
+msgstr "تعذّرت قراءة الملف '{0}': {1}"
+
+msgid "The file '{0}' holds no text that could be extracted."
+msgstr "الملف '{0}' لا يحتوي نصًا يمكن استخراجه."
+
+msgid "The file could not be changed: {0}"
+msgstr "تعذّر تغيير الملف: {0}"
+
+msgid "The file could not be created: {0}"
+msgstr "تعذّر إنشاء الملف: {0}"
+
+msgid "The file's content is required, as text."
+msgstr "محتوى الملف مطلوب، كنص."
+
+msgid "The file's new content is required, as text."
+msgstr "المحتوى الجديد للملف مطلوب، كنص."
+
+msgid "The history could not be read: no context was resolved for this call."
+msgstr "تعذّرت قراءة السجل: لم يُحسم سياق هذا الاستدعاء."
+
+msgid "The history could not be read: this call is not part of a conversation."
+msgstr "تعذّرت قراءة السجل: هذا الاستدعاء ليس جزءًا من محادثة."
+
+msgid "The offset {0} is not a character offset."
+msgstr "الإزاحة {0} ليست إزاحة محارف."
+
+msgid "The offset {0} is past the end of the file: it holds {1} characters."
+msgstr "الإزاحة {0} تتجاوز نهاية الملف: يحتوي {1} محرفًا."
+
+msgid "The page counts from zero."
+msgstr "ترقيم الصفحات يبدأ من الصفر."
+
+msgid "The page counts from zero; the thread has {0} pages behind the window."
+msgstr "ترقيم الصفحات يبدأ من الصفر؛ للسلسلة {0} صفحة خلف النافذة."
+
+msgid "The page counts from zero; this search has {0} pages."
+msgstr "ترقيم الصفحات يبدأ من الصفر؛ هذا البحث له {0} صفحة."
+
+msgid "The page must be a whole number, counting from zero."
+msgstr "يجب أن يكون رقم الصفحة عددًا صحيحًا يبدأ من الصفر."
+
+msgid "The question could not be asked: no context was resolved for this call."
+msgstr "تعذّر طرح السؤال: لم يُحسم سياق هذا الاستدعاء."
+
+msgid "The question could not be asked: this call is not part of a conversation."
+msgstr "تعذّر طرح السؤال: هذا الاستدعاء ليس جزءًا من محادثة."
+
+msgid "The set of {0} documents changed since approval ({1}); nothing was changed."
+msgstr "مجموعة مستندات {0} تغيّرت منذ الموافقة ({1})؛ لم يُغيَّر شيء."
+
+msgid "These field(s) are read-only and cannot be changed: {0}."
+msgstr "هذه الحقول للقراءة فقط ولا يمكن تغييرها: {0}."
+
+msgid "These field(s) belong to the framework and cannot be set: {0}."
+msgstr "هذه الحقول مملوكة للإطار ولا يمكن تعيينها: {0}."
+
+msgid "Unknown field(s) for DocType '{0}': {1}"
+msgstr "حقول غير معروفة لنوع المستند '{0}': {1}"
+
+msgid "Unknown field(s) in the rows of '{0}' for DocType '{1}': {2}"
+msgstr "حقول غير معروفة في صفوف '{0}' لنوع المستند '{1}': {2}"
+
+msgid "Unknown filter operator '{0}' for DocType '{1}'."
+msgstr "معامل مرشّح غير معروف '{0}' لنوع المستند '{1}'."
+
+msgid "Unknown sort direction '{0}' for DocType '{1}'."
+msgstr "اتجاه ترتيب غير معروف '{0}' لنوع المستند '{1}'."
+
+msgid "Unknown sort field '{0}' for DocType '{1}' (closest: {2})."
+msgstr "حقل ترتيب غير معروف '{0}' لنوع المستند '{1}' (الأقرب: {2})."
+
+msgid "Updated {0} '{1}' but could not submit it: {2}"
+msgstr "تم تحديث {0} '{1}' لكن تعذّر إرساله: {2}"
+
+msgid "Updated {0} '{1}': {2}."
+msgstr "تم تحديث {0} '{1}': {2}."
+
+msgid "Validation failed for {0} '{1}': {2}"
+msgstr "فشل التحقق من صحة {0} '{1}': {2}"
+
+msgid "Validation failed: {0}"
+msgstr "فشل التحقق من الصحة: {0}"
+
+msgid "You do not have access to report '{0}'"
+msgstr "لا تملك صلاحية الوصول إلى التقرير '{0}'"
+
+msgid "You do not have permission to run reports on '{0}'"
+msgstr "لا تملك صلاحية تشغيل التقارير على '{0}'"
+
+msgid "limit must be an integer"
+msgstr "يجب أن يكون limit عددًا صحيحًا"
+
+msgid "limit must be between 1 and 5000"
+msgstr "يجب أن يكون limit بين 1 و5000"
+
+msgid "offset must be >= 0"
+msgstr "يجب أن يكون offset >= 0"
+
+msgid "offset must be an integer"
+msgstr "يجب أن يكون offset عددًا صحيحًا"
+
+msgid "{0} '{1}' already has those values; nothing was changed."
+msgstr "{0} '{1}' لديه هذه القيم بالفعل؛ لم يُغيَّر شيء."
+
+msgid "{0} '{1}' could not be read: this account may not read it."
+msgstr "تعذّرت قراءة {0} '{1}': هذا الحساب لا يملك صلاحية قراءته."
+
+msgid "{0} '{1}' is not a draft and cannot be submitted."
+msgstr "{0} '{1}' ليس مسودة ولا يمكن إرساله."
+
+msgid "{0} '{1}' is not submitted and cannot be amended."
+msgstr "{0} '{1}' غير مُرسل ولا يمكن إنشاء مسودة جديدة منه."
+
+msgid "{0} '{1}' is not submitted and cannot be cancelled."
+msgstr "{0} '{1}' غير مُرسل ولا يمكن إلغاؤه."
+
+msgid "{0} '{1}' is submitted and cannot be changed."
+msgstr "{0} '{1}' مُرسل ولا يمكن تغييره."
+
+msgid "{0} '{1}' is submitted and cannot be deleted."
+msgstr "{0} '{1}' مُرسل ولا يمكن حذفه."
+
+msgid "{0} '{1}' not found"
+msgstr "{0} '{1}' غير موجود"
+
+msgid "{0}: the file in '{1}' may not be read by this account."
+msgstr "{0}: هذا الحساب لا يملك صلاحية قراءة الملف في '{1}'."
