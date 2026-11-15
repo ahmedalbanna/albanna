@@ -19,12 +19,11 @@ from albanna.core.messages import Message
 from albanna.core.secrets import mask_secret
 from albanna.core.tools import ToolSpec
 
-#: The provider kinds this app knows.
+#: The canonical kind names, kept as module constants for tests and for
+#: the places that name a kind in prose.
 OPENAI = "openai"
 OLLAMA = "ollama"
 ANTHROPIC = "anthropic"
-
-PROVIDER_KINDS = (OPENAI, OLLAMA, ANTHROPIC)
 
 #: The stop reasons that mean the answer was cut off rather than
 #: finished.
@@ -33,6 +32,50 @@ PROVIDER_KINDS = (OPENAI, OLLAMA, ANTHROPIC)
 #: "length", Anthropic says "max_tokens".  The fact is the same, so the
 #: rule is in one place.
 TRUNCATED_REASONS = frozenset({"length", "max_tokens"})
+
+
+#: The kind→adapter registry, built once on first use.
+_KIND_REGISTRY: dict[str, type] | None = None
+
+
+def _kind_registry() -> dict[str, type]:
+    """Every provider kind this package carries, and its adapter class.
+
+    The adapters declare themselves: a class with a string ``kind`` (its
+    canonical name) and optional ``kinds`` aliases is a provider, and this
+    scan is the only registration there is.  A new provider is one new
+    file under ``providers/`` — nothing in :mod:`albanna.providers.base`
+    lists adapter classes by hand.
+
+    Built lazily, because the adapter modules import this one: at import
+    time the scan would recurse, and a site that only ever talks to one
+    vendor should not pay for the other adapters' imports anyway.
+    """
+    global _KIND_REGISTRY
+    if _KIND_REGISTRY is None:
+        import importlib
+        import pkgutil
+
+        registry: dict[str, type] = {}
+        package = importlib.import_module(__package__)
+        for module_info in sorted(pkgutil.iter_modules(package.__path__), key=lambda m: m.name):
+            module = importlib.import_module(f"{__package__}.{module_info.name}")
+            for attribute in dir(module):
+                obj = getattr(module, attribute)
+                if not isinstance(obj, type):
+                    continue
+                kind = getattr(obj, "kind", None)
+                if not isinstance(kind, str) or not callable(getattr(obj, "complete", None)):
+                    continue
+                for name in (kind, *(getattr(obj, "kinds", ()) or ())):
+                    registry[name] = obj
+        _KIND_REGISTRY = registry
+    return _KIND_REGISTRY
+
+
+def provider_kinds() -> tuple[str, ...]:
+    """The provider kinds the package carries, in registry order."""
+    return tuple(_kind_registry())
 
 
 def is_truncated(reason: Any) -> bool:
@@ -81,7 +124,7 @@ class ProviderConfig:
     @property
     def usable(self) -> bool:
         """True when this endpoint has enough configuration to be called."""
-        return bool(self.base_url.strip() and self.model.strip() and self.kind in PROVIDER_KINDS)
+        return bool(self.base_url.strip() and self.model.strip() and self.kind in _kind_registry())
 
     @property
     def label(self) -> str:
@@ -191,20 +234,8 @@ def default_base_url(kind: str) -> str:
     instructions — a key and a model, and nothing else — would have had
     no provider at all.
     """
-    kind = (kind or "").strip().lower()
-    if kind == OPENAI:
-        from albanna.providers.openai import OpenAIProvider
-
-        return OpenAIProvider.default_base_url
-    if kind == OLLAMA:
-        from albanna.providers.ollama import OllamaProvider
-
-        return OllamaProvider.default_base_url
-    if kind == ANTHROPIC:
-        from albanna.providers.anthropic import AnthropicProvider
-
-        return AnthropicProvider.default_base_url
-    return ""
+    cls = _kind_registry().get((kind or "").strip().lower())
+    return cls.default_base_url if cls else ""
 
 
 def build_provider(kind: str) -> ChatProvider:
@@ -213,23 +244,7 @@ def build_provider(kind: str) -> ChatProvider:
     Imported lazily so that a site which only ever talks to one vendor does
     not pay for the other two adapters' imports.
     """
-    kind = (kind or "").strip().lower()
-    if kind == OPENAI:
-        from albanna.providers.openai import OpenAIProvider
-
-        return OpenAIProvider()
-    if kind == OLLAMA:
-        from albanna.providers.ollama import OllamaProvider
-
-        return OllamaProvider()
-    if kind == ANTHROPIC:
-        from albanna.providers.anthropic import AnthropicProvider
-
-        return AnthropicProvider()
-    # OpenAI-compatible endpoints (OpenRouter, OpenAI, Groq, vLLM, LM Studio, Together, etc.)
-    # The OpenAIProvider adapter handles all of these; only the base URL and model differ.
-    if kind in (OPENAI, "openrouter", "groq", "vllm", "lmstudio", "together"):
-        from albanna.providers.openai import OpenAIProvider
-
-        return OpenAIProvider()
-    raise ValueError(f"Unknown provider kind: {kind!r}. Known kinds: {', '.join(PROVIDER_KINDS)}.")
+    cls = _kind_registry().get((kind or "").strip().lower())
+    if cls is None:
+        raise ValueError(f"Unknown provider kind: {kind!r}. Known kinds: {', '.join(provider_kinds())}.")
+    return cls()

@@ -46,6 +46,13 @@ markers = [
     "integration: needs a live bench site (opt-in; run with `bench --site test.localhost run-tests --app albanna`)",
 ]
 
+[tool.coverage.report]
+# The domain layer (``albanna.core``) is the part of the app that carries
+# the decisions — the manifest, the authority rules, the message canon —
+# and it is the part a bench-free test run can reach (NFR M5).  A run that
+# measures it with ``--cov=albanna.core`` fails below this floor.
+fail_under = 80
+
 [tool.bench.dev-dependencies]
 # package_name = "~=1.1.0"
 

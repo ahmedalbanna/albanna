@@ -85,6 +85,13 @@ class OpenAIProvider:
 
     kind = "openai"
 
+    #: The other kinds this adapter answers to.  OpenRouter, Groq, vLLM,
+    #: LM Studio and Together speak the same wire API — only the base URL
+    #: and the model id differ — so they are aliases of this adapter, and
+    #: they are declared here, beside the adapter, rather than in a
+    #: dispatch table elsewhere.
+    kinds = ("openrouter", "groq", "vllm", "lmstudio", "together")
+
     def complete(
         self,
         config: ProviderConfig,

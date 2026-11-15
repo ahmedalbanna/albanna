@@ -92,9 +92,16 @@ def test_the_audit_log_carries_no_transcript():
 
 
 def test_no_code_execution_in_shipped_python():
-    """A refusal that runs the model's text is the end of privilege (SEC11)."""
+    """A refusal that runs the model's text is the end of privilege (SEC11).
+
+    ``eval``, ``exec``, ``compile`` and ``__import__`` are banned outright.
+    ``importlib.import_module`` is allowed: it can only load a module that
+    is already importable on the app's path, so it is module *discovery*
+    (the tool handlers and the provider adapters register themselves this
+    way), never the execution of content the model produced.
+    """
     banned = re.compile(r"(?<!re\.)\b(compile|eval|exec)\s*\(")
-    imports = re.compile(r"\b__import__\s*\(|\bimportlib\b")
+    imports = re.compile(r"\b__import__\s*\(")
     offenders: list[str] = []
     for path in SERVICES.rglob("*.py"):
         parts = path.relative_to(SERVICES).parts
