@@ -34,7 +34,16 @@
 :root {
 	--albanna-surface: var(--bg-color, #fff);
 	--albanna-text: var(--text-color, #383838);
-	--albanna-muted: var(--text-light, #7c7c7c);
+	/* The muted ink is the Desk's *muted* text, not its *light* text.
+	 * `--text-light` is gray-600 (#7c7c7c) on a light Desk, and that is
+	 * 4.17:1 on white — a hair under the 4.5:1 the words in this panel
+	 * have to meet, and 3.76:1 on the bubble the reader's own messages
+	 * sit on.  `--text-muted` is gray-700 (#525252), which clears both
+	 * (6.4:1 and 7.0:1), and in the dark theme it is gray-400, which
+	 * clears the dark surfaces the same way.  The fallbacks in the rules
+	 * below are dead — this variable is declared here — and they stay
+	 * only so a rule copied out of this sheet still reads. */
+	--albanna-muted: var(--text-muted, #525252);
 	--albanna-border: var(--border-color, #ededed);
 	--albanna-hover: var(--gray-100, #f3f3f3);
 	--albanna-bubble: var(--gray-100, #f3f3f3);
@@ -318,6 +327,40 @@ body.albanna-side-chat-docked-inline-start {
 		position: sticky;
 		bottom: 0;
 		background: var(--albanna-surface, #ffffff);
+	}
+}
+
+/* Touch targets, for a finger and not for a cursor.
+ *
+ * `pointer: coarse` says the reader's input is a finger, whatever the
+ * screen's width — the width-gated block above says nothing about a
+ * 1024-pixel tablet, which is exactly a screen a finger reads.  And
+ * both of a target's sides matter: a 44-pixel-high button that is
+ * twenty pixels wide is a button the finger misses as surely as one
+ * twenty pixels tall.  `min-` keeps the desktop sizes for everything
+ * that is already big enough and lifts only what is not. */
+@media (pointer: coarse) {
+	.albanna-chat__send,
+	.albanna-chat__icon,
+	.albanna-chat__copy,
+	.albanna-chat__remove,
+	.albanna-chat__retry,
+	.albanna-chat__table-copy,
+	.albanna-chat__attach,
+	.albanna-chat__voice,
+	.albanna-chat__source,
+	.albanna-chat__earlier,
+	.albanna-chat__question-option,
+	.albanna-chat__attach-chip,
+	.albanna-chat__attach-chip-remove,
+	.albanna-chat__edit-actions button,
+	.albanna-chat__confirm-button,
+	.albanna-drawer__action,
+	.albanna-drawer__title,
+	.albanna-drawer__search-input,
+	.albanna-side-chat-launcher {
+		min-width: 44px;
+		min-height: 44px;
 	}
 }
 
@@ -1791,6 +1834,31 @@ body.albanna-side-chat-docked-inline-start {
 .albanna-chat__send:disabled {
 	opacity: 0.3;
 	cursor: default;
+}
+
+/* Every quiet button reached by Tab reads as reached.  The browser's
+ * own outline is *a* visible indicator, but it is a different shape in
+ * every browser and none of them matches this panel: so the reach is
+ * drawn here, in the accent, the same ring every other focused thing
+ * wears.  `focus-visible` keeps it off a reader who clicked — the rule
+ * is for the keyboard, which is where it is needed. */
+.albanna-chat__icon:focus-visible,
+.albanna-chat__copy:focus-visible,
+.albanna-chat__remove:focus-visible,
+.albanna-chat__retry:focus-visible,
+.albanna-chat__table-copy:focus-visible,
+.albanna-chat__attach:focus-visible,
+.albanna-chat__voice:focus-visible,
+.albanna-chat__source:focus-visible,
+.albanna-chat__earlier:focus-visible,
+.albanna-chat__question-option:focus-visible,
+.albanna-chat__attach-chip:focus-visible,
+.albanna-chat__attach-chip-remove:focus-visible,
+.albanna-chat__edit-actions button:focus-visible,
+.albanna-drawer__action:focus-visible,
+.albanna-drawer__item:focus-visible {
+	outline: 2px solid var(--albanna-accent, #2563eb);
+	outline-offset: 2px;
 }
 
 .albanna-chat__send:focus-visible {
