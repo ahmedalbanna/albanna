@@ -243,3 +243,34 @@ def test_every_quiet_button_has_an_explicit_focus_ring():
     assert group, "the quiet buttons' focus-visible group rule is gone"
     missing = [name for name in QUIET_BUTTONS if f".{name}:focus-visible" not in group.group(0)]
     assert missing == [], f"quiet buttons outside the focus group: {missing}"
+
+
+def test_reduced_motion_reaches_the_whole_widget():
+    """The launcher and the resize handle move too; the reader asked them not to (A3)."""
+    text = CSS.read_text(encoding="utf-8")
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    blocks = []
+    for match in re.finditer(r"@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{", text):
+        start = match.end()
+        depth = 1
+        index = start
+        while depth and index < len(text):
+            if text[index] == "{":
+                depth += 1
+            elif text[index] == "}":
+                depth -= 1
+            index += 1
+        blocks.append(text[start : index - 1])
+    assert blocks, "the reduced-motion block is gone"
+
+    # The scope is the widget's root, not the Vue subtree: the launcher's
+    # hover lift and the resize handle's fade live outside `.albanna-chat`.
+    whole = any(
+        re.search(r"#albanna-side-chat\s*,", block) and "#albanna-side-chat *" in block
+        for block in blocks
+    )
+    assert whole, "no reduced-motion block reaches the widget's root"
+    assert any(
+        "transition: none !important" in block and "animation: none !important" in block
+        for block in blocks
+    )

@@ -60,6 +60,7 @@ import {
 import Composer from "./Composer.vue";
 import ConversationDrawer from "./ConversationDrawer.vue";
 import { pageIdentity, resolveContext } from "./context.mjs";
+import { DOCK_OFF_QUERY, isOverlay, nextFocusable } from "./focus-trap.mjs";
 import { examplesFor } from "./examples.mjs";
 import { activityText, clockTime, readablePage } from "./format.mjs";
 import { dayLabel, isDayStart } from "./day-dividers.mjs";
@@ -2627,9 +2628,20 @@ onMounted(() => {
 	// the browser logs a ReferenceError that says nothing about why.
 	askHandler.value = onAsk;
 
-	// Keyboard: Escape closes the panel, Ctrl/Cmd+K focuses the composer.
-	// Both are the affordances a reader expects of a chat panel, and
-	// neither should be a mouse-only action.
+	// Keyboard: Escape closes the panel, Ctrl/Cmd+K focuses the composer,
+	// and Tab stays inside the panel when the panel is *over* the Desk.
+	// All three are the affordances a reader expects of a chat panel, and
+	// none should be a mouse-only action.
+	//
+	// The trap is conditional on what the panel currently *is*: a column
+	// beside the Desk (docked on a wide screen) has active content as its
+	// neighbour, and trapping there would strand the keyboard user out of
+	// the Desk the answer is about.  But the panel floats — when the
+	// position says so, and whenever the viewport is past the dock-off
+	// breakpoint, where the stylesheet turns the dock off and the panel
+	// covers the Desk — and an overlay's behind is not active.  Tab
+	// walking out of a surface the reader cannot see around is how a
+	// keyboard reader gets lost.
 	const onKeydown = (event) => {
 		if (event.key === "Escape") {
 			props.onClose();
@@ -2638,6 +2650,23 @@ onMounted(() => {
 		if ((event.ctrlKey || event.metaKey) && (event.key === "k" || event.key === "K")) {
 			event.preventDefault();
 			focusComposer();
+			return;
+		}
+		if (event.key === "Tab") {
+			const panel = document.getElementById("albanna-side-chat-panel");
+			// A closed panel is display: none — but the guard is made
+			// explicit, because a trap that reasoned about visibility
+			// alone would be a trap that reasoned through a quirk.
+			if (!panel || !panel.classList.contains("albanna-side-chat-open")) return;
+			const overlay = isOverlay(
+				props.config.position || "",
+				typeof window.matchMedia === "function" && window.matchMedia(DOCK_OFF_QUERY).matches,
+			);
+			if (!overlay) return;
+			const next = nextFocusable(panel, event.target, event.shiftKey);
+			if (!next) return;
+			event.preventDefault();
+			next.focus();
 		}
 	};
 	document.addEventListener("keydown", onKeydown);

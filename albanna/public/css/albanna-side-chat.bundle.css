@@ -2099,13 +2099,17 @@ body.albanna-side-chat-docked-inline-start {
 	color: var(--albanna-error-text, #a1231f);
 }
 
-/* Reduced motion: stop the spinner and any transitions. */
+/* Reduced motion: stop the spinner and any transitions.
+ *
+ * The scope is the widget's *root*, not the Vue subtree: the launcher's
+ * hover lift and the resize handle's fade live outside `.albanna-chat`,
+ * and a reader who asked the browser to stop moving did not ask it to
+ * stop everywhere except the two things that move most often. */
 @media (prefers-reduced-motion: reduce) {
-	.albanna-chat__spinner {
-		animation: none !important;
-	}
-
-	.albanna-chat * {
+	#albanna-side-chat,
+	#albanna-side-chat *,
+	#albanna-side-chat *::before,
+	#albanna-side-chat *::after {
 		transition: none !important;
 		animation: none !important;
 	}

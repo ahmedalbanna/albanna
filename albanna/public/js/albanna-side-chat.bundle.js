@@ -189,10 +189,12 @@ async function boot() {
 	const panel = document.createElement("aside");
 	panel.className = "albanna-side-chat-panel";
 	panel.id = PANEL_ID;
-	// The panel is a column of the Desk, not a dialog over it: it is not
-	// modal, it does not take the focus, and the page beside it stays
-	// readable.  `role="dialog"` would promise a focus trap and a modal
-	// boundary that this thing does not have.
+	// The panel is a column of the Desk, not a dialog over it — except
+	// when it is: floating, or docked on a narrow screen, it is an
+	// overlay, and then `SideChatApp`'s Tab handler traps the focus
+	// inside it.  `role="dialog"` would promise a trap in *both* modes,
+	// which the docked column cannot honour without stranding the
+	// keyboard user out of the Desk beside it.
 	panel.setAttribute("role", "complementary");
 	panel.setAttribute("aria-label", tr("Albanna assistant"));
 	panel.setAttribute("aria-hidden", "true");
