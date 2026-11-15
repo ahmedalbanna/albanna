@@ -22,9 +22,10 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from albanna.tools.base import ToolContext
+from albanna.tools.base import ToolContext, tool_handler
 
 
+@tool_handler
 def ask_question(
     question: str,
     options: list[dict[str, Any]],

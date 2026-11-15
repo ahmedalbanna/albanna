@@ -72,6 +72,25 @@ class ToolResult:
         return cls(ok=False, content=content, error=error, denied=True)
 
 
+#: The attribute a tool handler carries once :func:`tool_handler` has
+#: marked it.  The backend reads it to build its name→function bindings,
+#: so the mapping lives on the function itself and nowhere else.
+TOOL_MARKER = "__albanna_tool__"
+
+
+def tool_handler(fn):
+    """Mark *fn* as a tool handler, bound under its own name.
+
+    The tool's name in the manifest and the function's name are the same
+    word on purpose — the manifest's contract *is* the implementation's
+    signature — and the marker is what lets the backend discover the
+    pairing by itself.  A new tool is therefore two edits: one
+    ``ToolSpec`` in the manifest, one marked function here.
+    """
+    fn.__setattr__(TOOL_MARKER, True)
+    return fn
+
+
 class ToolBackend(Protocol):
     """Runs a tool."""
 

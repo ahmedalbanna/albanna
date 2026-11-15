@@ -36,6 +36,7 @@ from typing import Any
 import frappe
 
 from albanna.permissions import may_read, readable_doctypes
+from albanna.tools.base import tool_handler
 
 logger = logging.getLogger(__name__)
 
@@ -568,6 +569,7 @@ def _resolve_assigned_to(doctype: str, filters: Any) -> tuple[Any, str | None]:
     return (rewritten if replaced else filters), None
 
 
+@tool_handler
 def list_docs(
     doctype: str,
     filters: Any = None,
@@ -812,6 +814,7 @@ def _hidden_fields(document) -> set[str]:
     }
 
 
+@tool_handler
 def get_doc(doctype: str, name: str, fields: Any = None) -> str:
     """Read one document.
 
@@ -877,6 +880,7 @@ def get_doc(doctype: str, name: str, fields: Any = None) -> str:
     return ok(f"Read {doctype} '{name}'", data=data, doctype=doctype, name=name)
 
 
+@tool_handler
 def get_doctype_meta(doctype: str, fields: Any = None) -> str:
     """The field definitions of a DocType.
 
@@ -950,6 +954,7 @@ def get_doctype_meta(doctype: str, fields: Any = None) -> str:
     return json.dumps(payload, default=str)
 
 
+@tool_handler
 def run_report(
     report: str,
     filters: Any = None,
@@ -1204,6 +1209,7 @@ def _report_shape(raw: Any) -> tuple[list, list]:
     return list(columns or []), list(rows or [])
 
 
+@tool_handler
 def create_doc(doctype: str, data: Any, submit: bool = False) -> str:
     """Create a document.
 
@@ -1430,6 +1436,7 @@ def _create_refusal(exc: Exception, doctype: str, savepoint: str) -> str:
     return error(f"Failed to create {doctype}: {exc}", doctype=doctype)
 
 
+@tool_handler
 def update_doc(doctype: str, name: str, data: Any, submit: bool = False) -> str:
     """Change the fields of a document that already exists.
 
@@ -1955,6 +1962,7 @@ def _update_message(
     return message
 
 
+@tool_handler
 def submit_doc(doctype: str, name: str) -> str:
     """Submit a draft document, making it permanent.
 
@@ -2013,6 +2021,7 @@ def submit_doc(doctype: str, name: str) -> str:
     )
 
 
+@tool_handler
 def cancel_doc(doctype: str, name: str) -> str:
     """Cancel a submitted document.
 
@@ -2071,6 +2080,7 @@ def cancel_doc(doctype: str, name: str) -> str:
     )
 
 
+@tool_handler
 def amend_doc(doctype: str, name: str) -> str:
     """Amend a submitted document: cancel it and create a new draft.
 
@@ -2138,6 +2148,7 @@ def amend_doc(doctype: str, name: str) -> str:
     )
 
 
+@tool_handler
 def delete_doc(doctype: str, name: str) -> str:
     """Delete a document.
 
@@ -2250,6 +2261,7 @@ def _bulk_lookup_names(doctype: str, filters: Any, limit: Any) -> tuple[list, st
     return list(names), None
 
 
+@tool_handler
 def bulk_update_doc(
     doctype: str, filters: Any, data: Any, limit: int = 50, _approved_names: Any = None
 ) -> str:

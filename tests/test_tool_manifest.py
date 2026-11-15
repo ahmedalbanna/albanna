@@ -2,8 +2,8 @@
 
 The manifest (``albanna.core.tools``) is the contract the model sees: the
 name, the description, and the JSON Schema of the arguments.  The
-implementations (``albanna.tools.erpnext``, ``albanna.tools.questions``)
-are what actually runs.
+implementations (the modules under ``albanna.tools``) are what actually
+runs.
 
 They live in different packages on purpose — the manifest may not import
 Frappe, and the implementations must — so they could drift.  A manifest that
@@ -11,62 +11,59 @@ promises an argument the implementation does not accept is a tool that
 fails on every call, and it fails in the middle of a turn, where it costs
 the most.
 
-The cost of that split is one test file, and it is here.
+The cost of that split is one test file, and it is here.  The pairing
+itself is not maintained here any more: each implementation marks itself
+with :func:`albanna.tools.base.tool_handler`, and this file reads the
+marker — so a new tool is one manifest entry and one marked function,
+and no third list to forget.
 """
 
 from __future__ import annotations
 
 import importlib
 import inspect
+import pkgutil
 
 import pytest
 
 from albanna.core.tools import TOOL_MANIFEST, validate_arguments
 from albanna.tools.backend import ErpnextBackend
+from albanna.tools.base import TOOL_MARKER
 
-#: Where each tool's implementation lives.  The implementations are split
-#: by what they act on: the ERPNext tools act on the site's data, and the
-#: question tool acts on the conversation.
-IMPLEMENTATION_MODULES = {
-    "list_docs": "albanna.tools.erpnext",
-    "get_doc": "albanna.tools.erpnext",
-    "get_doctype_meta": "albanna.tools.erpnext",
-    "read_file": "albanna.tools.files",
-    "write_file": "albanna.tools.files",
-    "edit_file": "albanna.tools.files",
-    "run_report": "albanna.tools.erpnext",
-    "create_doc": "albanna.tools.erpnext",
-    "update_doc": "albanna.tools.erpnext",
-    "bulk_update_doc": "albanna.tools.erpnext",
-    "submit_doc": "albanna.tools.erpnext",
-    "cancel_doc": "albanna.tools.erpnext",
-    "amend_doc": "albanna.tools.erpnext",
-    "delete_doc": "albanna.tools.erpnext",
-    "ask_question": "albanna.tools.questions",
-    "read_thread_history": "albanna.tools.history",
-}
+#: The package the implementations live in.
+IMPLEMENTATION_PACKAGE = "albanna.tools"
 
-#: The model's arguments and the implementation's parameters are the same
-#: contract, so they must have the same names.
-IMPLEMENTATIONS = {
-    "list_docs": ("albanna.tools.erpnext", "list_docs"),
-    "get_doc": ("albanna.tools.erpnext", "get_doc"),
-    "get_doctype_meta": ("albanna.tools.erpnext", "get_doctype_meta"),
-    "read_file": ("albanna.tools.files", "read_file"),
-    "write_file": ("albanna.tools.files", "write_file"),
-    "edit_file": ("albanna.tools.files", "edit_file"),
-    "run_report": ("albanna.tools.erpnext", "run_report"),
-    "create_doc": ("albanna.tools.erpnext", "create_doc"),
-    "update_doc": ("albanna.tools.erpnext", "update_doc"),
-    "ask_question": ("albanna.tools.questions", "ask_question"),
-    "read_thread_history": ("albanna.tools.history", "read_thread_history"),
-}
+#: The modules that carry no tools: the port's types and the backend.
+NON_TOOL_MODULES = ("base", "backend")
 
 
 def _implementation(name: str):
-    """The function that implements a tool."""
-    module_name, attribute = IMPLEMENTATIONS[name]
-    return getattr(importlib.import_module(module_name), attribute)
+    """The function that implements a tool, found through the marker."""
+    package = importlib.import_module(IMPLEMENTATION_PACKAGE)
+    for module_info in pkgutil.iter_modules(package.__path__):
+        if module_info.name in NON_TOOL_MODULES:
+            continue
+        module = importlib.import_module(f"{IMPLEMENTATION_PACKAGE}.{module_info.name}")
+        for attribute in dir(module):
+            fn = getattr(module, attribute)
+            if callable(fn) and getattr(fn, TOOL_MARKER, False) and attribute == name:
+                return fn
+    raise AssertionError(f"no marked implementation for the tool '{name}'")
+
+
+def _implementation_names() -> set[str]:
+    """Every tool name this package marks, by discovery."""
+    package = importlib.import_module(IMPLEMENTATION_PACKAGE)
+    names: set[str] = set()
+    for module_info in pkgutil.iter_modules(package.__path__):
+        if module_info.name in NON_TOOL_MODULES:
+            continue
+        module = importlib.import_module(f"{IMPLEMENTATION_PACKAGE}.{module_info.name}")
+        for attribute in dir(module):
+            fn = getattr(module, attribute)
+            if callable(fn) and getattr(fn, TOOL_MARKER, False):
+                names.add(attribute)
+    return names
 
 
 def test_the_manifest_and_the_backend_name_the_same_tools():
@@ -74,10 +71,20 @@ def test_the_manifest_and_the_backend_name_the_same_tools():
     assert set(TOOL_MANIFEST.names()) == set(backend.bound_names)
 
 
+def test_the_discovered_implementations_are_exactly_the_manifests():
+    """Discovery is the pairing, and it agrees with the manifest.
+
+    A marked function whose name is in no manifest entry is a function
+    the model can never reach; a manifest entry with no marked function
+    is a tool the backend cannot bind.  Both are drift, and this is
+    where they are caught.
+    """
+    assert _implementation_names() == set(TOOL_MANIFEST.names())
+
+
 def test_every_tool_in_the_manifest_is_implemented():
     for name in TOOL_MANIFEST.names():
-        module = importlib.import_module(IMPLEMENTATION_MODULES[name])
-        assert hasattr(module, name), f"{name} has no implementation"
+        _implementation(name)
 
 
 def test_the_implementation_accepts_exactly_what_the_schema_declares():
@@ -88,7 +95,7 @@ def test_the_implementation_accepts_exactly_what_the_schema_declares():
     accepts a parameter the schema does not declare is a parameter the model
     can never fill.
     """
-    for name in IMPLEMENTATIONS:
+    for name in _implementation_names():
         spec = TOOL_MANIFEST.get(name)
         function = _implementation(name)
         parameters = set(inspect.signature(function).parameters) - {"self"}
@@ -252,7 +259,7 @@ def test_the_manifest_does_not_import_the_implementations():
                 assert "tools.erpnext" not in name, f"{path.name} imports {name}"
 
 
-@pytest.mark.parametrize("name", sorted(IMPLEMENTATIONS))
+@pytest.mark.parametrize("name", sorted(_implementation_names()))
 def test_the_implementation_is_callable_with_the_manifests_required_arguments(name):
     """Every tool can be called with only its required arguments.
 

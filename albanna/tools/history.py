@@ -20,7 +20,7 @@ from typing import Any
 
 import frappe
 
-from albanna.tools.base import ToolContext
+from albanna.tools.base import ToolContext, tool_handler
 
 #: How many messages one call returns.  Twenty is a page the model can
 #: quote from without the answer outrunning a tool round's budget; the
@@ -33,6 +33,7 @@ PAGE_SIZE = 20
 MESSAGE_CEILING = 400
 
 
+@tool_handler
 def read_thread_history(
     search: str = "",
     page: int = 0,

@@ -27,31 +27,27 @@ import frappe
 
 from albanna.core.tools import ToolSpec, compact_json, truncate_result
 from albanna.tools import erpnext, files, history, questions
-from albanna.tools.base import ToolContext, ToolResult
+from albanna.tools.base import TOOL_MARKER, ToolContext, ToolResult
+
+#: The modules whose functions implement tools.  A handler is discovered
+#: by the :func:`albanna.tools.base.tool_handler` marker it carries, so
+#: the name→function mapping lives on the function itself: adding a tool
+#: is one ``ToolSpec`` in the manifest and one marked function, and no
+#: binding table to remember.
+_HANDLER_MODULES = (erpnext, files, history, questions)
+
+
+def _default_bindings() -> dict[str, Callable[..., str]]:
+    """The tool handlers this package carries, by their tool names."""
+    bindings: dict[str, Callable[..., str]] = {}
+    for module in _HANDLER_MODULES:
+        for name in dir(module):
+            fn = getattr(module, name)
+            if callable(fn) and getattr(fn, TOOL_MARKER, False):
+                bindings[name] = fn
+    return bindings
 
 logger = logging.getLogger(__name__)
-
-#: The tool the model calls, and the function that implements it.  The
-#: manifest's contract *is* the implementation's signature — there is no
-#: translation layer, because there is nothing to translate.
-_BOUND_TOOLS: dict[str, Callable[..., str]] = {
-    "list_docs": erpnext.list_docs,
-    "get_doc": erpnext.get_doc,
-    "get_doctype_meta": erpnext.get_doctype_meta,
-    "read_file": files.read_file,
-    "write_file": files.write_file,
-    "edit_file": files.edit_file,
-    "run_report": erpnext.run_report,
-    "create_doc": erpnext.create_doc,
-    "update_doc": erpnext.update_doc,
-    "bulk_update_doc": erpnext.bulk_update_doc,
-    "submit_doc": erpnext.submit_doc,
-    "cancel_doc": erpnext.cancel_doc,
-    "amend_doc": erpnext.amend_doc,
-    "delete_doc": erpnext.delete_doc,
-    "ask_question": questions.ask_question,
-    "read_thread_history": history.read_thread_history,
-}
 
 
 class ToolNotBound(LookupError):
@@ -104,7 +100,7 @@ class ErpnextBackend:
     """Runs the ERPNext tools."""
 
     def __init__(self, bound_tools: dict[str, Callable[..., str]] | None = None) -> None:
-        self._bound = dict(bound_tools or _BOUND_TOOLS)
+        self._bound = dict(bound_tools if bound_tools is not None else _default_bindings())
 
     @property
     def bound_names(self) -> tuple[str, ...]:

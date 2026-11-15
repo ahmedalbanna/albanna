@@ -36,6 +36,7 @@ import frappe
 
 from albanna.core.attachments import attachment_text
 from albanna.core.tools import MAX_RESULT_CHARS
+from albanna.tools.base import tool_handler
 from albanna.tools.erpnext import _file_for_url, _may_read_file, error, ok
 
 #: The most text one read returns, in characters.
@@ -76,6 +77,7 @@ def _old_content_for_undo(source) -> str | None:
     return text
 
 
+@tool_handler
 def read_file(file: str, offset: Any = None) -> str:
     """Read the text of a stored file.
 
@@ -206,6 +208,7 @@ def _resolve(file: str):
     return _file_for_url(file)
 
 
+@tool_handler
 def write_file(file_name: str, content: str, is_private: Any = None) -> str:
     """Create a new file with the text content the model provides.
 
@@ -260,6 +263,7 @@ def write_file(file_name: str, content: str, is_private: Any = None) -> str:
     )
 
 
+@tool_handler
 def edit_file(file: str, content: str) -> str:
     """Replace the text content of a file that already exists.
 
