@@ -70,12 +70,17 @@ def read_thread_history(
     term = str(search or "").strip()
     window = max(1, int(get_settings().history_limit))
 
-    thread_where = "parent = %s and parentfield = %s and role in ('user', 'assistant')"
+    # The where-clause the thread's own reads share.  It is constants and
+    # placeholders only — the conversation name and the parent field travel
+    # as parameters — so each query below spells it out literally and is
+    # parameterized all the way down.
     thread_params: list[Any] = [conversation, PARENT_FIELD]
 
     total = int(
         frappe.db.sql(
-            f"select count(*) from `tabAlbanna Message` where {thread_where}",  # noqa: S608 - built from constants
+            "select count(*) from `tabAlbanna Message`"
+            " where parent = %s and parentfield = %s"
+            " and role in ('user', 'assistant')",
             tuple(thread_params),
         )[0][0]
     )
@@ -85,26 +90,29 @@ def read_thread_history(
         pattern = _like_pattern(term)
         matching = int(
             frappe.db.sql(
-                f"""
+                """
                 select count(*) from `tabAlbanna Message`
-                where {thread_where} and content like %s escape '\\\\'
-                """,  # noqa: S608 - built from constants
+                where parent = %s and parentfield = %s
+                  and role in ('user', 'assistant')
+                  and content like %s escape '\\\\'
+                """,
                 tuple(thread_params + [pattern]),
             )[0][0]
         )
         rows = frappe.db.sql(
-            f"""
+            """
             select role, content, pos
             from (
                 select role, content,
                        row_number() over (order by idx) as pos
                 from `tabAlbanna Message`
-                where {thread_where}
+                where parent = %s and parentfield = %s
+                  and role in ('user', 'assistant')
             ) ranked
             where content like %s escape '\\\\'
             order by pos asc
             limit %s offset %s
-            """,  # noqa: S608 - built from constants
+            """,
             tuple(thread_params + [pattern, PAGE_SIZE, page * PAGE_SIZE]),
             as_dict=True,
         )
@@ -136,17 +144,18 @@ def read_thread_history(
         high = behind - page * PAGE_SIZE
         low = max(1, high - PAGE_SIZE + 1)
         rows = frappe.db.sql(
-            f"""
+            """
             select role, content, pos
             from (
                 select role, content,
                        row_number() over (order by idx) as pos
                 from `tabAlbanna Message`
-                where {thread_where}
+                where parent = %s and parentfield = %s
+                  and role in ('user', 'assistant')
             ) ranked
             where pos between %s and %s
             order by pos asc
-            """,  # noqa: S608 - built from constants
+            """,
             tuple(thread_params + [low, high]),
             as_dict=True,
         )

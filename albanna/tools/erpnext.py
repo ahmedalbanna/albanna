@@ -137,7 +137,7 @@ def _meta(doctype: str):
     try:
         return frappe.get_meta(doctype)
     except Exception as exc:
-        return error(_("DocType '{0}' not found: {1}").format(doctype, exc), doctype=doctype)
+        return error(_("DocType '{0}' not found: {1}").format(doctype, str(exc)), doctype=doctype)
 
 
 def _known_fields(meta) -> set[str]:
@@ -462,7 +462,7 @@ def _load_for_action(doctype: str, name: str):
     except frappe.DoesNotExistError:
         return error(_("{0} '{1}' not found").format(doctype, name), doctype=doctype, name=name)
     except Exception as exc:
-        return error(_("Failed to read {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
+        return error(_("Failed to read {0} '{1}': {2}").format(doctype, name, str(exc)), doctype=doctype, name=name)
 
     if not may_read(document):
         return _read_refusal(doctype, name)
@@ -631,7 +631,7 @@ def list_docs(
             order_by=order_by or None,
         )
     except Exception as exc:
-        return error(_('Failed to list {0}: {1}').format(doctype, exc), doctype=doctype)
+        return error(_('Failed to list {0}: {1}').format(doctype, str(exc)), doctype=doctype)
 
     # A listing of Communications is silently filtered by Frappe's
     # permission engine: a user with no User Email account sees only
@@ -825,7 +825,7 @@ def get_doc(doctype: str, name: str, fields: Any = None) -> str:
     except frappe.DoesNotExistError:
         return error(_("{0} '{1}' not found").format(doctype, name), doctype=doctype, name=name)
     except Exception as exc:
-        return error(_("Failed to read {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
+        return error(_("Failed to read {0} '{1}': {2}").format(doctype, name, str(exc)), doctype=doctype, name=name)
 
     # The read is loaded first and checked second, and the order is
     # deliberate: loading is what gives the check something to check.  A
@@ -888,7 +888,7 @@ def get_doctype_meta(doctype: str, fields: Any = None) -> str:
     try:
         meta = frappe.get_meta(doctype)
     except Exception as exc:
-        return error(_("DocType '{0}' not found: {1}").format(doctype, exc), doctype=doctype)
+        return error(_("DocType '{0}' not found: {1}").format(doctype, str(exc)), doctype=doctype)
 
     # The field definitions are the DocType's own, and a DocType the
     # caller may not read is not theirs to describe: its fieldnames,
@@ -1004,7 +1004,7 @@ def run_report(
         raw = _execute_report(report_doc, report_filters)
     except Exception as exc:
         _rollback_to(savepoint)
-        return error(_("Report '{0}' failed: {1}").format(report, exc), report=report)
+        return error(_("Report '{0}' failed: {1}").format(report, str(exc)), report=report)
 
     _rollback_to(savepoint)
 
@@ -1027,7 +1027,7 @@ def _resolve_report(report: str, filters: Any) -> Any:
     except frappe.DoesNotExistError:
         return error(_("Report '{0}' not found").format(report), report=report)
     except Exception as exc:
-        return error(_("Failed to read report '{0}': {1}").format(report, exc), report=report)
+        return error(_("Failed to read report '{0}': {1}").format(report, str(exc)), report=report)
 
     if isinstance(filters, str):
         try:
@@ -1421,15 +1421,15 @@ def _create_refusal(exc: Exception, doctype: str, savepoint: str) -> str:
 
     if isinstance(exc, frappe.PermissionError):
         return error(
-            _('Failed to create {0}: {1}').format(doctype, exc),
+            _('Failed to create {0}: {1}').format(doctype, str(exc)),
             doctype=doctype,
             actionable="This account may not create this kind of document.",
         )
     if isinstance(exc, frappe.DuplicateEntryError):
-        return error(_('Duplicate entry: {0}').format(exc), doctype=doctype)
+        return error(_('Duplicate entry: {0}').format(str(exc)), doctype=doctype)
     if isinstance(exc, frappe.ValidationError):
-        return error(_('Validation failed: {0}').format(exc), doctype=doctype)
-    return error(_('Failed to create {0}: {1}').format(doctype, exc), doctype=doctype)
+        return error(_('Validation failed: {0}').format(str(exc)), doctype=doctype)
+    return error(_('Failed to create {0}: {1}').format(doctype, str(exc)), doctype=doctype)
 
 
 @tool_handler
@@ -1580,7 +1580,7 @@ def _load_for_update(doctype: str, name: str, data: dict[str, Any]):
     except frappe.DoesNotExistError:
         return error(_("{0} '{1}' not found").format(doctype, name), doctype=doctype, name=name)
     except Exception as exc:
-        return error(_("Failed to read {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
+        return error(_("Failed to read {0} '{1}': {2}").format(doctype, name, str(exc)), doctype=doctype, name=name)
 
     # A change is a write, and a write is not a read: the roles that hold
     # one do not always hold the other.  The read check comes first, so
@@ -1826,7 +1826,7 @@ def _update_refusal(exc: Exception, doctype: str, name: str) -> str:
     """The envelope for a change that could not be saved."""
     if isinstance(exc, frappe.PermissionError):
         return error(
-            _("Failed to update {0} '{1}': {2}").format(doctype, name, exc),
+            _("Failed to update {0} '{1}': {2}").format(doctype, name, str(exc)),
             doctype=doctype,
             name=name,
             actionable=(
@@ -1837,11 +1837,11 @@ def _update_refusal(exc: Exception, doctype: str, name: str) -> str:
         )
     if isinstance(exc, frappe.ValidationError):
         return error(
-            _("Validation failed for {0} '{1}': {2}").format(doctype, name, exc),
+            _("Validation failed for {0} '{1}': {2}").format(doctype, name, str(exc)),
             doctype=doctype,
             name=name,
         )
-    return error(_("Failed to update {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
+    return error(_("Failed to update {0} '{1}': {2}").format(doctype, name, str(exc)), doctype=doctype, name=name)
 
 
 def _submit_update(document, doctype: str, name: str) -> str | None:
@@ -1857,7 +1857,7 @@ def _submit_update(document, doctype: str, name: str) -> str | None:
     except Exception as exc:
         _rollback_to(savepoint)
         return error(
-            _("Updated {0} '{1}' but could not submit it: {2}").format(doctype, name, exc),
+            _("Updated {0} '{1}' but could not submit it: {2}").format(doctype, name, str(exc)),
             doctype=doctype,
             name=name,
         )
@@ -1995,7 +1995,7 @@ def submit_doc(doctype: str, name: str) -> str:
     except frappe.PermissionError as exc:
         _rollback_to(savepoint)
         return error(
-            _("Failed to submit {0} '{1}': {2}").format(doctype, name, exc),
+            _("Failed to submit {0} '{1}': {2}").format(doctype, name, str(exc)),
             doctype=doctype,
             name=name,
             actionable=(
@@ -2007,10 +2007,10 @@ def submit_doc(doctype: str, name: str) -> str:
         )
     except frappe.ValidationError as exc:
         _rollback_to(savepoint)
-        return error(_("Validation failed for {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
+        return error(_("Validation failed for {0} '{1}': {2}").format(doctype, name, str(exc)), doctype=doctype, name=name)
     except Exception as exc:
         _rollback_to(savepoint)
-        return error(_("Failed to submit {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
+        return error(_("Failed to submit {0} '{1}': {2}").format(doctype, name, str(exc)), doctype=doctype, name=name)
 
     return ok(
         _("Submitted {0} '{1}'.").format(doctype, name),
@@ -2054,7 +2054,7 @@ def cancel_doc(doctype: str, name: str) -> str:
     except frappe.PermissionError as exc:
         _rollback_to(savepoint)
         return error(
-            _("Failed to cancel {0} '{1}': {2}").format(doctype, name, exc),
+            _("Failed to cancel {0} '{1}': {2}").format(doctype, name, str(exc)),
             doctype=doctype,
             name=name,
             actionable=(
@@ -2066,10 +2066,10 @@ def cancel_doc(doctype: str, name: str) -> str:
         )
     except frappe.ValidationError as exc:
         _rollback_to(savepoint)
-        return error(_("Validation failed for {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
+        return error(_("Validation failed for {0} '{1}': {2}").format(doctype, name, str(exc)), doctype=doctype, name=name)
     except Exception as exc:
         _rollback_to(savepoint)
-        return error(_("Failed to cancel {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
+        return error(_("Failed to cancel {0} '{1}': {2}").format(doctype, name, str(exc)), doctype=doctype, name=name)
 
     return ok(
         _("Cancelled {0} '{1}'.").format(doctype, name),
@@ -2123,7 +2123,7 @@ def amend_doc(doctype: str, name: str) -> str:
     except frappe.PermissionError as exc:
         _rollback_to(savepoint)
         return error(
-            _("Failed to amend {0} '{1}': {2}").format(doctype, name, exc),
+            _("Failed to amend {0} '{1}': {2}").format(doctype, name, str(exc)),
             doctype=doctype,
             name=name,
             actionable=(
@@ -2134,10 +2134,10 @@ def amend_doc(doctype: str, name: str) -> str:
         )
     except frappe.ValidationError as exc:
         _rollback_to(savepoint)
-        return error(_("Validation failed for {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
+        return error(_("Validation failed for {0} '{1}': {2}").format(doctype, name, str(exc)), doctype=doctype, name=name)
     except Exception as exc:
         _rollback_to(savepoint)
-        return error(_("Failed to amend {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
+        return error(_("Failed to amend {0} '{1}': {2}").format(doctype, name, str(exc)), doctype=doctype, name=name)
 
     return ok(
         _("Amended {0} '{1}': created '{2}' (draft).").format(doctype, name, new_doc.name),
@@ -2181,7 +2181,7 @@ def delete_doc(doctype: str, name: str) -> str:
     except frappe.PermissionError as exc:
         _rollback_to(savepoint)
         return error(
-            _("Failed to delete {0} '{1}': {2}").format(doctype, name, exc),
+            _("Failed to delete {0} '{1}': {2}").format(doctype, name, str(exc)),
             doctype=doctype,
             name=name,
             actionable=(
@@ -2192,10 +2192,10 @@ def delete_doc(doctype: str, name: str) -> str:
         )
     except frappe.ValidationError as exc:
         _rollback_to(savepoint)
-        return error(_("Validation failed for {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
+        return error(_("Validation failed for {0} '{1}': {2}").format(doctype, name, str(exc)), doctype=doctype, name=name)
     except Exception as exc:
         _rollback_to(savepoint)
-        return error(_("Failed to delete {0} '{1}': {2}").format(doctype, name, exc), doctype=doctype, name=name)
+        return error(_("Failed to delete {0} '{1}': {2}").format(doctype, name, str(exc)), doctype=doctype, name=name)
 
     return ok(
         _("Deleted {0} '{1}'.").format(doctype, name),
@@ -2254,7 +2254,7 @@ def _bulk_lookup_names(doctype: str, filters: Any, limit: Any) -> tuple[list, st
         # name — and change — rows the reader cannot see.
         names = frappe.get_list(doctype, filters=frappe_filters, pluck="name", limit=limit)
     except Exception as exc:
-        return [], error(_('Could not look up {0}: {1}').format(doctype, exc), doctype=doctype)
+        return [], error(_('Could not look up {0}: {1}').format(doctype, str(exc)), doctype=doctype)
 
     return list(names), None
 
@@ -2431,7 +2431,7 @@ def list_doctypes(
             limit_page_length=min(max(int(limit or 100), 1), 500),
         )
     except Exception as exc:
-        return error(_('Failed to list DocTypes: {0}').format(exc))
+        return error(_('Failed to list DocTypes: {0}').format(str(exc)))
 
     return ok(
         _('Found {0} DocType(s)').format(len(rows)),

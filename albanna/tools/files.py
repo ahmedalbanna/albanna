@@ -133,7 +133,7 @@ def read_file(file: str, offset: Any = None) -> str:
         content = source.get_content()
     except Exception as exc:
         return error(
-            _("The file '{0}' could not be read: {1}").format(source.file_url or source.name, exc),
+            _("The file '{0}' could not be read: {1}").format(source.file_url or source.name, str(exc)),
             actionable=(
                 "The file's row exists but its bytes do not — it may be "
                 "stored elsewhere, or removed. Do not retry the same read."
@@ -247,7 +247,7 @@ def write_file(file_name: str, content: str, is_private: Any = None) -> str:
         # authority layer believed about the manifest.
         document.insert()
     except Exception as exc:
-        return error(_('The file could not be created: {0}').format(exc))
+        return error(_('The file could not be created: {0}').format(str(exc)))
 
     return ok(
         _("Created file '{0}'").format(document.file_url),
@@ -323,7 +323,7 @@ def edit_file(file: str, content: str) -> str:
         source.save_file(content=content, overwrite=True)
         source.save()
     except Exception as exc:
-        return error(_('The file could not be changed: {0}').format(exc))
+        return error(_('The file could not be changed: {0}').format(str(exc)))
 
     data = {
         "name": source.name,
