@@ -1170,6 +1170,43 @@ held — one strengthened; two were exposed and fixed:
   list view).  Eight walkers in `tests/test_observability_pins.py`
   keep the surface that way.
 
+### Shipped in this pass (v0.2.18, the data integrity facts are read and pinned)
+
+Five data integrity requirements (DI1–DI5), verified against the
+transcript, the ledger and the attachment stores, recorded in
+ADR-0113.  Three held — two with recorded interpretations; two were
+exposed and fixed:
+
+* **The message sequence is allocated under a lock.**  The order was
+  always by `idx` and every read honours it, but the index was
+  allocated read-then-insert — two turns queued for one thread, one
+  per open tab, could both walk away with the same index and no order
+  between them.  The append now takes the conversation row
+  `FOR UPDATE` first: appends queue instead of colliding, and a
+  thread deleted while its turn ran stores nothing rather than orphan
+  rows.
+* **Attachment references are held both ways.**  Deleting a turn or a
+  thread left the chat's private File records — and their bytes — on
+  the disk for ever, and deleting a File outside the chat left every
+  row that named it pointing at a dead link.  The deleted rows'
+  addresses are now followed (files no surviving row still names are
+  removed), and a `File.on_trash` hook strips the dead address — and
+  the text beside it, so the parallel lists stay aligned — from the
+  rows that carried it.  Files the chat did not store are never
+  touched.
+* The three that already hold are recorded with their evidence in
+  ADR-0113, two with interpretations worth keeping: the ledger's cost
+  is one pure, rounded, deterministic function of tokens and price,
+  written once and never recomputed for display (DI2); deleting a
+  conversation unlinks the ledger rather than deleting it, because
+  DI4's append-only rows are the operator's record of what the
+  assistant wrote (DI3); and the audit trail's append-only property is
+  held where it matters — content only ever accumulates, the desk
+  cannot write or delete a row, and the retention prune is the only
+  delete path (DI4).  Thirteen walkers in
+  `tests/test_data_integrity_pins.py` keep it that way, three
+  red-checked live.
+
 ### Later (v3) — §3, only with a named customer
 
 ---
