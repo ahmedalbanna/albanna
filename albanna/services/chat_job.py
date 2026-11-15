@@ -42,6 +42,7 @@ from albanna.api.chat import (
     STALE_GRACE_SECONDS,
     STREAM_EVENT,
     TURN_CACHE_KEY,
+    turn_cache_ttl_seconds,
 )
 from albanna.core.attachments import read_attachment_list
 from albanna.core.errors import reader_message
@@ -109,7 +110,7 @@ def _start_heartbeat(stream_id: str) -> threading.Event:
             except Exception:
                 logger.exception("Could not beat the chat turn's heart for %s", stream_id)
 
-    from albanna.services.settings_service import get_settings, job_budget_seconds
+    from albanna.services.settings_service import get_settings
 
     cache.set(beat_key, beat_value, ex=HEARTBEAT_TTL)
     # The mirror note in ``_mirror_to_marker`` applies here too: a value
@@ -126,7 +127,7 @@ def _start_heartbeat(stream_id: str) -> threading.Event:
             # The marker's span is renewed, not shortened: the same rule
             # every mirror follows, so a marker cannot die under a turn
             # that is still working.
-            expires_in_sec=job_budget_seconds(get_settings()) + STALE_GRACE_SECONDS,
+            expires_in_sec=turn_cache_ttl_seconds(get_settings()),
         )
 
     thread = threading.Thread(target=beat, name=f"chat-heartbeat-{stream_id}", daemon=True)
@@ -362,7 +363,7 @@ def _mirror_to_marker(stream_id: str, user: str, event: dict[str, Any]) -> None:
         else:
             marker.pop("pending_approval", None)
 
-        from albanna.services.settings_service import get_settings, job_budget_seconds
+        from albanna.services.settings_service import get_settings
 
         cache.set_value(
             marker_key,
@@ -371,7 +372,7 @@ def _mirror_to_marker(stream_id: str, user: str, event: dict[str, Any]) -> None:
             # mirror keeps it alive while the turn still runs by the
             # same full span, so a long wait for the reader's answer
             # cannot let the marker die under a live card.
-            expires_in_sec=job_budget_seconds(get_settings()) + STALE_GRACE_SECONDS,
+            expires_in_sec=turn_cache_ttl_seconds(get_settings()),
         )
     except Exception:
         logger.exception("Could not mirror chat progress for %s to the marker", stream_id)

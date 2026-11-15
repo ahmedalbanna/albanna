@@ -110,6 +110,12 @@ class AppSettings:
     #: install with no special configuration, so a custom queue name is
     #: not honoured.
     background_queue: str = "short"
+    #: How long a running turn's marker and its parked answer stay in
+    #: the cache, in seconds.  One hour by default (the resource
+    #: requirement, NFR RE3); never honoured below the turn's own
+    #: clock — a marker that dies under a live turn would have the
+    #: reader told the turn is lost while it is still working.
+    turn_cache_ttl_seconds: int = 3600
     #: The operator's extra options for the provider — the ones the app
     #: has no field for.  See :mod:`albanna.core.options`.
     extra_options: dict[str, Any] = field(default_factory=dict)
@@ -230,6 +236,7 @@ def _build() -> AppSettings:
         # would park every turn in Redis forever, so it reads as the
         # default instead.
         background_queue=_queue(getattr(doc, "background_queue", "")),
+        turn_cache_ttl_seconds=max(0, _int(doc.turn_cache_ttl_seconds, 3600)),
         # The operator's extra options: the ones the app has no field
         # for, which are added to the request the provider receives.
         extra_options=parse_options(getattr(doc, "extra_options", "")),

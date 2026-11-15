@@ -138,6 +138,35 @@ HEARTBEAT_INTERVAL = 1
 #: for the job to be picked up and for the result to be written.
 STALE_GRACE_SECONDS = 90
 
+#: How long a turn's marker and its parked answer stay in the cache when
+#: the operator has not said.  The resource requirement (NFR RE3) names
+#: the hour; the setting ``turn_cache_ttl_seconds`` is how it is said.
+DEFAULT_TURN_TTL_SECONDS = 3600
+
+
+def turn_cache_ttl_seconds(settings: Any) -> int:
+    """The span a turn's cache entries live for.
+
+    The operator's figure (an hour by default), except that a marker
+    must never die under the turn it describes: if the turn's own clock
+    — its work, its wait and the pickup grace — is longer than what the
+    operator asked for, the clock wins.  A marker that expires while
+    the turn is still working has ``status`` declare the turn lost,
+    and that is a lie told about a live worker.
+
+    The short side is the old behaviour, kept as the floor: before the
+    setting existed the entries lived for exactly the turn's clock plus
+    the grace, so nobody who set a tighter turn timeout sees their
+    cache entries suddenly outlive the turn by three quarters of an
+    hour.
+    """
+    from albanna.services.settings_service import job_budget_seconds
+
+    configured = int(getattr(settings, "turn_cache_ttl_seconds", 0) or 0)
+    if configured <= 0:
+        configured = DEFAULT_TURN_TTL_SECONDS
+    return max(configured, job_budget_seconds(settings) + STALE_GRACE_SECONDS)
+
 
 def _as_int(value: Any) -> int:
     """A number from the browser, or zero.
@@ -351,6 +380,7 @@ def _queue_turn_job(
     from albanna.services.settings_service import job_budget_seconds
 
     stream_id = uuid.uuid4().hex
+    ttl = turn_cache_ttl_seconds(settings)
 
     # A "running" marker, written before the job is queued.  It exists for
     # one reason: a job that dies before it can park its answer — a worker
@@ -387,7 +417,7 @@ def _queue_turn_job(
         # marker that lies — ``status`` would call the turn lost while
         # its worker sat waiting for the very answer the reader was
         # about to give.
-        expires_in_sec=job_budget_seconds(settings) + STALE_GRACE_SECONDS,
+        expires_in_sec=ttl,
     )
 
     frappe.enqueue(

@@ -40,6 +40,7 @@
     "history_limit",
     "turn_timeout",
     "background_queue",
+    "turn_cache_ttl_seconds",
     "turns_per_minute",
     "column_break_limits",
     "price_per_million",
@@ -271,6 +272,13 @@
       "fieldtype": "Select",
       "label": "Background queue",
       "options": "short\ndefault\nlong"
+    },
+    {
+      "default": "3600",
+      "description": "How long a running turn's marker and its parked answer stay in the cache — one hour by default. Never shorter than the turn's own clock, whatever this says: a marker that dies under a live turn tells the reader a lie.",
+      "fieldname": "turn_cache_ttl_seconds",
+      "fieldtype": "Int",
+      "label": "Parked answer TTL (seconds)"
     },
     {
       "default": "6",
