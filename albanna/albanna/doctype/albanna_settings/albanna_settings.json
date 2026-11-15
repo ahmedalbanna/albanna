@@ -39,6 +39,7 @@
     "max_tool_rounds",
     "history_limit",
     "turn_timeout",
+    "background_queue",
     "turns_per_minute",
     "column_break_limits",
     "price_per_million",
@@ -262,6 +263,14 @@
       "fieldname": "turn_timeout",
       "fieldtype": "Int",
       "label": "Turn Timeout (s)"
+    },
+    {
+      "default": "short",
+      "description": "Which standard background queue the turn's job runs on. The three names every bench ships workers for; a value outside the list reads as short.",
+      "fieldname": "background_queue",
+      "fieldtype": "Select",
+      "label": "Background queue",
+      "options": "short\ndefault\nlong"
     },
     {
       "default": "6",

@@ -104,6 +104,12 @@ class AppSettings:
     #: How long an unanswered question stays pending, in hours.  Zero means
     #: it never expires.
     question_expiry_hours: int = 24
+    #: Which standard background queue the turn's job runs on.  One of the
+    #: three names every bench ships workers for — the deployment
+    #: requirement (NFR D5) is that the chat runs on a stock Frappe Cloud
+    #: install with no special configuration, so a custom queue name is
+    #: not honoured.
+    background_queue: str = "short"
     #: The operator's extra options for the provider — the ones the app
     #: has no field for.  See :mod:`albanna.core.options`.
     extra_options: dict[str, Any] = field(default_factory=dict)
@@ -218,10 +224,29 @@ def _build() -> AppSettings:
         # (pre-migration) or nonsense reads as the default rather than as
         # "never expire".
         question_expiry_hours=_int(getattr(doc, "question_expiry_hours", 0), 24),
+        # The queue the turn's job runs on.  Only the three names a stock
+        # bench ships workers for are honoured: a site whose setting names
+        # anything else (a typo, a queue someone removed a worker for)
+        # would park every turn in Redis forever, so it reads as the
+        # default instead.
+        background_queue=_queue(getattr(doc, "background_queue", "")),
         # The operator's extra options: the ones the app has no field
         # for, which are added to the request the provider receives.
         extra_options=parse_options(getattr(doc, "extra_options", "")),
     )
+
+
+#: The three queue names a stock bench ships workers for.  The turn's
+#: job must run on one of these (NFR D5): anything else is a queue no
+#: worker listens on, and a job parked in Redis forever is a turn that
+#: never starts.
+STANDARD_QUEUES = ("short", "default", "long")
+
+
+def _queue(value) -> str:
+    """The setting's queue name, when it is one a stock worker serves."""
+    name = str(value or "").strip()
+    return name if name in STANDARD_QUEUES else "short"
 
 
 def _password(doc, fieldname: str) -> str:

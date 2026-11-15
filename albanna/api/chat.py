@@ -392,12 +392,18 @@ def _queue_turn_job(
 
     frappe.enqueue(
         "albanna.services.chat_job.run_turn_job",
-        # The chat's own queue.  A turn of many rounds held the *short*
-        # queue for its whole length, and everything else the site
-        # drops there — mail, reminders, the scheduler's own jobs —
-        # waited behind it.  On the site's dedicated worker a slow
-        # turn costs the chat alone; nothing else queues behind it.
-        queue="chat",
+        # A standard queue, by name the operator picks, defaulting to
+        # ``short``.  The chat once ran on its own queue so a turn of
+        # many rounds would not hold everything else the site drops on
+        # ``short`` — mail, reminders, the scheduler's own jobs — behind
+        # it.  But a custom queue is a queue only a worker someone
+        # configured serves: on a stock Frappe Cloud install the job
+        # would sit in Redis forever and the turn would never start
+        # (NFR D5).  The field offers the three names every bench ships
+        # workers for; a site that wants a dedicated worker for ``short``
+        # can still have one — the isolation moves to the worker
+        # topology, where it was always going to live.
+        queue=settings.background_queue,
         # The enqueue timeout has to cover the wait as well as the work,
         # because the wait is where the old clock killed real turns: a
         # turn of ten rounds left under two minutes of budget by the
