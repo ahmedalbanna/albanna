@@ -17,6 +17,14 @@ classifiers = [
 # (PEP 639), and the build failed on every modern flit.
 requires-python = ">=3.10"
 readme = "README.md"
+
+[project.urls]
+Documentation = "https://github.com/ahmedalbanna/albanna#readme"
+Repository = "https://github.com/ahmedalbanna/albanna"
+Issues = "https://github.com/ahmedalbanna/albanna/issues"
+"Terms of Service" = "https://github.com/ahmedalbanna/albanna/blob/main/docs/TERMS_OF_SERVICE.md"
+"Privacy Policy" = "https://github.com/ahmedalbanna/albanna/blob/main/docs/PRIVACY_POLICY.md"
+
 dynamic = ["version"]
 dependencies = [
     # `frappe` is installed and managed by the bench, and is deliberately

@@ -31,6 +31,19 @@ roles and the same permissions as the person who asked the question.
 
 <img src="docs/images/side-chat-english.png" alt="The Albanna side chat answering a question about the open sales orders" width="520">
 
+## Links
+
+The links the marketplace listing points at, all served from this
+repository:
+
+| | |
+|---|---|
+| **Documentation** | <https://github.com/ahmedalbanna/albanna#readme> — the full set lives under [`docs/`](https://github.com/ahmedalbanna/albanna/tree/main/docs) |
+| **Website** | <https://github.com/ahmedalbanna/albanna> |
+| **Support** | <https://github.com/ahmedalbanna/albanna/issues> · <ahmedalbanna966@gmail.com> |
+| **Terms of Service** | <https://github.com/ahmedalbanna/albanna/blob/main/docs/TERMS_OF_SERVICE.md> |
+| **Privacy Policy** | <https://github.com/ahmedalbanna/albanna/blob/main/docs/PRIVACY_POLICY.md> |
+
 ## Install
 
 ```bash
