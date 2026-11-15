@@ -178,12 +178,14 @@ def load_attached_files(urls: list[str]) -> tuple[list[str], list[str]]:
     crosses the wire and what the queue's marker holds, for nothing —
     the file is already on this site's own disk.
 
-    The read is permission-checked twice over, by accident and by rule:
-    ``get_doc`` answers to the acting user, so a file that is not theirs
-    to read is a file that is skipped — and the note the turn carries
-    says the contents could not be read, which is the same honesty the
-    read tools are held to.
+    The read is permission-checked by rule: ``frappe.get_doc`` runs *no*
+    permission check, so the check is made here, explicitly — a file the
+    acting user may not read is a file that is skipped, and the note the
+    turn carries says the contents could not be read, which is the same
+    honesty the read tools are held to.
     """
+    from albanna.tools.erpnext import _may_read_file
+
     data_urls: list[str] = []
     texts: list[str] = []
     for url in urls or []:
@@ -196,6 +198,9 @@ def load_attached_files(urls: list[str]) -> tuple[list[str], list[str]]:
             if not name:
                 continue
             document = frappe.get_doc("File", name)
+            if not _may_read_file(document):
+                logger.info("Skipped an attachment the turn's user may not read: %s", url)
+                continue
             raw = document.get_content()
             if not raw:
                 continue
